@@ -2,6 +2,25 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Supabase (no auth) setup
+
+1. Create a Supabase project.
+2. Set environment variables in your local `.env.local`:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL="https://YOUR_PROJECT_REF.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="YOUR_ANON_KEY"
+```
+
+3. Create the database schema by running:
+
+`supabase/migrations/0001_companies_invoices.sql`
+
+in the Supabase SQL editor. This creates `companies` and `invoices`, plus a trigger that updates
+`companies.last_invoice_date`, `companies.invoice_count`, and `companies.total_revenue` whenever a new row is inserted into `invoices`.
+
+4. Open the page: `/clients`
+
 First, run the development server:
 
 ```bash
