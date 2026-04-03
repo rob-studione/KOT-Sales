@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:apply:clients-view": "node scripts/run-sql.cjs supabase/migrations/0012_ensure_clients_view_and_rpc.sql",
+    "db:verify:clients-view": "node scripts/verify-clients-view.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
@@ -15,6 +17,7 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "pg": "^8.16.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
