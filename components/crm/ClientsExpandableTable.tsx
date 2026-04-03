@@ -30,6 +30,16 @@ type Props = {
   recentByClientKey: Record<string, RecentInvoiceRow[]>;
 };
 
+function toInvoiceCount(v: unknown): number {
+  if (typeof v === "bigint") return Number(v);
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
 export function ClientsExpandableTable({ rows, recentByClientKey }: Props) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
@@ -48,12 +58,13 @@ export function ClientsExpandableTable({ rows, recentByClientKey }: Props) {
       {rows.map((row) => {
         const key = row.client_key;
         const rowDomId = key === "" ? "orphan" : key;
+        const reactKey = key === "" ? "__client_orphan__" : key;
         const isOpen = Boolean(open[key]);
         const title = displayClientName(row.company_name, row.company_code);
         const recent = recentByClientKey[key] ?? [];
 
         return (
-          <div key={key} className="bg-white">
+          <div key={reactKey} className="bg-white">
             <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-x-2 gap-y-1 px-2 py-1.5 text-sm sm:px-3 sm:py-2">
               <div className="min-w-0">
                 <button
@@ -74,7 +85,7 @@ export function ClientsExpandableTable({ rows, recentByClientKey }: Props) {
                 {formatDate(row.last_invoice_date)}
               </div>
               <div className="whitespace-nowrap text-right tabular-nums text-zinc-700">
-                {new Intl.NumberFormat("lt-LT").format(Number(row.invoice_count ?? 0))}
+                {new Intl.NumberFormat("lt-LT").format(toInvoiceCount(row.invoice_count))}
               </div>
               <div className="whitespace-nowrap text-right font-medium tabular-nums text-zinc-900">
                 {formatMoney(row.total_revenue)}
