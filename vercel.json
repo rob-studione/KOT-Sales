@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-saskaita123?job=tick",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
