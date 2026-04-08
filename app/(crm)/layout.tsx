@@ -1,16 +1,13 @@
 import type { Metadata } from "next";
-import { CrmSidebar } from "@/components/crm/CrmSidebar";
+import { CrmShellClient } from "@/components/crm/CrmShellClient";
+import { getCurrentCrmUser } from "@/lib/crm/currentUser";
 
 export const metadata: Metadata = {
   title: "CRM",
   description: "Klientai ir sąskaitos",
 };
 
-export default function CrmLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-full flex-1 bg-zinc-50">
-      <CrmSidebar />
-      <main className="min-w-0 flex-1 overflow-auto p-6">{children}</main>
-    </div>
-  );
+export default async function CrmLayout({ children }: { children: React.ReactNode }) {
+  const user = await getCurrentCrmUser();
+  return <CrmShellClient user={user}>{children}</CrmShellClient>;
 }
