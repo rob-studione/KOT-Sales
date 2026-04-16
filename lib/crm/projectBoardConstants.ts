@@ -1,0 +1,271 @@
+/**
+ * CALL_WORK (Kanban): fiksuoti „kitas veiksmas“ stulpeliai — ne bendras funnel.
+ * Kandidatai = dinaminis sąrašas; čia tik priskirti darbo įrašai.
+ */
+
+/** Stulpelių eilė (tiksliai kaip Sheets). */
+export const KANBAN_NEXT_ACTION_COLUMNS = [
+  "Skambinti",
+  "Perskambinti",
+  "Laukti",
+  "Siųsti laišką",
+  "Siųsti komercinį",
+  "Skubus veiksmas",
+  "Užbaigta",
+] as const;
+
+export type KanbanNextActionColumn = (typeof KANBAN_NEXT_ACTION_COLUMNS)[number];
+
+/** Viešųjų pirkimų projekto lentelė (be komercinio ir skubaus). */
+export const PROCUREMENT_KANBAN_COLUMNS: readonly KanbanNextActionColumn[] = [
+  "Skambinti",
+  "Perskambinti",
+  "Laukti",
+  "Siųsti laišką",
+  "Užbaigta",
+] as const;
+
+/** Priskyrus klientą į darbą — pradinis stulpelis. */
+export const BOARD_DEFAULT_CALL_STATUS: KanbanNextActionColumn = "Skambinti";
+
+/** Seni „Skambučio statusas“ žodžiai → naujas stulpelis (rodymui ir bucket'inimui). */
+const LEGACY_CALL_STATUS_TO_KANBAN: Record<string, KanbanNextActionColumn> = {
+  "": "Skambinti",
+  Neatsiliepė: "Skambinti",
+  Perskambins: "Perskambinti",
+  "Susisiekti vėliau": "Laukti",
+  "Aktualu pagal poreikį": "Laukti",
+};
+
+export function normalizeCallStatusKey(raw: string | null | undefined): string {
+  return raw == null ? "" : String(raw).trim();
+}
+
+/**
+ * Sugretina įrašą su vienu iš fiksuotų Kanban stulpelių (įskaitant migracijas iš senų reikšmių).
+ */
+export function normalizeKanbanCallStatus(raw: string | null | undefined): KanbanNextActionColumn {
+  const k = normalizeCallStatusKey(raw);
+  if ((KANBAN_NEXT_ACTION_COLUMNS as readonly string[]).includes(k)) {
+    return k as KanbanNextActionColumn;
+  }
+  return LEGACY_CALL_STATUS_TO_KANBAN[k] ?? "Skambinti";
+}
+
+/**
+ * KPI / vadybininkų suvestinė: po skambučio pereita į šiuos Kanban stulpelius → laikoma „atsiliepė“.
+ * Naujus statusus pridėti čia (ir atitinkamai į NOT_ANSWERED_STATUSES, jei tai „laukia skambučio“ būsena).
+ */
+export const ANSWERED_STATUSES: readonly KanbanNextActionColumn[] = [
+  "Laukti",
+  "Siųsti laišką",
+  "Siųsti komercinį",
+  "Skubus veiksmas",
+  "Užbaigta",
+] as const;
+
+/**
+ * KPI: skambutis dar be kontakto — šie stulpeliai = „neatsiliepė“.
+ */
+export const NOT_ANSWERED_STATUSES: readonly KanbanNextActionColumn[] = ["Skambinti", "Perskambinti"] as const;
+
+const ANSWERED_STATUS_SET = new Set<string>(ANSWERED_STATUSES);
+const NOT_ANSWERED_STATUS_SET = new Set<string>(NOT_ANSWERED_STATUSES);
+
+/** Skambutis analitikoje laikomas „atsiliepė“ pagal `ANSWERED_STATUSES`. */
+export function isCallAnsweredByStatus(callStatus: string | null | undefined): boolean {
+  const k = normalizeKanbanCallStatus(callStatus);
+  return ANSWERED_STATUS_SET.has(k);
+}
+
+/** Skambutis analitikoje laikomas „neatsiliepė“ pagal `NOT_ANSWERED_STATUSES`. */
+export function isCallNotAnsweredByStatus(callStatus: string | null | undefined): boolean {
+  const k = normalizeKanbanCallStatus(callStatus);
+  return NOT_ANSWERED_STATUS_SET.has(k);
+}
+
+/** Rezultatas po „Grąžinti į kandidatus“ — nebe Kanban, bet istorija lieka. */
+export const RESULT_RETURNED_TO_CANDIDATES = "returned_to_candidates";
+
+export function isReturnedToCandidates(resultStatus: string | null | undefined): boolean {
+  return String(resultStatus ?? "")
+    .trim()
+    .toLowerCase() === RESULT_RETURNED_TO_CANDIDATES;
+}
+
+/** Ar darbo eilutė „uždaryta“ (unikalus indeksas kandidatams — nebeblokuoja). */
+export function isProjectWorkItemClosed(resultStatus: string | null | undefined): boolean {
+  const s = String(resultStatus ?? "")
+    .trim()
+    .toLowerCase();
+  return [
+    "completed",
+    "closed",
+    "cancelled",
+    "uždaryta",
+    "lost",
+    "neaktualus",
+    "completion_sent_email",
+    "completion_sent_commercial",
+    "completion_relevant_as_needed",
+    "completion_translations_not_relevant",
+    "completion_other_provider",
+    "completion_procurement_invite_participate",
+    "completion_procurement_include_purchase",
+    "completion_procurement_contact_failed",
+    "completion_procurement_not_relevant",
+    "completion_procurement_other",
+    RESULT_RETURNED_TO_CANDIDATES,
+  ].includes(s);
+}
+
+/** Ar „grąžinimas“ gali būti paprastas dialogas (tik paėmimas, be kitų veiksmų istorijoje). */
+export function isTrivialReturnHistory(activities: { action_type: string }[]): boolean {
+  if (activities.length === 0) return true;
+  return activities.length === 1 && activities[0].action_type === "picked";
+}
+
+export function boardColumnIdFromCallStatus(callStatus: string): string {
+  return normalizeKanbanCallStatus(callStatus);
+}
+
+export function callStatusFromBoardColumnId(columnId: string): string {
+  return columnId;
+}
+
+/** Antraštė viešųjų pirkimų lentoje („Laukti“ rodoma kaip „Laukiame“). */
+export function procurementKanbanColumnTitle(columnKey: string): string {
+  const k = normalizeKanbanCallStatus(columnKey);
+  if (k === "Laukti") return "Laukiame";
+  return k;
+}
+
+/** Senesnę būseną sugretinti su viešųjų pirkimų stulpeliais (kad kortelė nepranyktų). */
+export function mapCallStatusToProcurementBoardColumn(
+  raw: string | null | undefined
+): KanbanNextActionColumn {
+  const k = normalizeKanbanCallStatus(raw);
+  const allowed = new Set<string>(PROCUREMENT_KANBAN_COLUMNS as readonly string[]);
+  if (allowed.has(k)) return k;
+  if (k === "Siųsti komercinį") return "Siųsti laišką";
+  if (k === "Skubus veiksmas") return "Perskambinti";
+  return "Skambinti";
+}
+
+/** Tik fiksuoti stulpeliai — be dinaminių „papildomų“ statusų. */
+export function buildBoardColumnOrder(opts?: {
+  variant?: "default" | "procurement";
+}): KanbanNextActionColumn[] {
+  if (opts?.variant === "procurement") {
+    return [...PROCUREMENT_KANBAN_COLUMNS];
+  }
+  return [...KANBAN_NEXT_ACTION_COLUMNS];
+}
+
+/**
+ * Stulpelio antraštės apatinė riba (~3px, tik antraštė).
+ */
+export function kanbanColumnHeaderBorderClass(columnKey: string): string {
+  const k = normalizeKanbanCallStatus(columnKey);
+  switch (k) {
+    case "Skambinti":
+      return "border-b-[3px] border-b-blue-600";
+    case "Perskambinti":
+      return "border-b-[3px] border-b-sky-400";
+    case "Laukti":
+      return "border-b-[3px] border-b-amber-400";
+    case "Siųsti laišką":
+      return "border-b-[3px] border-b-slate-400";
+    case "Siųsti komercinį":
+      return "border-b-[3px] border-b-purple-500";
+    case "Skubus veiksmas":
+      return "border-b-[3px] border-b-red-500";
+    case "Užbaigta":
+      return "border-b-[3px] border-b-emerald-600";
+    default:
+      return "border-b-[3px] border-b-zinc-300";
+  }
+}
+
+/** Stulpelio konteineris: „Užbaigta“ — šiek tiek pilkesnis fonas. */
+export function kanbanColumnShellClass(columnKey: string): string {
+  const k = normalizeKanbanCallStatus(columnKey);
+  if (k === "Užbaigta") {
+    return "border-zinc-300/90 bg-zinc-100/65";
+  }
+  return "border-zinc-200/90 bg-zinc-50/50";
+}
+
+/** Formos / pasirinkimų sąrašas (tik Kanban stulpeliai). */
+export function callStatusSelectOptions(): KanbanNextActionColumn[] {
+  return [...KANBAN_NEXT_ACTION_COLUMNS];
+}
+
+export function callStatusOptionLabel(key: string): string {
+  return normalizeKanbanCallStatus(key);
+}
+
+/** Pagrindinio darbo srauto veiksmų tipai (istorijoje gali būti ir senesnių tipų, pvz. pastaba). */
+export const WORK_ITEM_ACTION_TYPES = ["call", "email", "commercial"] as const;
+export type WorkItemTouchActionType = (typeof WORK_ITEM_ACTION_TYPES)[number];
+
+/** Numatytas veiksmo tipas pagal „Sekantis veiksmas (Kanban)“ stulpelį. */
+export function defaultWorkItemActionTypeForKanbanColumn(column: string): WorkItemTouchActionType {
+  const k = normalizeKanbanCallStatus(column);
+  if (k === "Siųsti laišką") return "email";
+  if (k === "Siųsti komercinį") return "commercial";
+  return "call";
+}
+
+export function isCallKpiActionType(actionType: string): boolean {
+  return actionType.trim().toLowerCase() === "call";
+}
+
+export function workItemActionTypeLabel(t: string): string {
+  switch (t.trim().toLowerCase()) {
+    case "call":
+      return "Skambutis";
+    case "email":
+      return "Laiškas";
+    case "note":
+      return "Pastaba";
+    case "commercial":
+      return "Komercinis";
+    case "status_change":
+      return "Stulpelio keitimas (lenta)";
+    case "picked":
+      return "Paėmė į darbą";
+    case "returned_to_candidates":
+      return "Grąžinta į kandidatus";
+    default:
+      return t;
+  }
+}
+
+/** „Laukti“ stulpelis: paryškinti, kai laukiama data jau pasiekta / praleista (neautomatinis perkėlimas). */
+export function waitColumnHighlightState(
+  callStatus: string | null | undefined,
+  nextActionDate: string | null | undefined
+): "none" | "today" | "overdue" {
+  if (normalizeKanbanCallStatus(callStatus) !== "Laukti") return "none";
+  const d = typeof nextActionDate === "string" ? nextActionDate.trim() : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "none";
+  const today = todayIsoDateLocal();
+  if (d < today) return "overdue";
+  if (d === today) return "today";
+  return "none";
+}
+
+function todayIsoDateLocal(): string {
+  const t = new Date();
+  const y = t.getFullYear();
+  const m = String(t.getMonth() + 1).padStart(2, "0");
+  const day = String(t.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Ar kortelė rodoma Kanban lentoje (įskaitant „Užbaigta“ stulpelį su uždarytu rezultatu). */
+export function isWorkItemOnKanbanBoard(item: { call_status: string; result_status: string }): boolean {
+  if (normalizeKanbanCallStatus(item.call_status) === "Užbaigta") return true;
+  return !isProjectWorkItemClosed(item.result_status);
+}

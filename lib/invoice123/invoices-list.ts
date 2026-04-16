@@ -1,5 +1,6 @@
 /** Shared helpers for Invoice123 GET /api/v1.0/invoices list responses. */
 
+import { resolveInvoiceNumber } from "@/lib/crm/invoiceDisplayNumber";
 import { SYNTHETIC_COMPANY_CODE_PREFIX } from "@/lib/crm/company-code";
 
 export type AnyRecord = Record<string, unknown>;
@@ -79,6 +80,8 @@ export function resolveEffectiveCompanyCode(opts: {
 
 export type MappedListInvoiceRow = {
   invoice_id: string;
+  /** Human-facing number: series_title + series_number, or invoice_id when series missing. */
+  invoice_number: string;
   client_id: string | null;
   company_name: string;
   company_code: string;
@@ -254,8 +257,11 @@ export function mapInvoiceListItems(invoices: AnyRecord[]): {
       const series_number =
         seriesNumRaw != null && Number.isFinite(seriesNumRaw) ? Math.trunc(seriesNumRaw) : null;
 
+      const invoice_number = resolveInvoiceNumber(series_title, series_number, invoiceId);
+
       return {
         invoice_id: invoiceId,
+        invoice_number,
         client_id,
         company_name,
         company_code,

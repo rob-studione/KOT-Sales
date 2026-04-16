@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { displayClientName, formatCompanyCodeList, formatDate, formatMoney } from "@/lib/crm/format";
+import { useRouter } from "next/navigation";
+import { displayClientName, formatMoney } from "@/lib/crm/format";
 import { clientDetailPath } from "@/lib/crm/clientRouting";
 
 export type ClientListRow = {
@@ -19,152 +18,78 @@ export type ClientListRow = {
   total_revenue: string | number | null;
 };
 
-export type RecentInvoiceRow = {
-  invoice_id: string;
-  invoice_date: string;
-  amount: string | number | null;
-};
-
 type Props = {
   rows: ClientListRow[];
-  recentByClientKey: Record<string, RecentInvoiceRow[]>;
 };
 
-function toInvoiceCount(v: unknown): number {
-  if (typeof v === "bigint") return Number(v);
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string" && v.trim() !== "") {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-  }
-  return 0;
-}
+const th =
+  "px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 sm:px-4 sm:text-[11px]";
+const td = "px-3 py-1.5 sm:px-4";
 
-export function ClientsExpandableTable({ rows, recentByClientKey }: Props) {
-  const [open, setOpen] = useState<Record<string, boolean>>({});
-
-  function toggle(key: string) {
-    setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
+export function ClientsExpandableTable({ rows }: Props) {
+  const router = useRouter();
 
   if (rows.length === 0) {
     return (
-      <div className="px-3 py-8 text-center text-sm text-zinc-500">Klientų nerasta.</div>
+      <div className="px-4 py-6 text-center text-sm text-zinc-500">Klientų nerasta.</div>
     );
   }
 
   return (
-    <div className="divide-y divide-zinc-100">
-      {rows.map((row) => {
-        const key = row.client_key;
-        const rowDomId = key === "" ? "orphan" : key;
-        const reactKey = key === "" ? "__client_orphan__" : key;
-        const isOpen = Boolean(open[key]);
-        const title = displayClientName(row.company_name, row.company_code);
-        const recent = recentByClientKey[key] ?? [];
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-0 table-fixed border-collapse text-sm">
+        <colgroup>
+          <col />
+          <col className="w-[9.5rem] sm:w-40" />
+        </colgroup>
+        <thead>
+          <tr className="border-b border-zinc-100 bg-white">
+            <th scope="col" className={`${th} text-left`}>
+              Pavadinimas
+            </th>
+            <th scope="col" className={`${th} text-right whitespace-nowrap`}>
+              Bendra apyvarta
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const key = row.client_key;
+            const reactKey = key === "" ? "__client_orphan__" : key;
+            const title = displayClientName(row.company_name, row.company_code);
+            const href = clientDetailPath(key === "" ? null : key);
 
-        return (
-          <div key={reactKey} className="bg-white">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-x-2 gap-y-1 px-2 py-1.5 text-sm sm:px-3 sm:py-2">
-              <div className="min-w-0">
-                <button
-                  type="button"
-                  onClick={() => toggle(key)}
-                  className="flex w-full min-w-0 items-center gap-1.5 text-left"
-                  aria-expanded={isOpen}
-                  aria-controls={`client-detail-${rowDomId}`}
-                  id={`client-trigger-${rowDomId}`}
-                >
-                  <span className="text-zinc-400 select-none" aria-hidden>
-                    {isOpen ? "▾" : "▸"}
-                  </span>
-                  <span className="truncate font-medium text-zinc-900">{title}</span>
-                </button>
-              </div>
-              <div className="whitespace-nowrap text-right tabular-nums text-zinc-700">
-                {formatDate(row.last_invoice_date)}
-              </div>
-              <div className="whitespace-nowrap text-right tabular-nums text-zinc-700">
-                {new Intl.NumberFormat("lt-LT").format(toInvoiceCount(row.invoice_count))}
-              </div>
-              <div className="whitespace-nowrap text-right font-medium tabular-nums text-zinc-900">
-                {formatMoney(row.total_revenue)}
-              </div>
-              <div className="flex justify-end">
-                <Link
-                  href={clientDetailPath(key === "" ? null : key)}
-                  className="text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Atidaryti
-                </Link>
-              </div>
-            </div>
+            function go() {
+              router.push(href);
+            }
 
-            {isOpen ? (
-              <div
-                id={`client-detail-${rowDomId}`}
-                role="region"
-                aria-labelledby={`client-trigger-${rowDomId}`}
-                className="border-t border-zinc-100 bg-zinc-50/90 px-3 py-3 text-sm"
+            return (
+              <tr
+                key={reactKey}
+                tabIndex={0}
+                aria-label={`Klientas: ${title}. Atidaryti detales.`}
+                onClick={go}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    go();
+                  }
+                }}
+                className="cursor-pointer border-t border-zinc-100 transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400"
               >
-                <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-                  <div>
-                    <dt className="text-xs font-medium text-zinc-500">Įmonės kodas</dt>
-                    <dd className="mt-0.5 font-mono text-zinc-900">{formatCompanyCodeList(row.company_code)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-medium text-zinc-500">PVM kodas</dt>
-                    <dd className="mt-0.5 text-zinc-900">{row.vat_code?.trim() ? row.vat_code : "—"}</dd>
-                  </div>
-                  <div className="sm:col-span-2 lg:col-span-1">
-                    <dt className="text-xs font-medium text-zinc-500">Adresas</dt>
-                    <dd className="mt-0.5 text-zinc-900">{row.address?.trim() ? row.address : "—"}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-medium text-zinc-500">El. paštas</dt>
-                    <dd className="mt-0.5 break-all text-zinc-900">{row.email?.trim() ? row.email : "—"}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-medium text-zinc-500">Tel. nr.</dt>
-                    <dd className="mt-0.5 text-zinc-900">{row.phone?.trim() ? row.phone : "—"}</dd>
-                  </div>
-                </dl>
-
-                <div className="mt-4">
-                  <div className="text-xs font-medium text-zinc-600">Naujausios sąskaitos</div>
-                  {recent.length === 0 ? (
-                    <p className="mt-1 text-zinc-500">Nėra duomenų.</p>
-                  ) : (
-                    <div className="mt-2 overflow-x-auto rounded border border-zinc-200 bg-white">
-                      <table className="min-w-full text-xs">
-                        <thead className="bg-zinc-100/80">
-                          <tr className="text-left text-zinc-600">
-                            <th className="px-2 py-1.5 font-medium">Nr.</th>
-                            <th className="px-2 py-1.5 font-medium">Data</th>
-                            <th className="px-2 py-1.5 font-medium text-right">Suma</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {recent.map((inv) => (
-                            <tr key={inv.invoice_id} className="border-t border-zinc-100">
-                              <td className="px-2 py-1.5 font-mono text-zinc-900">{inv.invoice_id}</td>
-                              <td className="px-2 py-1.5 text-zinc-700">{formatDate(inv.invoice_date)}</td>
-                              <td className="px-2 py-1.5 text-right tabular-nums text-zinc-900">
-                                {formatMoney(inv.amount)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
+                <td className={`${td} max-w-0 min-w-0`}>
+                  <span className="block truncate font-medium text-zinc-900" title={title}>
+                    {title}
+                  </span>
+                </td>
+                <td className={`${td} whitespace-nowrap text-right font-medium tabular-nums text-zinc-900`}>
+                  {formatMoney(row.total_revenue)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

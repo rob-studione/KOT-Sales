@@ -8,22 +8,34 @@
     "start": "next start",
     "lint": "eslint",
     "db:apply:clients-view": "node scripts/run-sql.cjs supabase/migrations/0012_ensure_clients_view_and_rpc.sql",
-    "db:verify:clients-view": "node scripts/verify-clients-view.cjs"
+    "db:verify:clients-view": "node scripts/verify-clients-view.cjs",
+    "db:apply:projects": "sh -c 'set -a && . ./.env.local && set +a && node scripts/run-sql.cjs supabase/migrations/0014_projects_snapshot.sql && node scripts/run-sql.cjs supabase/migrations/0015_project_campaign_work_items.sql'",
+    "db:apply:projects-campaign": "sh -c 'set -a && . ./.env.local && set +a && node scripts/run-sql.cjs supabase/migrations/0015_project_campaign_work_items.sql'",
+    "db:apply:work-item-activities": "sh -c 'set -a && . ./.env.local && set +a && node scripts/run-sql.cjs supabase/migrations/0016_project_work_item_activities.sql && node scripts/run-sql.cjs supabase/migrations/0017_ensure_project_work_item_activities.sql && node scripts/run-sql.cjs supabase/migrations/0018_kanban_call_workflow.sql && node scripts/run-sql.cjs supabase/migrations/0019_return_to_candidates.sql && node scripts/run-sql.cjs supabase/migrations/0020_project_work_item_activities_action_type_returned.sql'",
+    "db:verify:project-candidates": "sh -c 'set -a && . ./.env.local && set +a && node scripts/verify-match-project-candidates.cjs'"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.101.1",
+    "@types/papaparse": "^5.5.2",
+    "googleapis": "^159.0.0",
+    "lucide-react": "^1.7.0",
     "next": "16.2.2",
+    "openai": "^6.34.0",
+    "papaparse": "^5.5.3",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
-    "pg": "^8.16.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "pg": "^8.16.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

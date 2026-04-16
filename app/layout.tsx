@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CRM",
+  title: { default: "Salex CRM", template: "%s · Salex" },
   description: "Klientai ir sąskaitos",
 };
 
@@ -25,9 +25,11 @@ export default function RootLayout({
   return (
     <html
       lang="lt"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-screen antialiased">
+        <div className="flex min-h-screen flex-col">{children}</div>
+      </body>
     </html>
   );
 }

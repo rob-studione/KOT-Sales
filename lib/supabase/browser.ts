@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 let cached: SupabaseClient | null = null;
 
@@ -11,10 +12,13 @@ export function createSupabaseBrowserClient(): SupabaseClient {
   if (!url) throw new Error("Missing env var NEXT_PUBLIC_SUPABASE_URL");
   if (!anonKey) throw new Error("Missing env var NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
-  cached = createClient(url, anonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
+  // Important: use cookie-based auth so middleware/server can see the session.
+  // In development on http://localhost, `secure` cookies won't be sent.
+  cached = createBrowserClient(url, anonKey, {
+    cookieOptions: {
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
     },
   });
 

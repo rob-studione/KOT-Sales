@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { CurrentCrmUser } from "@/lib/crm/currentUser";
+import { CrmNotificationBell } from "@/components/crm/CrmNotificationBell";
 
 function moduleLabel(pathname: string): string {
   if (pathname.startsWith("/analitika")) return "Analitika";
@@ -70,15 +71,22 @@ export function AppHeader({
       className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-zinc-200 bg-white px-4 backdrop-blur-sm sm:px-6"
       role="banner"
     >
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2.5">
         <Link
           href="/analitika"
-          className="shrink-0 cursor-pointer text-[15px] font-semibold tracking-tight text-zinc-900 transition-colors hover:text-zinc-700"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-2 text-[24px] font-semibold leading-none tracking-tight text-zinc-900 transition-colors hover:text-zinc-700"
         >
-          Salex
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/brand/logo.svg"
+            alt=""
+            className="inline-block h-[38px] w-[38px] rounded-md"
+          />
+          <span className="font-bold">KoT</span>{" "}
+          <span className="font-normal text-zinc-800">Sales</span>
         </Link>
         <span className="hidden h-4 w-px shrink-0 bg-zinc-200 sm:block" aria-hidden />
-        <span className="min-w-0 truncate text-sm text-zinc-600">{areaLabel}</span>
+        <span className="min-w-0 truncate text-[15px] font-medium leading-none text-zinc-700">{areaLabel}</span>
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 text-zinc-300 sm:gap-1" aria-label="Vieta paieškai, veiksmams ir paskyrai">
@@ -93,6 +101,7 @@ export function AppHeader({
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
           </svg>
         </span>
+        {user ? <CrmNotificationBell /> : null}
         <div className="relative ml-1" ref={menuRef}>
           <button
             type="button"

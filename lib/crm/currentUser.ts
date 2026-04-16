@@ -1,7 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
+import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import type { UserRole } from "@/lib/crm/roles";
 import type { CrmUserStatus } from "@/lib/crm/accountActions";
 
@@ -17,7 +17,7 @@ export type CurrentCrmUser = {
 };
 
 export async function getCurrentCrmUser(): Promise<CurrentCrmUser | null> {
-  const supabase = await createSupabaseSsrClient();
+  const supabase = await createSupabaseSsrReadOnlyClient();
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData.user) return null;
 

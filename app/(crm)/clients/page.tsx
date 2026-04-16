@@ -1,13 +1,32 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { CrmListPageControls, CrmListPageIntro, CrmListPageMain } from "@/components/crm/CrmListPageLayout";
+import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { ClientsExpandableTable, type ClientListRow } from "@/components/crm/ClientsExpandableTable";
+import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
+import { TablePagination } from "@/components/crm/TablePagination";
 import {
-  ClientsExpandableTable,
-  type ClientListRow,
-  type RecentInvoiceRow,
-} from "@/components/crm/ClientsExpandableTable";
-import { ListPagination } from "@/components/crm/ListPagination";
-import { CRM_PAGE_SIZE, parsePage, totalPages } from "@/lib/crm/pagination";
+  clampPageIndex0,
+  parsePageIndex0,
+  parsePageSize,
+  showingRange1Based,
+  totalPagesFromCount,
+} from "@/lib/crm/pagination";
 import { sanitizeForPostgrestOrClause } from "@/lib/crm/postgrestSearch";
+import { formatDate } from "@/lib/crm/format";
+import {
+  ACTIVE_WINDOW_MONTHS,
+  DEFAULT_LOST_MONTHS,
+  calendarDateMonthsAgo,
+} from "@/lib/crm/analyticsDates";
+
+type DashboardRow = {
+  client_count: number | string | null;
+};
+
+/* Server component: early returns po async užklausų; JSX čia ne „render“ klaidos. */
+/* eslint-disable react-hooks/error-boundaries */
 
 type SortOption = "revenue" | "last_invoice_date";
 
@@ -44,8 +63,8 @@ export default async function ClientsPage({
   const sortRaw = sp.sort;
   const sort: SortOption = sortRaw === "last_invoice_date" ? "last_invoice_date" : "revenue";
 
-  const pageRaw = sp.page;
-  const requestedPage = parsePage(typeof pageRaw === "string" ? pageRaw : undefined);
+  const requestedPageIndex0 = parsePageIndex0(sp.page);
+  const pageSize = parsePageSize(sp.pageSize);
 
   try {
     let supabase;
@@ -55,12 +74,15 @@ export default async function ClientsPage({
       const message = e instanceof Error ? e.message : "Nežinoma klaida";
       console.error(LOG, { step: "supabase_init", error: message });
       return (
-        <div className="mx-auto max-w-5xl">
-          <h1 className="text-xl font-semibold">Klientai</h1>
+        <CrmTableContainer>
+          <CrmListPageIntro title="Visi klientai" />
           <p className="mt-4 text-sm text-red-600">Supabase nekonfigūruotas. {message}</p>
-        </div>
+        </CrmTableContainer>
       );
     }
+
+    const activeCutoff = calendarDateMonthsAgo(ACTIVE_WINDOW_MONTHS);
+    const lostCutoff = calendarDateMonthsAgo(DEFAULT_LOST_MONTHS);
 
     let countQuery = supabase.from("v_client_list_from_invoices").select("*", { count: "exact", head: true });
 
@@ -69,7 +91,34 @@ export default async function ClientsPage({
     }
 
     logDebug({ step: "count_query_start", hasSearch: Boolean(q) });
-    const { count: totalCountRaw, error: countError } = await countQuery;
+    const [dashRes, activeRes, lostRes, countResult] = await Promise.all([
+      supabase.rpc("dashboard_stats_from_invoices"),
+      supabase
+        .from("v_client_list_from_invoices")
+        .select("*", { count: "exact", head: true })
+        .gte("last_invoice_date", activeCutoff),
+      supabase
+        .from("v_client_list_from_invoices")
+        .select("*", { count: "exact", head: true })
+        .lt("last_invoice_date", lostCutoff),
+      countQuery,
+    ]);
+
+    const { count: totalCountRaw, error: countError } = countResult;
+
+    if (dashRes.error) {
+      console.error(LOG, {
+        step: "dashboard_rpc",
+        code: dashRes.error.code,
+        message: dashRes.error.message,
+      });
+      return (
+        <CrmTableContainer>
+          <CrmListPageIntro title="Visi klientai" />
+          <p className="mt-4 text-sm text-red-600">Nepavyko įkelti suvestinės: {dashRes.error.message}</p>
+        </CrmTableContainer>
+      );
+    }
 
     if (countError) {
       console.error(LOG, {
@@ -80,23 +129,39 @@ export default async function ClientsPage({
         hint: countError.hint,
       });
       return (
-        <div className="mx-auto max-w-4xl">
-          <h1 className="text-xl font-semibold">Klientai</h1>
+        <CrmTableContainer>
+          <CrmListPageIntro title="Visi klientai" />
           <p className="mt-4 text-sm text-red-600">Nepavyko įkelti klientų: {countError.message}</p>
           <p className="mt-2 text-xs text-zinc-500">
             Jei klaida apie stulpelį <code className="rounded bg-zinc-100 px-1">client_key</code> ar vaizdą, pritaikykite migracijas{" "}
             <code className="rounded bg-zinc-100 px-1">0006_clients_from_invoices_view.sql</code> ir{" "}
             <code className="rounded bg-zinc-100 px-1">0009_company_code_nullable.sql</code> (eilės tvarka) Supabase.
           </p>
-        </div>
+        </CrmTableContainer>
       );
     }
 
+    const dashRow = ((dashRes.data ?? [])[0] ?? null) as DashboardRow | null;
+    const clientKpiCount = dashRow ? Number(dashRow.client_count ?? 0) : 0;
+    const activeCount = activeRes.error ? null : (activeRes.count ?? 0);
+    const lostCount = lostRes.error ? null : (lostRes.count ?? 0);
+
     const totalCount = totalCountRaw ?? 0;
-    const pages = totalPages(totalCount, CRM_PAGE_SIZE);
-    const page = Math.min(requestedPage, pages);
-    const from = (page - 1) * CRM_PAGE_SIZE;
-    const to = from + CRM_PAGE_SIZE - 1;
+    const totalPages = totalPagesFromCount(totalCount, pageSize);
+    const pageIndex0 = clampPageIndex0(requestedPageIndex0, totalPages);
+
+    if (requestedPageIndex0 !== pageIndex0) {
+      const rp = new URLSearchParams();
+      if (qTrim) rp.set("q", qTrim);
+      rp.set("sort", sort);
+      rp.set("page", String(pageIndex0));
+      rp.set("pageSize", String(pageSize));
+      redirect(`/clients?${rp.toString()}`);
+    }
+
+    const { from: showingFrom, to: showingTo } = showingRange1Based(pageIndex0, pageSize, totalCount);
+    const from = pageIndex0 * pageSize;
+    const to = from + pageSize - 1;
 
     let query = supabase.from("v_client_list_from_invoices").select(`
     client_key,
@@ -122,7 +187,7 @@ export default async function ClientsPage({
       query = query.order("total_revenue", { ascending: false }).order("last_invoice_date", { ascending: false });
     }
 
-    logDebug({ step: "rows_query_start", from, to, page });
+    logDebug({ step: "rows_query_start", from, to, pageIndex0 });
     const { data, error } = await query.range(from, to);
 
     if (error) {
@@ -134,14 +199,14 @@ export default async function ClientsPage({
         hint: error.hint,
       });
       return (
-        <div className="mx-auto max-w-4xl">
-          <h1 className="text-xl font-semibold">Klientai</h1>
+        <CrmTableContainer>
+          <CrmListPageIntro title="Visi klientai" />
           <p className="mt-4 text-sm text-red-600">Nepavyko įkelti klientų: {error.message}</p>
           <p className="mt-2 text-xs text-zinc-500">
             Jei klaida apie stulpelį <code className="rounded bg-zinc-100 px-1">client_key</code>, pritaikykite migraciją{" "}
             <code className="rounded bg-zinc-100 px-1">0009_company_code_nullable.sql</code> Supabase.
           </p>
-        </div>
+        </CrmTableContainer>
       );
     }
 
@@ -167,42 +232,6 @@ export default async function ClientsPage({
       invoice_count: toSafeNumber(r.invoice_count),
     }));
 
-    const clientKeys = rows.map((r) => r.client_key);
-
-    let recentByClientKey: Record<string, RecentInvoiceRow[]> = {};
-    if (clientKeys.length > 0) {
-      logDebug({ step: "rpc_recent_invoices_for_clients", keyCount: clientKeys.length });
-      const { data: recentRows, error: recentError } = await supabase.rpc("recent_invoices_for_clients", {
-        p_codes: clientKeys,
-      });
-
-      if (recentError) {
-        console.error(LOG, {
-          step: "rpc_recent_invoices_for_clients",
-          code: recentError.code,
-          message: recentError.message,
-          details: recentError.details,
-          hint: recentError.hint,
-        });
-      }
-
-      if (!recentError && recentRows && Array.isArray(recentRows)) {
-        for (const raw of recentRows as Array<Record<string, unknown>>) {
-          const k =
-            (typeof raw.client_key === "string" && raw.client_key) ||
-            (typeof raw.company_code === "string" && raw.company_code) ||
-            "";
-          if (!k) continue;
-          if (!recentByClientKey[k]) recentByClientKey[k] = [];
-          recentByClientKey[k].push({
-            invoice_id: String(raw.invoice_id ?? ""),
-            invoice_date: String(raw.invoice_date ?? ""),
-            amount: raw.amount as string | number | null,
-          });
-        }
-      }
-    }
-
     const params = new URLSearchParams();
     if (qTrim) params.set("q", qTrim);
     params.set("sort", sort);
@@ -210,105 +239,117 @@ export default async function ClientsPage({
     const revenueHref = `/clients?${(() => {
       const p = new URLSearchParams(params);
       p.set("sort", "revenue");
+      p.set("page", "0");
+      p.set("pageSize", String(pageSize));
       return p.toString();
     })()}`;
     const dateHref = `/clients?${(() => {
       const p = new URLSearchParams(params);
       p.set("sort", "last_invoice_date");
+      p.set("page", "0");
+      p.set("pageSize", String(pageSize));
       return p.toString();
     })()}`;
 
-    function buildPageHref(p: number) {
-      const pms = new URLSearchParams(params);
-      if (p > 1) pms.set("page", String(p));
-      else pms.delete("page");
-      const s = pms.toString();
-      return s ? `/clients?${s}` : "/clients";
-    }
-
     return (
-      <div className="mx-auto max-w-5xl flex flex-col gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-zinc-900">Klientai</h1>
-          <p className="text-sm text-zinc-600">Iš sąskaitų suvestinė (Saskaita123 duomenys)</p>
-        </div>
-
-        <div className="rounded-lg border border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-zinc-900">Paieška ir rikiavimas</h2>
-          <p className="mt-0.5 text-sm text-zinc-600">Ieškoti pagal pavadinimą, kodą ar PVM kodą.</p>
-
-          <form method="get" className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1">
-              <label className="text-sm font-medium text-zinc-800" htmlFor="q">
-                Paieška
-              </label>
-              <input
-                id="q"
-                name="q"
-                defaultValue={qTrim}
-                placeholder="pvz. UAB, kodas, PVM"
-                className="mt-1 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400"
-              />
-            </div>
-            <input type="hidden" name="sort" value={sort} />
-            <button
-              type="submit"
-              className="h-10 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800"
-            >
-              Ieškoti
-            </button>
-          </form>
-
-          <div className="mt-3 text-sm text-zinc-700">
-            <span className="text-xs text-zinc-500">Rikiuoti:</span>
-            <span className="ml-2">
+      <CrmTableContainer>
+        <CrmListPageIntro title="Visi klientai" description="Iš sąskaitų suvestinė (Saskaita123 duomenys)." />
+        <CrmListPageControls>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600">
+              <span className="text-zinc-500">Rikiuoti:</span>
               {sort === "revenue" ? (
                 <span className="font-medium text-zinc-900">Apyvarta</span>
               ) : (
-                <Link className="hover:underline" href={revenueHref}>
+                <Link className="cursor-pointer rounded-sm px-0.5 hover:bg-zinc-50 hover:text-zinc-900 hover:underline" href={revenueHref}>
                   Apyvarta
                 </Link>
               )}
-            </span>
-            <span className="ml-3">
+              <span className="text-zinc-300">·</span>
               {sort === "last_invoice_date" ? (
                 <span className="font-medium text-zinc-900">Paskutinė sąskaita</span>
               ) : (
-                <Link className="hover:underline" href={dateHref}>
+                <Link className="cursor-pointer rounded-sm px-0.5 hover:bg-zinc-50 hover:text-zinc-900 hover:underline" href={dateHref}>
                   Paskutinė sąskaita
                 </Link>
               )}
-            </span>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-end gap-x-2 border-b border-zinc-100 bg-zinc-50 px-2 py-2 text-xs font-medium text-zinc-600 sm:px-3">
-            <div>Pavadinimas</div>
-            <div className="text-right whitespace-nowrap">Paskutinė sąskaita</div>
-            <div className="text-right whitespace-nowrap">Sąskaitų skaičius</div>
-            <div className="text-right whitespace-nowrap">Bendra apyvarta</div>
-            <div className="text-right text-[0.65rem] uppercase tracking-wide text-zinc-400 sm:text-xs sm:normal-case sm:tracking-normal">
-              Veiksmai
+            </div>
+            <div className="flex shrink-0 justify-end sm:min-w-[min(100%,20.5rem)]">
+              <ListPageSearchForm
+                action="/clients"
+                inputId="clients-q"
+                defaultQuery={qTrim}
+                hiddenFields={{
+                  sort,
+                  page: "0",
+                  pageSize: String(pageSize),
+                }}
+              />
             </div>
           </div>
-          <ClientsExpandableTable rows={rows} recentByClientKey={recentByClientKey} />
-          <ListPagination page={page} totalCount={totalCount} pageSize={CRM_PAGE_SIZE} buildHref={buildPageHref} />
-        </div>
-      </div>
+        </CrmListPageControls>
+
+        <CrmListPageMain>
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2.5">
+              <div className="text-xs font-medium text-zinc-500">Klientų skaičius</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-900">{clientKpiCount}</div>
+            </div>
+            <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2.5">
+              <div className="text-xs font-medium text-zinc-500">Aktyvūs ({ACTIVE_WINDOW_MONTHS} mėn.)</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-900">
+                {activeRes.error ? "—" : activeCount}
+              </div>
+              <div className="mt-1 text-[10px] text-zinc-400">Paskutinė sąskaita ≥ {formatDate(activeCutoff)}</div>
+            </div>
+            <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2.5">
+              <div className="text-xs font-medium text-zinc-500">Prarasti ({DEFAULT_LOST_MONTHS} mėn.)</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-900">
+                {lostRes.error ? "—" : lostCount}
+              </div>
+              <div className="mt-1 text-[10px] text-zinc-400">Paskutinė sąskaita &lt; {formatDate(lostCutoff)}</div>
+            </div>
+          </div>
+
+          {(activeRes.error || lostRes.error) && (
+            <p className="mb-4 text-xs text-amber-700">
+              Dalies skaitiklių nepavyko įkelti. Patikrinkite vaizdą{" "}
+              <code className="rounded bg-zinc-100 px-1">v_client_list_from_invoices</code>.
+            </p>
+          )}
+
+          <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+            <ClientsExpandableTable rows={rows} />
+            <TablePagination
+              basePath="/clients"
+              pageIndex0={pageIndex0}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              totalPages={totalPages}
+              showingFrom={showingFrom}
+              showingTo={showingTo}
+              extraQuery={{
+                ...(qTrim ? { q: qTrim } : {}),
+                sort,
+              }}
+              ariaLabel="Klientų sąrašo puslapiai"
+            />
+          </div>
+        </CrmListPageMain>
+      </CrmTableContainer>
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     const stack = e instanceof Error ? e.stack : undefined;
     console.error(LOG, { step: "unhandled", message, stack });
     return (
-      <div className="mx-auto max-w-4xl">
-        <h1 className="text-xl font-semibold">Klientai</h1>
+      <CrmTableContainer>
+        <CrmListPageIntro title="Visi klientai" />
         <p className="mt-4 text-sm text-red-600">Nenumatyta klaida: {message}</p>
         <p className="mt-2 text-xs text-zinc-500">
           Žurnalas: ieškokite <code className="rounded bg-zinc-100 px-1">{LOG}</code> serveryje.
         </p>
-      </div>
+      </CrmTableContainer>
     );
   }
 }

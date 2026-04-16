@@ -105,7 +105,7 @@ export default function SyncInvoicesButton() {
           type="button"
           onClick={onClick}
           disabled={syncing}
-          className="h-10 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+          className="h-10 cursor-pointer rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {syncing ? "Sinchronizuojama…" : fullSync ? "Pilna sinchronizacija" : "Sinchronizuoti"}
         </button>

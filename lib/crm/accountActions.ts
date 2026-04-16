@@ -69,7 +69,13 @@ export async function createAccountAction(
 
   const userId = inviteData.user.id;
   const { error: upsertErr } = await admin.from("crm_users").upsert(
-    { id: userId, name, email, role: role as UserRole },
+    {
+      id: userId,
+      name,
+      email,
+      role: role as UserRole,
+      is_kpi_tracked: role !== "admin",
+    },
     { onConflict: "id" }
   );
   if (upsertErr) {
@@ -183,6 +189,8 @@ export async function updateCrmUserAction(input: {
   if (!first_name) return { ok: false, error: "Vardas yra privalomas." };
   if (!isUserRole(role)) return { ok: false, error: "Neleistina rolė." };
   if (!isCrmUserStatus(status)) return { ok: false, error: "Neleistina būsena." };
+  const roleNorm = role as UserRole;
+  const statusNorm = status as CrmUserStatus;
 
   let allowRoleStatusChange = false;
   if (adminUser?.role === "admin") {
@@ -205,8 +213,8 @@ export async function updateCrmUserAction(input: {
   }
 
   // For self-edit: keep role/status unchanged.
-  let nextRole = role;
-  let nextStatus = status;
+  let nextRole: UserRole = roleNorm;
+  let nextStatus: CrmUserStatus = statusNorm;
   if (!allowRoleStatusChange) {
     const { data: current, error: curErr } = await admin
       .from("crm_users")
@@ -215,10 +223,12 @@ export async function updateCrmUserAction(input: {
       .maybeSingle();
     if (curErr) return { ok: false, error: curErr.message };
     if (!current) return { ok: false, error: "Naudotojas nerastas." };
-    nextRole = String((current as any).role ?? "").trim().toLowerCase();
-    nextStatus = String((current as any).status ?? "").trim().toLowerCase();
-    if (!isUserRole(nextRole)) return { ok: false, error: "Neleistina rolė (DB)." };
-    if (!isCrmUserStatus(nextStatus)) return { ok: false, error: "Neleistina būsena (DB)." };
+    const dbRole = String((current as any).role ?? "").trim().toLowerCase();
+    const dbStatus = String((current as any).status ?? "").trim().toLowerCase();
+    if (!isUserRole(dbRole)) return { ok: false, error: "Neleistina rolė (DB)." };
+    if (!isCrmUserStatus(dbStatus)) return { ok: false, error: "Neleistina būsena (DB)." };
+    nextRole = dbRole as UserRole;
+    nextStatus = dbStatus as CrmUserStatus;
   }
 
   const { error } = await admin

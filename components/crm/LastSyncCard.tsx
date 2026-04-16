@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatDateTimeLt } from "@/lib/crm/format";
 import { stoppedReasonLt } from "@/lib/crm/stoppedReasonLt";
 
 type LastSync = {
@@ -53,7 +54,7 @@ export default function LastSyncCard() {
       <div className="text-xs font-medium text-zinc-500">Paskutinė sinchronizacija</div>
       {last ? (
         <div className="mt-2 space-y-1 text-sm">
-          <div className="font-medium text-zinc-900">{new Date(last.at).toLocaleString("lt-LT")}</div>
+          <div className="font-medium text-zinc-900">{formatDateTimeLt(last.at)}</div>
           <div className="text-zinc-700">
             {last.validRows} unikalios
             {last.listRowsRaw != null && last.listRowsRaw > last.validRows

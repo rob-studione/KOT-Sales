@@ -1,35 +1,25 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import SyncInvoicesButton from "@/components/crm/SyncInvoicesButton";
 import LastSyncCard from "@/components/crm/LastSyncCard";
-import { ListPagination } from "@/components/crm/ListPagination";
-import { CRM_PAGE_SIZE, parsePage, totalPages } from "@/lib/crm/pagination";
-import { formatInvoice123DisplayNumber } from "@/lib/crm/invoiceDisplayNumber";
+import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
+import { TablePagination } from "@/components/crm/TablePagination";
+import {
+  clampPageIndex0,
+  parsePageIndex0,
+  parsePageSize,
+  showingRange1Based,
+  totalPagesFromCount,
+} from "@/lib/crm/pagination";
+import { displayInvoiceNumberFromRow } from "@/lib/crm/invoiceDisplayNumber";
 import { VAT_INVOICE_SERIES_TITLE_ILIKE } from "@/lib/crm/vatInvoiceListFilter";
 import { parseInvoiceSearchInput } from "@/lib/crm/invoiceListSearch";
-import { displayClientName, formatCompanyCodeList } from "@/lib/crm/format";
+import { displayClientName, formatCompanyCodeList, formatDate, formatMoney } from "@/lib/crm/format";
 import { clientDetailPath } from "@/lib/crm/clientRouting";
+import { sumVatInvoiceAmounts } from "@/lib/crm/vatInvoiceKpis";
 
 export const dynamic = "force-dynamic";
-
-function formatDate(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value !== "string") return "—";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("lt-LT");
-}
-
-function formatMoney(value: unknown): string {
-  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
-  if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat("lt-LT", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 2,
-  }).format(n);
-}
 
 export default async function InvoicesPage({
   searchParams,
@@ -37,11 +27,11 @@ export default async function InvoicesPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const sp = await searchParams;
-  const pageRaw = sp.page;
   const qRaw = sp.q;
   const search = parseInvoiceSearchInput(typeof qRaw === "string" ? qRaw : undefined);
 
-  const requestedPage = parsePage(typeof pageRaw === "string" ? pageRaw : undefined);
+  const requestedPageIndex0 = parsePageIndex0(sp.page);
+  const pageSize = parsePageSize(sp.pageSize);
 
   let supabase;
   try {
@@ -49,10 +39,10 @@ export default async function InvoicesPage({
   } catch (e) {
     const message = e instanceof Error ? e.message : "Nežinoma klaida";
     return (
-      <div className="mx-auto max-w-5xl">
+      <>
         <h1 className="text-xl font-semibold">Sąskaitos</h1>
         <p className="mt-4 text-sm text-red-600">Supabase nekonfigūruotas. {message}</p>
-      </div>
+      </>
     );
   }
 
@@ -68,11 +58,54 @@ export default async function InvoicesPage({
     );
   }
 
-  const { count: totalCountRaw, error: countError } = await countQuery;
+  const [kpiRes, vatKpiCountRes, countResult] = await Promise.all([
+    supabase.rpc("vat_invoices_kpis"),
+    supabase
+      .from("invoices")
+      .select("*", { count: "exact", head: true })
+      .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE),
+    countQuery,
+  ]);
+
+  const { count: totalCountRaw, error: countError } = countResult;
+
+  if (kpiRes.error) {
+    const err = kpiRes.error;
+    const msg = typeof err.message === "string" ? err.message : "";
+    const missingRpc =
+      err.code === "PGRST202" ||
+      /could not find the function/i.test(msg) ||
+      /function .* does not exist/i.test(msg);
+    if (!missingRpc) {
+      console.error("[invoices] vat_invoices_kpis failed", {
+        message: msg || String(err),
+        code: err.code,
+        details: err.details,
+        hint: err.hint,
+      });
+    }
+  }
+
+  /** Sąskaitų skaičius — atskira head užklausa (veikia be RPC). */
+  const invoiceKpiCount = vatKpiCountRes.error ? null : (vatKpiCountRes.count ?? 0);
+
+  /** Apyvarta: pirmiausia RPC; jei jo nėra ar klaida — suma iš amount eilučių (be agregatų). */
+  let totalRevenueKpi: number | null = null;
+  if (!kpiRes.error && kpiRes.data?.[0] != null) {
+    const raw = (kpiRes.data[0] as { total_amount?: unknown }).total_amount;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    totalRevenueKpi = Number.isFinite(n) ? n : null;
+  }
+  if (totalRevenueKpi === null) {
+    totalRevenueKpi = await sumVatInvoiceAmounts(supabase);
+  }
+
+  const kpiWarning =
+    vatKpiCountRes.error != null || totalRevenueKpi === null;
 
   if (countError) {
     return (
-      <div className="mx-auto max-w-4xl">
+      <>
         <h1 className="text-xl font-semibold">Sąskaitos</h1>
         <p className="mt-4 text-sm text-red-600">Nepavyko įkelti sąskaitų: {countError.message}</p>
         {countError.message.includes("invoice_search_display") ? (
@@ -80,19 +113,31 @@ export default async function InvoicesPage({
             Pridėkite migraciją <code className="rounded bg-zinc-100 px-1">0010_invoice_search_display.sql</code>.
           </p>
         ) : null}
-      </div>
+      </>
     );
   }
 
   const totalCount = totalCountRaw ?? 0;
-  const pages = totalPages(totalCount, CRM_PAGE_SIZE);
-  const page = Math.min(requestedPage, pages);
-  const from = (page - 1) * CRM_PAGE_SIZE;
-  const to = from + CRM_PAGE_SIZE - 1;
+  const totalPages = totalPagesFromCount(totalCount, pageSize);
+  const pageIndex0 = clampPageIndex0(requestedPageIndex0, totalPages);
+
+  if (requestedPageIndex0 !== pageIndex0) {
+    const rp = new URLSearchParams();
+    if (search) rp.set("q", search);
+    rp.set("page", String(pageIndex0));
+    rp.set("pageSize", String(pageSize));
+    redirect(`/invoices?${rp.toString()}`);
+  }
+
+  const { from: showingFrom, to: showingTo } = showingRange1Based(pageIndex0, pageSize, totalCount);
+  const from = pageIndex0 * pageSize;
+  const to = from + pageSize - 1;
 
   let dataQuery = supabase
     .from("invoices")
-    .select("invoice_id,series_title,series_number,company_code,company_name,client_id,invoice_date,amount")
+    .select(
+      "invoice_id,invoice_number,series_title,series_number,company_code,company_name,client_id,invoice_date,amount"
+    )
     .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE);
 
   if (search) {
@@ -110,7 +155,7 @@ export default async function InvoicesPage({
 
   if (error) {
     return (
-      <div className="mx-auto max-w-4xl">
+      <>
         <h1 className="text-xl font-semibold">Sąskaitos</h1>
         <p className="mt-4 text-sm text-red-600">Nepavyko įkelti sąskaitų: {error.message}</p>
         {error.message.includes("series_") ? (
@@ -123,7 +168,7 @@ export default async function InvoicesPage({
             Pridėkite migraciją <code className="rounded bg-zinc-100 px-1">0010_invoice_search_display.sql</code>.
           </p>
         ) : null}
-      </div>
+      </>
     );
   }
 
@@ -131,6 +176,7 @@ export default async function InvoicesPage({
     data ??
     ([] as Array<{
       invoice_id: string;
+      invoice_number: string | null;
       series_title: string | null;
       series_number: number | null;
       company_code: string | null;
@@ -140,19 +186,11 @@ export default async function InvoicesPage({
       amount: string | number;
     }>);
 
-  function buildPageHref(p: number) {
-    const params = new URLSearchParams();
-    if (search) params.set("q", search);
-    if (p > 1) params.set("page", String(p));
-    const s = params.toString();
-    return s ? `/invoices?${s}` : "/invoices";
-  }
-
   return (
-    <div className="mx-auto max-w-5xl flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold text-zinc-900">Sąskaitos</h1>
-        <p className="text-sm text-zinc-600">
+        <p className="mt-0.5 text-sm text-zinc-600">
           Rodomos tik PVM sąskaitos (serija VK-), kaip Saskaita123 pagrindiniame sąraše.
         </p>
       </div>
@@ -161,45 +199,54 @@ export default async function InvoicesPage({
 
       <LastSyncCard />
 
-      <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
-        <form method="get" className="flex flex-col gap-3 border-b border-zinc-100 bg-zinc-50/80 p-4 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1">
-            <label htmlFor="invoice-q" className="text-sm font-medium text-zinc-800">
-              Paieška
-            </label>
-            <input
-              id="invoice-q"
-              name="q"
-              type="search"
-              defaultValue={search}
-              placeholder="Įveskite sąskaitos informaciją..."
-              autoComplete="off"
-              className="mt-1 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400"
-            />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2.5">
+          <div className="text-xs font-medium text-zinc-500">Sąskaitų skaičius</div>
+          <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-900">
+            {vatKpiCountRes.error ? "—" : invoiceKpiCount}
           </div>
-          <button
-            type="submit"
-            className="h-10 shrink-0 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            Ieškoti
-          </button>
-        </form>
+        </div>
+        <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2.5">
+          <div className="text-xs font-medium text-zinc-500">Bendra apyvarta</div>
+          <div className="mt-1 text-lg font-semibold text-zinc-900">
+            {totalRevenueKpi === null ? "—" : formatMoney(totalRevenueKpi)}
+          </div>
+        </div>
+      </div>
 
+      {kpiWarning ? (
+        <p className="text-xs text-amber-700">
+          Suvestinės rodiklių nepavyko įkelti. Bandykite atnaujinti puslapį.
+        </p>
+      ) : null}
+
+      <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <div className="flex justify-end bg-white px-2 pb-1.5 pt-1.5 sm:px-4 sm:pt-2">
+          <ListPageSearchForm
+            action="/invoices"
+            inputId="invoices-q"
+            defaultQuery={search}
+            hiddenFields={{
+              page: "0",
+              pageSize: String(pageSize),
+            }}
+          />
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-zinc-50">
-              <tr className="text-left">
-                <th className="px-3 py-2 font-medium text-zinc-700">Sąskaitos Nr.</th>
-                <th className="px-3 py-2 font-medium text-zinc-700">Klientas</th>
-                <th className="px-3 py-2 font-medium text-zinc-700">Įmonės kodas</th>
-                <th className="px-3 py-2 font-medium text-zinc-700">Sąskaitos data</th>
-                <th className="px-3 py-2 font-medium text-zinc-700">Suma</th>
+            <thead className="bg-white">
+              <tr className="border-b border-zinc-100 text-left text-[10px] font-medium uppercase tracking-wide text-zinc-500 sm:text-[11px]">
+                <th className="px-4 pb-2 pt-0 font-medium">Sąskaitos Nr.</th>
+                <th className="px-4 pb-2 pt-0 font-medium">Klientas</th>
+                <th className="px-4 pb-2 pt-0 font-medium">Įmonės kodas</th>
+                <th className="px-4 pb-2 pt-0 font-medium">Sąskaitos data</th>
+                <th className="px-4 pb-2 pt-0 text-right font-medium">Suma</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-zinc-500">
+                  <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
                     Sąskaitų nėra.
                   </td>
                 </tr>
@@ -211,22 +258,23 @@ export default async function InvoicesPage({
                     null;
                   const href = clientDetailPath(clientKey);
                   const name = displayClientName(row.company_name, row.company_code);
-                  const displayNo = formatInvoice123DisplayNumber(row.series_title, row.series_number);
+                  const displayNo = displayInvoiceNumberFromRow(row);
                   return (
-                    <tr key={row.invoice_id} className="border-t border-zinc-100 hover:bg-zinc-50/50">
-                      <td className="px-3 py-2 font-medium text-zinc-900">
-                        {displayNo ?? "—"}
-                      </td>
-                      <td className="px-3 py-2">
-                        <Link href={href} className="text-zinc-900 hover:underline">
+                    <tr key={row.invoice_id} className="border-t border-zinc-100 transition-colors hover:bg-zinc-50">
+                      <td className="px-4 py-2 font-medium text-zinc-900">{displayNo}</td>
+                      <td className="px-4 py-2">
+                        <Link
+                          href={href}
+                          className="cursor-pointer rounded-sm text-zinc-900 hover:bg-zinc-100 hover:underline"
+                        >
                           {name}
                         </Link>
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs text-zinc-700">
+                      <td className="px-4 py-2 font-mono text-xs text-zinc-700">
                         {formatCompanyCodeList(row.company_code)}
                       </td>
-                      <td className="px-3 py-2 text-zinc-700">{formatDate(row.invoice_date)}</td>
-                      <td className="px-3 py-2 text-zinc-900">{formatMoney(row.amount)}</td>
+                      <td className="px-4 py-2 text-zinc-700">{formatDate(row.invoice_date)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-zinc-900">{formatMoney(row.amount)}</td>
                     </tr>
                   );
                 })
@@ -234,12 +282,16 @@ export default async function InvoicesPage({
             </tbody>
           </table>
         </div>
-        <ListPagination
-          page={page}
+        <TablePagination
+          basePath="/invoices"
+          pageIndex0={pageIndex0}
+          pageSize={pageSize}
           totalCount={totalCount}
-          pageSize={CRM_PAGE_SIZE}
-          buildHref={buildPageHref}
-          variant="invoices"
+          totalPages={totalPages}
+          showingFrom={showingFrom}
+          showingTo={showingTo}
+          extraQuery={search ? { q: search } : undefined}
+          ariaLabel="Sąskaitų sąrašo puslapiai"
         />
       </div>
     </div>

@@ -342,6 +342,7 @@ export async function POST(request: Request) {
       /** Canonical CRM row — matches public.invoices columns (Saskaita123 → DB). */
       const allMappedValid: Array<{
         invoice_id: string;
+        invoice_number: string;
         client_id: string | null;
         company_name: string;
         company_code: string;
