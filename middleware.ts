@@ -15,7 +15,10 @@ function isProtectedPath(pathname: string): boolean {
   if (pathname.startsWith("/favicon")) return false;
   return (
     pathname === "/" ||
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/apzvalga") ||
     pathname.startsWith("/analitika") ||
+    pathname.startsWith("/klientai") ||
     pathname.startsWith("/clients") ||
     pathname.startsWith("/invoices") ||
     pathname.startsWith("/projektai") ||

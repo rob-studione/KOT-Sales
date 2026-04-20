@@ -1,35 +1,17 @@
-import { requireAdmin } from "@/lib/crm/currentUser";
-import { buildManagerKpiViewModel } from "@/lib/crm/managerKpiDashboard";
-import { parseManagerKpiPreset } from "@/lib/crm/managerKpiPeriods";
-import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
-import { ManagerKpiDashboardClientOnly } from "@/components/crm/manager-kpi/ManagerKpiDashboardClientOnly";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function VadybininkuKpiPage({
+export default async function LegacyVadybininkuKpiPage({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  await requireAdmin({ mode: "redirect", redirectTo: "/analitika" });
-
   const sp = await searchParams;
-  const period = parseManagerKpiPreset(typeof sp.period === "string" ? sp.period : undefined);
-  const from = typeof sp.from === "string" ? sp.from : undefined;
-  const to = typeof sp.to === "string" ? sp.to : undefined;
-  const compareRaw = sp.compare;
-  const compare =
-    compareRaw === "1" ||
-    compareRaw === "true" ||
-    (Array.isArray(compareRaw) && compareRaw.some((x) => x === "1" || x === "true"));
-
-  const supabase = await createSupabaseSsrReadOnlyClient();
-  const model = await buildManagerKpiViewModel(supabase, {
-    preset: period,
-    customFrom: from,
-    customTo: to,
-    compare,
-  });
-
-  return <ManagerKpiDashboardClientOnly model={model} />;
+  const qp = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    if (typeof v === "string" && v) qp.set(k, v);
+    else if (Array.isArray(v)) for (const it of v) if (it) qp.append(k, it);
+  }
+  redirect(qp.toString() ? `/analitika/kpi?${qp.toString()}` : "/analitika/kpi");
 }

@@ -20,7 +20,7 @@ function KpiCard({
         compact ? "p-3" : "p-4"
       }`}
     >
-      <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">{label}</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</div>
       <div
         className={`mt-1 font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950 ${
           compact ? "text-2xl" : "text-3xl"
@@ -86,14 +86,14 @@ export function ProcurementAnalyticsView({
             <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Funnel</h3>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] lg:items-stretch">
               <div className="group cursor-pointer rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98]">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Sutartys</div>
+                <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Sutartys</div>
                 <div className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950">
                   {totals.contracts}
                 </div>
               </div>
               <div className="hidden items-center justify-center text-2xl text-zinc-300 lg:flex">→</div>
               <div className="group cursor-pointer rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98]">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Skambinta</div>
+                <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Skambinta</div>
                 <div className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950">
                   {totals.calledWorkItems}
                 </div>
@@ -104,7 +104,7 @@ export function ProcurementAnalyticsView({
               </div>
               <div className="hidden items-center justify-center text-2xl text-zinc-300 lg:flex">→</div>
               <div className="group cursor-pointer rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98]">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Susisiekta</div>
+                <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Susisiekta</div>
                 <div className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950">
                   {totals.contacted}
                 </div>
@@ -115,7 +115,7 @@ export function ProcurementAnalyticsView({
               </div>
               <div className="hidden items-center justify-center text-2xl text-zinc-300 lg:flex">→</div>
               <div className="group cursor-pointer rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98]">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Pakviesta / įtraukti</div>
+                <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Pakviesta / įtraukti</div>
                 <div className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950">
                   {totals.invitedOrIncluded}
                 </div>

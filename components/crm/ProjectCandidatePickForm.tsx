@@ -58,7 +58,7 @@ export function ProjectCandidatePickForm(props: ProjectCandidatePickFormProps) {
       >
         {pending ? "…" : "Priskirti sau"}
       </button>
-      {error ? <span className="max-w-[12rem] text-right text-[10px] text-red-600">{error}</span> : null}
+      {error ? <span className="max-w-[12rem] text-right text-xs text-red-600">{error}</span> : null}
     </form>
   );
 }

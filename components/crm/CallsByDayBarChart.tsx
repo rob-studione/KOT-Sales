@@ -191,9 +191,9 @@ export function CallsByDayBarChart({
             top: Math.max(8, hover.y - 46),
           }}
         >
-          <div className="text-[13px] font-medium text-zinc-900">{formatDate(workdays[hover.i]!.date)}</div>
+          <div className="text-sm font-medium text-zinc-900">{formatDate(workdays[hover.i]!.date)}</div>
           <div className="mt-1.5 flex items-baseline gap-1.5">
-            <span className="text-[11px] text-zinc-500">Skambučiai:</span>
+            <span className="text-xs text-zinc-500">Skambučiai:</span>
             <span className="text-base font-bold tabular-nums leading-none text-zinc-900">{workdays[hover.i]!.calls}</span>
           </div>
         </div>

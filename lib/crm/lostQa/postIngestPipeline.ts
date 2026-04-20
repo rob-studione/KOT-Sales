@@ -21,7 +21,10 @@ export type PostIngestPipelineResult =
       mailbox_id: string;
       summary_date: string;
       prepare: { outcome: "prepared" | "skipped"; reason?: string };
-      analyze: { outcome: "analyzed_new" | "updated_existing" | "skipped_existing"; reason?: string };
+      analyze: {
+        outcome: "analyzed_new" | "updated_existing" | "skipped_existing" | "skipped_settings";
+        reason?: string;
+      };
       daily_summary: { outcome: "created_or_updated" | "skipped"; reason?: string };
     }
   | { ok: false; lost_case_id: string; error: string };
@@ -78,7 +81,7 @@ export async function runPostIngestLostQaPipeline(
     mailbox_id: lostCase.mailbox_id,
     summary_date: summaryDate,
   });
-  const analysis = await runLostCaseAnalysis(admin, { lostCaseId, force: false });
+  const analysis = await runLostCaseAnalysis(admin, { lostCaseId, force: false, invoke: "auto" });
   if (!analysis.ok) {
     console.error("[lost-qa post-ingest] analyze failed", {
       lost_case_id: lostCaseId,
@@ -88,7 +91,7 @@ export async function runPostIngestLostQaPipeline(
     });
     return { ok: false, lost_case_id: lostCaseId, error: analysis.error };
   }
-  if (analysis.outcome === "skipped_existing") {
+  if (analysis.outcome === "skipped_existing" || analysis.outcome === "skipped_settings") {
     console.log("[lost-qa post-ingest] analyze skipped", {
       lost_case_id: lostCaseId,
       mailbox_id: lostCase.mailbox_id,
@@ -105,12 +108,15 @@ export async function runPostIngestLostQaPipeline(
     });
   }
 
-  if (analysis.outcome === "skipped_existing") {
+  if (analysis.outcome === "skipped_existing" || analysis.outcome === "skipped_settings") {
     console.log("[lost-qa post-ingest] daily summary refresh skipped", {
       lost_case_id: lostCaseId,
       mailbox_id: lostCase.mailbox_id,
       summary_date: summaryDate,
-      reason: "analysis already reflected current prepared input",
+      reason:
+        analysis.outcome === "skipped_existing"
+          ? "analysis already reflected current prepared input"
+          : analysis.reason,
     });
   } else {
     console.log("[lost-qa post-ingest] daily summary refresh finished", {
@@ -128,12 +134,18 @@ export async function runPostIngestLostQaPipeline(
     summary_date: summaryDate,
     prepare: prep.skipped ? { outcome: "skipped", reason: prep.reason } : { outcome: "prepared" },
     analyze:
-      analysis.outcome === "skipped_existing"
-        ? { outcome: "skipped_existing", reason: analysis.reason }
+      analysis.outcome === "skipped_existing" || analysis.outcome === "skipped_settings"
+        ? { outcome: analysis.outcome, reason: analysis.reason }
         : { outcome: analysis.outcome },
     daily_summary:
-      analysis.outcome === "skipped_existing"
-        ? { outcome: "skipped", reason: "analysis already reflected current prepared input" }
+      analysis.outcome === "skipped_existing" || analysis.outcome === "skipped_settings"
+        ? {
+            outcome: "skipped",
+            reason:
+              analysis.outcome === "skipped_existing"
+                ? "analysis already reflected current prepared input"
+                : analysis.reason,
+          }
         : { outcome: "created_or_updated" },
   };
 }

@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { assertCronOrInternalSecret } from "@/lib/crm/lostQa/gmailInternalAuth";
 import { runLostCaseAnalysis } from "@/lib/crm/lostQa/analyze/runLostCaseAnalysis";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { requireOpenAiApiKey } from "@/lib/openai/serverClient";
 
 type Body = {
   lostCaseId: string;
@@ -29,17 +28,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    requireOpenAiApiKey();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
-  }
-
-  try {
     const admin = createSupabaseAdminClient();
     const r = await runLostCaseAnalysis(admin, {
       lostCaseId: body.lostCaseId.trim(),
       force: Boolean(body.force),
+      invoke: "manual_endpoint",
     });
     if (!r.ok) {
       const status =
@@ -53,7 +46,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       outcome: r.outcome,
-      ...(r.outcome === "skipped_existing" ? { reason: r.reason } : { analysis_id: r.analysis_id }),
+      ...(r.outcome === "skipped_existing" || r.outcome === "skipped_settings"
+        ? { reason: r.reason }
+        : { analysis_id: r.analysis_id }),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -66,7 +66,7 @@ function KanbanColumn({
           isDone ? "bg-zinc-100/90" : "bg-zinc-50/95"
         } ${kanbanColumnHeaderBorderClass(columnKey)}`}
       >
-        <div className="truncate text-[15px] font-bold leading-snug text-zinc-900" title={title}>
+        <div className="truncate text-base font-bold leading-snug text-zinc-900" title={title}>
           {title}
         </div>
         <div className="mt-0.5 text-lg font-bold tabular-nums leading-none text-zinc-800">{count}</div>
@@ -147,26 +147,26 @@ function KanbanCard({
           }`}
         >
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold text-zinc-800">
+            <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-bold text-zinc-800">
               {callListPriorityLabel(priority)}
             </span>
           </div>
-          <div className="mt-1 line-clamp-2 break-words text-[13px] font-bold leading-snug text-zinc-900">
+          <div className="mt-1 line-clamp-2 break-words text-sm font-bold leading-snug text-zinc-900">
             {item.client_name_snapshot}
           </div>
-          <div className="mt-1 text-[10px] tabular-nums text-zinc-500">{formatMoney(item.snapshot_revenue)}</div>
+          <div className="mt-1 text-xs tabular-nums text-zinc-500">{formatMoney(item.snapshot_revenue)}</div>
           {item.source_type === "procurement_contract" ? (
-            <div className="mt-0.5 text-[10px] text-zinc-400">
+            <div className="mt-0.5 text-xs text-zinc-400">
               Galioja iki {formatDate(item.snapshot_last_invoice_date)}
             </div>
           ) : (
-            <div className="mt-0.5 text-[10px] text-zinc-400">
+            <div className="mt-0.5 text-xs text-zinc-400">
               {item.snapshot_order_count} sąsk. · {formatDate(item.snapshot_last_invoice_date)}
             </div>
           )}
           {isLauktiColumn && item.next_action_date ? (
             <div
-              className={`mt-1 text-[11px] tabular-nums font-semibold ${
+              className={`mt-1 text-xs tabular-nums font-semibold ${
                 waitHint === "overdue" ? "text-red-600" : waitHint === "today" ? "text-amber-600" : "text-zinc-400"
               }`}
             >
@@ -183,11 +183,11 @@ function KanbanCard({
 function CardDragPreview({ item, priority }: { item: ProjectWorkItemDto; priority: CallListPriority }) {
   return (
     <div className="max-w-[min(260px,85vw)] min-w-0 rounded-lg border border-zinc-300 bg-white p-2 shadow-lg">
-      <div className="text-[10px] font-medium text-zinc-600">{callListPriorityLabel(priority)}</div>
-      <div className="mt-0.5 text-[13px] font-semibold text-zinc-900">{item.client_name_snapshot}</div>
-      <div className="text-[11px] text-zinc-600">{formatMoney(item.snapshot_revenue)}</div>
+      <div className="text-xs font-medium text-zinc-600">{callListPriorityLabel(priority)}</div>
+      <div className="mt-0.5 text-sm font-semibold text-zinc-900">{item.client_name_snapshot}</div>
+      <div className="text-xs text-zinc-600">{formatMoney(item.snapshot_revenue)}</div>
       {item.source_type === "procurement_contract" ? (
-        <div className="mt-0.5 text-[10px] text-zinc-500">
+        <div className="mt-0.5 text-xs text-zinc-500">
           Galioja iki {formatDate(item.snapshot_last_invoice_date)}
         </div>
       ) : null}

@@ -99,7 +99,7 @@ export function CrmNotificationBell() {
           <path d="M13.73 21a2 2 0 01-3.46 0" strokeLinecap="round" />
         </svg>
         {unreadCount > 0 ? (
-          <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
+          <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-xs font-semibold text-white">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         ) : null}
@@ -141,7 +141,7 @@ export function CrmNotificationBell() {
                       <p className={`text-sm leading-snug ${n.is_read ? "text-zinc-700" : "font-medium text-zinc-900"}`}>
                         {n.message}
                       </p>
-                      <p className="mt-1 text-[11px] text-zinc-400">
+                      <p className="mt-1 text-xs text-zinc-400">
                         {formatDate(n.created_at.slice(0, 10))}
                         {n.type === "procurement_deadline" ? " · Viešieji pirkimai" : null}
                       </p>

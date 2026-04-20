@@ -19,7 +19,7 @@ type Props = {
 };
 
 const th =
-  "px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 sm:px-4 sm:text-[11px]";
+  "px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500 sm:px-4";
 const td = "px-3 py-1.5 sm:px-4";
 
 export function AnalyticsClientTable({ rows, showInactivity }: Props) {
@@ -63,7 +63,7 @@ export function AnalyticsClientTable({ rows, showInactivity }: Props) {
             const key = row.client_key;
             const reactKey = key === "" ? "__client_orphan__" : key;
             const title = displayClientName(row.company_name, row.company_code);
-            const href = clientDetailPath(key === "" ? null : key);
+            const href = clientDetailPath(key === "" ? null : key, row.client_id);
             const last = row.last_invoice_date ?? "";
             const daysInactive = last ? wholeDaysBetweenIsoDateAndToday(last) : 0;
 

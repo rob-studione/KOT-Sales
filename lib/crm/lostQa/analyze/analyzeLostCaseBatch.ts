@@ -15,6 +15,7 @@ export type AnalyzePendingSummary = {
   attempted: number;
   analyzed_new: number;
   skipped_existing: number;
+  skipped_settings: number;
   updated_existing: number;
   failed: number;
 };
@@ -48,6 +49,7 @@ export async function analyzeLostCasesPendingBatch(
     attempted: 0,
     analyzed_new: 0,
     skipped_existing: 0,
+    skipped_settings: 0,
     updated_existing: 0,
     failed: 0,
   };
@@ -61,13 +63,15 @@ export async function analyzeLostCasesPendingBatch(
     }
 
     summary.attempted += 1;
-    const r = await runLostCaseAnalysis(admin, { lostCaseId: row.id, force });
+    const r = await runLostCaseAnalysis(admin, { lostCaseId: row.id, force, invoke: "auto" });
     if (!r.ok) {
       summary.failed += 1;
       continue;
     }
     if (r.outcome === "skipped_existing") {
       summary.skipped_existing += 1;
+    } else if (r.outcome === "skipped_settings") {
+      summary.skipped_settings += 1;
     } else if (r.outcome === "analyzed_new") {
       summary.analyzed_new += 1;
     } else {

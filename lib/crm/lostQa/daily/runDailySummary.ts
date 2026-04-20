@@ -6,6 +6,8 @@ import { requireOpenAiApiKey } from "@/lib/openai/serverClient";
 import { buildDailyAggregate, dailyDeterministicFieldsEqual, parseYmdOrThrow } from "@/lib/crm/lostQa/daily/dailySummaryBuild";
 import { callOpenAiDailySummary } from "@/lib/crm/lostQa/daily/openaiDailySummary";
 import { fetchDailySummary, upsertDailySummary } from "@/lib/crm/lostQa/daily/dailySummaryRepository";
+import { estimateOpenAiCostEur } from "@/lib/openai/pricing";
+import { insertAiUsageLog } from "@/lib/crm/lostQa/aiUsageLogsRepository";
 
 export type GenerateDailySummaryParams = {
   summaryDate: string; // YYYY-MM-DD
@@ -71,6 +73,26 @@ export async function generateDailySummary(
   }
 
   try {
+    const est = estimateOpenAiCostEur({ model: ai.model, usage: ai.usage });
+    await insertAiUsageLog(admin, {
+      type: "summary",
+      model: ai.model,
+      input_tokens: est.input_tokens,
+      output_tokens: est.output_tokens,
+      total_tokens: est.total_tokens,
+      cost_eur: est.cost_eur,
+      meta: {
+        feature: "lost_qa_daily_summary",
+        summary_date: summaryDate,
+        mailbox_id: mailboxId,
+        response_id: ai.response_id,
+      },
+    });
+  } catch (e) {
+    console.error("[lost-qa daily] ai usage log insert failed", { summary_date: summaryDate, mailbox_id: mailboxId, error: e });
+  }
+
+  try {
     const id = await upsertDailySummary(admin, {
       summary_date: summaryDate,
       mailbox_id: mailboxId,
@@ -85,8 +107,8 @@ export async function generateDailySummary(
       top_reasons: aggregate.top_reasons,
       top_agents: aggregate.top_agents,
       priority_cases: aggregate.priority_cases,
-      manager_summary: ai.manager_summary,
-      team_action_points: ai.team_action_points,
+      manager_summary: ai.parsed.manager_summary,
+      team_action_points: ai.parsed.team_action_points,
     });
     return { ok: true, outcome: "created_or_updated", summary_id: id, total_lost_count: aggregate.total_lost_count };
   } catch (e) {

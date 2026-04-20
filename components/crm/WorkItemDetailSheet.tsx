@@ -128,7 +128,7 @@ export function WorkItemDetailSheet({
         <div className="flex items-start justify-between gap-2 border-b border-zinc-100 px-4 py-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-700">
+              <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
                 {callListPriorityLabel(level)}
               </span>
             </div>
@@ -167,7 +167,7 @@ export function WorkItemDetailSheet({
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <form key={`${item.id}-${activities.length}`} action={dispatch} className="space-y-4">
             <div>
-              <h3 className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Naujas veiksmas</h3>
+              <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Naujas veiksmas</h3>
               <div className="mt-2 space-y-3">
                 <label className="flex flex-col gap-1 text-xs text-zinc-500">
                   Veiksmo tipas
@@ -213,7 +213,7 @@ export function WorkItemDetailSheet({
                   />
                 ) : null}
                 {callStatus === "Užbaigta" && isProcurementItem ? (
-                  <p className="text-[11px] text-zinc-500">Pasirinkus „Kita“, komentaras privalomas.</p>
+                  <p className="text-xs text-zinc-500">Pasirinkus „Kita“, komentaras privalomas.</p>
                 ) : null}
                 <label className="flex flex-col gap-1 text-xs text-zinc-500">
                   Data
@@ -226,7 +226,7 @@ export function WorkItemDetailSheet({
                     defaultValue={dateDefault}
                     className="rounded-lg border border-zinc-200 px-2.5 py-2 text-sm text-zinc-900 placeholder:text-zinc-400"
                   />
-                  <span className="text-[11px] text-zinc-400">
+                  <span className="text-xs text-zinc-400">
                     Formatas: {CRM_DATE_INPUT_PLACEHOLDER}. Numatyta — šiandien. Privaloma, jei „Sekantis veiksmas“ =
                     Laukti (laukimo pabaiga).
                   </span>
@@ -262,8 +262,8 @@ export function WorkItemDetailSheet({
 
           <div className="mt-8 border-t border-zinc-100 pt-6">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Veiklos istorija</h3>
-              <span className="text-[11px] tabular-nums text-zinc-500">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Veiklos istorija</h3>
+              <span className="text-xs tabular-nums text-zinc-500">
                 Skambučių (KPI): <span className="font-medium text-zinc-700">{callKpiCount}</span>
               </span>
             </div>

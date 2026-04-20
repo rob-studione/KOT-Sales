@@ -9,8 +9,16 @@ import {
   type LostQaDailyAiOutput,
 } from "@/lib/crm/lostQa/daily/dailySummarySchema";
 import type { DailyAiInput } from "@/lib/crm/lostQa/daily/dailySummaryTypes";
+import type { ResponseUsage } from "openai/resources/responses/responses";
 
-export async function callOpenAiDailySummary(inputObj: DailyAiInput): Promise<LostQaDailyAiOutput> {
+export type OpenAiDailySummaryResult = {
+  parsed: LostQaDailyAiOutput;
+  model: string;
+  response_id: string | null;
+  usage: ResponseUsage | null;
+};
+
+export async function callOpenAiDailySummary(inputObj: DailyAiInput): Promise<OpenAiDailySummaryResult> {
   const client = createOpenAIClient();
   const input = JSON.stringify(inputObj);
 
@@ -37,6 +45,11 @@ export async function callOpenAiDailySummary(inputObj: DailyAiInput): Promise<Lo
   if (parsed === null) {
     throw new Error("OpenAI returned no structured output (output_parsed is null).");
   }
-  return validateLostQaDailyAiOutput(parsed);
+  return {
+    parsed: validateLostQaDailyAiOutput(parsed),
+    model: LOST_QA_DAILY_SUMMARY_MODEL,
+    response_id: typeof (response as any).id === "string" ? String((response as any).id) : null,
+    usage: (response as any).usage ?? null,
+  };
 }
 

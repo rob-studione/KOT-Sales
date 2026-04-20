@@ -59,7 +59,7 @@ export function ReturnToCandidatesFlow({
 
   return (
     <div className="border-t border-zinc-100 pt-4">
-      <h3 className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Kandidatai</h3>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">Kandidatai</h3>
       <p className="mt-1 text-xs text-zinc-500">
         Pašalinti iš „Darbas“ ir vėl leisti klientui atsirasti kandidatų sąraše (jei taisyklės tenkina). Veiklos istorija
         lieka.

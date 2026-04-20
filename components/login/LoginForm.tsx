@@ -61,6 +61,7 @@ export function LoginForm() {
       </div>
 
       <form
+        method="post"
         className="mt-8 flex flex-col gap-5"
         onSubmit={async (e) => {
           e.preventDefault();

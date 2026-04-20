@@ -28,7 +28,13 @@ export async function getCurrentCrmUser(): Promise<CurrentCrmUser | null> {
     .eq("id", authUser.id)
     .maybeSingle();
 
-  if (crmErr) throw crmErr;
+  if (crmErr) {
+    throw new Error(
+      [crmErr.message, crmErr.code ? `code=${crmErr.code}` : "", crmErr.details ? `details=${crmErr.details}` : ""]
+        .filter(Boolean)
+        .join(" | ")
+    );
+  }
   if (!crmUser) return null;
 
   return {

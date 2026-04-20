@@ -44,6 +44,6 @@ export async function saveManagerKpiTargetsAction(rows: ManagerKpiUserTargets[])
     }
   }
 
-  revalidatePath("/analitika/vadybininku-kpi");
+  revalidatePath("/analitika/kpi");
   return { ok: true };
 }

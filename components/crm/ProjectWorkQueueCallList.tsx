@@ -49,7 +49,7 @@ function PriorityBadge({ level }: { level: CallListPriority }) {
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${styles}`}
+      className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${styles}`}
     >
       {callListPriorityLabel(level)}
     </span>
@@ -138,7 +138,7 @@ function WorkExpandPanel({
 
       {!loading && (detail?.email || detail?.phone || detail?.address) ? (
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Kontaktai</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Kontaktai</div>
           <dl className="mt-2 space-y-1 text-sm text-zinc-700">
             {detail.email ? (
               <div className="flex flex-wrap gap-x-2">
@@ -176,7 +176,7 @@ function WorkExpandPanel({
 
       {!loading && detail && detail.invoices.length > 0 ? (
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Naujausios sąskaitos</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Naujausios sąskaitos</div>
           <ul className="mt-2 divide-y divide-zinc-100 rounded-md border border-zinc-100 bg-white">
             {detail.invoices.map((inv) => (
               <li
@@ -193,7 +193,7 @@ function WorkExpandPanel({
       ) : null}
 
       <div className="border-t border-zinc-100 pt-4" onClick={(e) => e.stopPropagation()}>
-        <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Neseniai</div>
+        <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Neseniai</div>
         <div className="mt-2">
           <WorkItemActivityTimeline activities={activities} compact />
         </div>
@@ -206,7 +206,7 @@ function WorkExpandPanel({
           className="space-y-3 border-t border-zinc-100 pt-4"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Naujas veiksmas</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Naujas veiksmas</div>
           {item.comment?.trim() ? (
             <p className="text-xs text-zinc-500">
               <span className="font-medium text-zinc-600">Paskutinis komentaras kortelėje: </span>
@@ -261,7 +261,7 @@ function WorkExpandPanel({
               </div>
             ) : null}
             {callStatus === "Užbaigta" && isProcurementItem ? (
-              <p className="text-[11px] text-zinc-500 sm:col-span-2 lg:col-span-3">
+              <p className="text-xs text-zinc-500 sm:col-span-2 lg:col-span-3">
                 Pasirinkus „Kita“, komentaras privalomas.
               </p>
             ) : null}
@@ -280,7 +280,7 @@ function WorkExpandPanel({
                 }
                 className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400"
               />
-              <span className="text-[11px] text-zinc-400">
+              <span className="text-xs text-zinc-400">
                 Formatas: {CRM_DATE_INPUT_PLACEHOLDER}. Numatyta — šiandien, jei data nebuvo nustatyta.
               </span>
             </label>
@@ -446,7 +446,7 @@ function WorkItemCard({
         >
           <PriorityBadge level={priority} />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-semibold tracking-tight text-zinc-900">
+            <div className="truncate text-base font-semibold tracking-tight text-zinc-900">
               {detailHref ? (
                 <Link
                   href={detailHref}
@@ -487,10 +487,10 @@ function WorkItemCard({
             className="flex shrink-0 flex-col items-end justify-center gap-1 border-l border-zinc-100 py-3.5 pl-3 pr-3 sm:pl-4 sm:pr-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-right text-[15px] font-semibold tabular-nums text-zinc-900">
+            <div className="text-right text-base font-semibold tabular-nums text-zinc-900">
               {formatMoney(item.snapshot_revenue)}
             </div>
-            <p className="text-[11px] text-zinc-400">{projectResultStatusLabel(item.result_status)}</p>
+            <p className="text-xs text-zinc-400">{projectResultStatusLabel(item.result_status)}</p>
           </div>
         ) : null}
       </div>

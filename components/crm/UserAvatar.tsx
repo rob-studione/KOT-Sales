@@ -26,11 +26,11 @@ export function UserAvatar({ displayName, avatarUrl, size = 26, className = "" }
     );
   }
 
-  const fs = size <= 24 ? 10 : 11;
+  const textClass = "text-xs";
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-zinc-200 font-medium text-zinc-700 ring-1 ring-zinc-300/80 ${className}`}
-      style={{ width: dim, height: dim, fontSize: `${fs}px` }}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-zinc-200 font-medium text-zinc-700 ring-1 ring-zinc-300/80 ${textClass} ${className}`}
+      style={{ width: dim, height: dim }}
       aria-hidden
     >
       {initials}

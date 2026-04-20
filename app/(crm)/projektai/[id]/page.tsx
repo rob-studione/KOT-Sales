@@ -951,22 +951,22 @@ export default async function ProjektasDetailPage({
         <div className="mt-4" role="tabpanel">
           <div className="flex flex-col gap-4">
             <div className="rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
-              <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Santrauka</div>
+              <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Santrauka</div>
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-lg border border-zinc-200 bg-zinc-50/40 p-3">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Direct pajamos</div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Direct pajamos</div>
                   <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-900">
                     {formatMoney(revenueFeed?.kpi.directEur ?? 0)}
                   </div>
                 </div>
                 <div className="rounded-lg border border-zinc-200 bg-zinc-50/40 p-3">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Indirect pajamos</div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Indirect pajamos</div>
                   <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-900">
                     {formatMoney(revenueFeed?.kpi.indirectEur ?? 0)}
                   </div>
                 </div>
                 <div className="rounded-lg border border-zinc-200 bg-zinc-50/40 p-3">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Viso</div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Viso</div>
                   <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-900">
                     {formatMoney(revenueFeed?.kpi.totalEur ?? 0)}
                   </div>

@@ -161,7 +161,7 @@ export function KanbanMoveConfirmModal({
                 </option>
               ))}
             </select>
-            <span className="text-[11px] text-zinc-400">
+            <span className="text-xs text-zinc-400">
               Pagal nutylėjimą — stulpelis, į kurį perkėlėte kortelę; galite pakeisti prieš įrašant.
             </span>
           </label>
@@ -176,7 +176,7 @@ export function KanbanMoveConfirmModal({
           ) : null}
 
           {callStatus === "Užbaigta" && isProcurementWorkItem ? (
-            <p className="text-[11px] text-zinc-500">
+            <p className="text-xs text-zinc-500">
               Pasirinkus „Kita“, komentaras žemiau privalomas.
             </p>
           ) : null}
@@ -195,11 +195,11 @@ export function KanbanMoveConfirmModal({
               className="rounded-lg border border-zinc-200 px-2.5 py-2 text-sm text-zinc-900 placeholder:text-zinc-400"
             />
             {toIsLaukti ? (
-              <span className="text-[11px] text-zinc-400">
+              <span className="text-xs text-zinc-400">
                 Stulpeliui „Laukti“ data privaloma. Formatas: {CRM_DATE_INPUT_PLACEHOLDER}.
               </span>
             ) : (
-              <span className="text-[11px] text-zinc-400">
+              <span className="text-xs text-zinc-400">
                 Formatas: {CRM_DATE_INPUT_PLACEHOLDER}. Numatyta — šiandien. Privaloma, jei „Sekantis veiksmas“ =
                 Laukti (laukimo pabaiga).
               </span>

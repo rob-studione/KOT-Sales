@@ -6,12 +6,11 @@ import { CrmAnalyticsHeader } from "@/components/crm/CrmAnalyticsHeader";
 import { KlientaiSubNav } from "@/components/crm/KlientaiSubNav";
 
 /**
- * Apžvalga (/analitika) — be klientų skirtukų; jie rodomi tik aktyvūs/prarasti ir /clients kontekste.
+ * Analitika — be klientų skirtukų; jie rodomi tik klientų kontekste (/klientai/*).
  */
 export function AnalitikaLayoutShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const showClientTabs =
-    pathname.startsWith("/analitika/aktyvus") || pathname.startsWith("/analitika/prarasti");
+  const showClientTabs = pathname.startsWith("/klientai/aktyvus") || pathname.startsWith("/klientai/prarasti");
 
   return (
     <div>

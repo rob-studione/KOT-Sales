@@ -52,7 +52,7 @@ function fieldClass() {
 }
 
 function labelClass() {
-  return "text-[12px] font-medium text-zinc-500";
+  return "text-xs font-medium text-zinc-500";
 }
 
 function LabelWithIcon({
@@ -277,10 +277,10 @@ export function AccountEditDrawer({
                 />
               </div>
 
-              <div className="mt-6 text-[24px] font-semibold leading-[1.05] tracking-tight text-zinc-900">
+              <div className="mt-6 text-2xl font-semibold leading-[1.05] tracking-tight text-zinc-900">
                 {user?.name ?? "—"}
               </div>
-              <div className="mt-1.5 text-[13px] font-medium text-zinc-500">
+              <div className="mt-1.5 text-sm font-medium text-zinc-500">
                 {ROLE_LABELS[role] ?? role}
               </div>
             </div>
@@ -313,7 +313,7 @@ export function AccountEditDrawer({
               }}
             >
               <section>
-                <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
                   Pagrindinė informacija
                 </div>
                 <div className="mt-5 space-y-7">
@@ -344,7 +344,7 @@ export function AccountEditDrawer({
               </section>
 
               <section>
-                <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
                   Prieiga
                 </div>
                 <div className="mt-5 space-y-7">

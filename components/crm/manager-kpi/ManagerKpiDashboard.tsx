@@ -109,7 +109,7 @@ function KpiCard({
       }
       suppressHydrationWarning
     >
-      <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">{label}</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</div>
       <div
         className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950"
         suppressHydrationWarning
@@ -362,7 +362,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
           Skaičiuojama iš veiklos įrašų, susietų su darbo eilutės <span className="font-medium">assigned_to</span>; tik naudotojai su{" "}
           <span className="font-medium">is_kpi_tracked</span>. „Atsiliepė“ / „neatsiliepė“ pagal{" "}
           <span className="font-medium">ANSWERED_STATUSES</span> / <span className="font-medium">NOT_ANSWERED_STATUSES</span> (
-          <code className="text-[11px]">lib/crm/projectBoardConstants.ts</code>).
+          <code className="text-xs">lib/crm/projectBoardConstants.ts</code>).
         </p>
       </section>
 
@@ -398,7 +398,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
                 <th className="px-3 py-3 text-right tabular-nums">
                   <div className="flex flex-col items-end">
                     {thBtn("calls", "Skambučiai")}
-                    <span className="mt-0.5 text-[10px] font-medium normal-case tracking-normal text-zinc-400">
+                    <span className="mt-0.5 text-xs font-medium normal-case tracking-normal text-zinc-400">
                       {thBtn("calls_pct", "KPI %")}
                     </span>
                   </div>
@@ -406,7 +406,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
                 <th className="px-3 py-3 text-right tabular-nums">
                   <div className="flex flex-col items-end">
                     {thBtn("answered", "Atsiliepė")}
-                    <span className="mt-0.5 text-[10px] font-medium normal-case tracking-normal text-zinc-400">
+                    <span className="mt-0.5 text-xs font-medium normal-case tracking-normal text-zinc-400">
                       {thBtn("answered_pct", "KPI %")}
                     </span>
                   </div>
@@ -465,7 +465,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
                   <td className="px-3 py-2.5 pl-6">
                     <div className="flex flex-col items-end gap-1 text-right">
                       <StatusBadge status={r.status} />
-                      <span className="text-[11px] font-medium text-zinc-500">{statusDetailText(r)}</span>
+                      <span className="text-xs font-medium text-zinc-500">{statusDetailText(r)}</span>
                     </div>
                   </td>
                   {compareOn ? (
@@ -524,7 +524,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
                         style={{ height: `${Math.max(4, h)}%` }}
                         title={`${p.date}: ${v}`}
                       />
-                      <span className="hidden text-[9px] text-zinc-400 sm:block">
+                      <span className="hidden text-xs text-zinc-400 sm:block">
                         {p.date.slice(8, 10)}.{p.date.slice(5, 7)}
                       </span>
                     </div>

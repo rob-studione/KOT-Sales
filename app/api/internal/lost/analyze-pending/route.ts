@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { assertCronOrInternalSecret } from "@/lib/crm/lostQa/gmailInternalAuth";
 import { analyzeLostCasesPendingBatch } from "@/lib/crm/lostQa/analyze/analyzeLostCaseBatch";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { requireOpenAiApiKey } from "@/lib/openai/serverClient";
 
 type Body = {
   mailboxId?: string | null;
@@ -23,13 +22,6 @@ export async function POST(request: Request) {
     body = (await request.json()) as Body;
   } catch {
     body = {};
-  }
-
-  try {
-    requireOpenAiApiKey();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 
   try {

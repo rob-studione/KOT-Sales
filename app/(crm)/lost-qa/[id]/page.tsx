@@ -81,8 +81,8 @@ function flagLabel(on: boolean, label: string) {
     <span
       className={
         on
-          ? "inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
-          : "inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+          ? "inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200"
+          : "inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-400"
       }
     >
       {label}
@@ -136,6 +136,23 @@ function extractWhatToDoBetter(a: AnalysisRow | null): string[] {
     .filter(Boolean);
 }
 
+function renderHighlightedMomentText(text: string) {
+  const pattern = /(klaida|pastebėjau|atsiprašome)/giu;
+  const parts = text.split(pattern);
+  if (parts.length === 1) return text;
+
+  return parts.map((part, index) => {
+    if (/^(klaida|pastebėjau|atsiprašome)$/iu.test(part)) {
+      return (
+        <span key={`${part}-${index}`} className="font-semibold text-gray-950">
+          {part}
+        </span>
+      );
+    }
+    return <span key={`text-${index}`}>{part}</span>;
+  });
+}
+
 export default async function LostQaCaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createSupabaseSsrReadOnlyClient();
@@ -174,26 +191,27 @@ export default async function LostQaCaseDetailPage({ params }: { params: Promise
   const keyMoments = extractKeyMoments(a);
   const whatToDoBetter = extractWhatToDoBetter(a);
   const assignedAgentDisplay = displayAssignedAgentFromMessages(messages, caseRow.assigned_agent_email);
+  const keyMomentAgentLabel = assignedAgentDisplay.value ?? "Vadybininkas";
 
   return (
-    <CrmContentContainer className="py-8 space-y-6">
+    <CrmContentContainer className="space-y-5 py-6">
       <div className="flex items-center justify-between gap-4">
         <CrmAnalyticsHeader
           title={caseRow.subject?.trim() ? caseRow.subject : "—"}
           description={
-            <div className="space-y-1">
-              <div className="text-sm text-gray-700">
+            <div className="space-y-0.5">
+              <div className="text-sm leading-snug text-gray-700">
                 <span className="font-medium text-gray-900">Klientas:</span>{" "}
                 {caseRow.client_email ?? <span className="text-gray-500">—</span>}
               </div>
-              <div className="text-sm text-gray-700">
+              <div className="text-sm leading-snug text-gray-700">
                 <span className="font-medium text-gray-900">Atsakingas vadybininkas:</span>{" "}
                 {assignedAgentDisplay.value ?? <span className="text-gray-500">—</span>}
                 <span className="ml-2 text-xs text-gray-500">
                   (source: {assignedAgentDisplay.source})
                 </span>
               </div>
-              <div className="text-sm text-gray-700">
+              <div className="text-sm leading-snug text-gray-700">
                 <span className="font-medium text-gray-900">Data:</span> {fmtDateTime(caseRow.lost_detected_at)}{" "}
                 <span className="text-gray-400">•</span>{" "}
                 <span className="font-medium text-gray-900">Statusas:</span> {statusLabelLt(caseRow.status)}
@@ -210,25 +228,25 @@ export default async function LostQaCaseDetailPage({ params }: { params: Promise
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5">
-          <h3 className="text-base font-semibold text-gray-900">Analizė</h3>
+          <h3 className="text-base font-semibold text-gray-900">Lost analizė</h3>
           {a ? (
-            <div className="mt-4 space-y-4">
+            <div className="mt-4">
               <div>
-                <div className="text-sm font-medium text-gray-600">Pagrindinė priežastis</div>
-                <div className="mt-2 inline-flex max-w-full items-center rounded-full bg-amber-100 px-4 py-2 text-base font-semibold text-amber-950">
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">PAGRINDINĖ PRIEŽASTIS</div>
+                <div className="mt-2 inline-flex max-w-full items-center rounded-full bg-amber-100 px-4 py-2 text-lg font-bold text-amber-950">
                   {a.primary_reason_lt?.trim() || a.primary_reason}
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2">
                 {flagLabel(a.price_issue, "Kaina")}
                 {flagLabel(a.competitor_mentioned, "Konkurentas")}
                 {flagLabel(a.response_speed_issue, "Greitis")}
                 {flagLabel(a.response_quality_issue, "Kokybė")}
               </div>
 
-              <div>
-                <div className="text-sm font-medium text-gray-900">Santrauka</div>
+              <div className="mt-8">
+                <div className="text-base font-semibold text-gray-900">Santrauka</div>
                 {summaryLt.length ? (
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed text-gray-800">
                     {summaryLt.map((x, i) => (
@@ -240,39 +258,49 @@ export default async function LostQaCaseDetailPage({ params }: { params: Promise
                 )}
               </div>
 
-              <div>
-                <div className="text-sm font-medium text-gray-900">Kodėl praradome klientą</div>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+              <div className="mt-8 rounded-lg border-l-4 border-l-amber-400 bg-amber-50/50 px-4 py-3">
+                <div className="text-base font-semibold text-gray-900">Kodėl praradome klientą</div>
+                <p className="mt-2 whitespace-pre-wrap text-base leading-7 text-gray-800">
                   {a.why_lost_lt?.trim() ? a.why_lost_lt : <span className="text-gray-600">—</span>}
                 </p>
               </div>
 
               {whatToDoBetter.length ? (
-                <div>
-                  <div className="text-sm font-medium text-gray-900">Ką daryti geriau</div>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed text-gray-800">
+                <div className="mt-8">
+                  <div className="text-base font-semibold text-gray-900">Ką daryti geriau</div>
+                  <ul className="mt-3 space-y-3 text-sm leading-7 text-gray-800">
                     {whatToDoBetter.map((line, i) => (
-                      <li key={`${i}-${line.slice(0, 24)}`}>{line}</li>
+                      <li key={`${i}-${line.slice(0, 24)}`} className="flex items-start gap-3">
+                        <span className="mt-0.5 text-emerald-600">✔</span>
+                        <span>{line}</span>
+                      </li>
                     ))}
                   </ul>
                 </div>
               ) : null}
 
-              <div>
-                <div className="text-sm font-medium text-gray-900">Svarbiausi momentai</div>
+              <div className="mt-8 rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 sm:px-5 sm:py-5">
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">SVARBIAUSI MOMENTAI</div>
                 {keyMoments.length ? (
-                  <div className="mt-2 space-y-2 text-sm text-gray-800">
+                  <div className="mt-4 space-y-5 text-sm text-gray-800">
                     {keyMoments.map((km, i) => (
-                      <div key={`${km.type}-${i}`} className="rounded-md bg-gray-50 px-3 py-2">
-                        <div className="font-medium text-gray-900">
-                          {km.type === "client" ? "Klientas" : "Agentas"}:
+                      <div
+                        key={`${km.type}-${i}`}
+                        className={`rounded-md border border-gray-200 bg-white px-3 py-3 shadow-sm ${
+                          km.type === "client"
+                            ? "border-l-4 border-l-sky-400 bg-sky-50/30"
+                            : "border-l-4 border-l-amber-500 bg-amber-50/30"
+                        }`}
+                      >
+                        <div className="font-bold text-gray-900">
+                          {km.type === "client" ? "Klientas" : keyMomentAgentLabel}
                         </div>
-                        <div className="mt-1 whitespace-pre-wrap">{km.text}</div>
+                        <div className="mt-2 whitespace-pre-wrap leading-7">{renderHighlightedMomentText(km.text)}</div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-2 text-sm text-gray-600">Momentų nėra.</p>
+                  <p className="mt-3 text-sm text-gray-600">Momentų nėra.</p>
                 )}
               </div>
             </div>

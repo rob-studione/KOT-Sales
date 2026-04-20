@@ -11,7 +11,7 @@ function env(name: string): string {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const next = url.searchParams.get("next") ?? "/analitika";
+  const next = url.searchParams.get("next") ?? "/dashboard";
 
   if (!code) {
     return NextResponse.redirect(new URL("/login", url.origin));

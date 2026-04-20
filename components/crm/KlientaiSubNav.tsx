@@ -1,35 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { CRM_UNDERLINE_TAB_NAV_CLASS, crmUnderlineTabClass } from "@/components/crm/crmUnderlineTabStyles";
 
-const tabs: { href: string; label: string; match: (path: string) => boolean }[] = [
-  {
-    href: "/clients",
-    label: "Visi klientai",
-    match: (p) => p === "/clients" || p.startsWith("/clients/"),
-  },
-  {
-    href: "/analitika/aktyvus",
-    label: "Aktyvūs klientai",
-    match: (p) => p === "/analitika/aktyvus" || p.startsWith("/analitika/aktyvus/"),
-  },
-  {
-    href: "/analitika/prarasti",
-    label: "Prarasti klientai",
-    match: (p) => p === "/analitika/prarasti" || p.startsWith("/analitika/prarasti/"),
-  },
+type ClientsView = "all" | "active" | "lost";
+
+const tabs: { href: string; label: string; view: ClientsView }[] = [
+  { href: "/klientai?view=all", label: "Visi", view: "all" },
+  { href: "/klientai?view=active", label: "Aktyvūs", view: "active" },
+  { href: "/klientai?view=lost", label: "Prarasti", view: "lost" },
 ];
 
 /** Klientų sąrašų navigacija: tie patys trys taškai kaip CRM šoninėje „Klientai“ sekcijoje. */
 export function KlientaiSubNav() {
-  const pathname = usePathname();
+  const sp = useSearchParams();
+  const viewRaw = (sp.get("view") ?? "").trim();
+  const view: ClientsView = viewRaw === "active" ? "active" : viewRaw === "lost" ? "lost" : "all";
 
   return (
     <nav className={CRM_UNDERLINE_TAB_NAV_CLASS} aria-label="Klientai">
-      {tabs.map(({ href, label, match }) => {
-        const active = match(pathname);
+      {tabs.map(({ href, label, view: tabView }) => {
+        const active = tabView === view;
         return (
           <Link key={href} href={href} className={crmUnderlineTabClass(active)}>
             {label}

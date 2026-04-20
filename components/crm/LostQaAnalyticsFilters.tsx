@@ -220,4 +220,3 @@ export function LostQaAnalyticsFilters(props: Props) {
     </div>
   );
 }
-

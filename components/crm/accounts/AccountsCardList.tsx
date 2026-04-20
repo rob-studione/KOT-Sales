@@ -127,7 +127,7 @@ export function AccountsCardList({
               </div>
 
               <div className="min-w-0">
-                <div className="truncate text-[15px] font-semibold leading-6 text-zinc-900">{displayNameForRow(r)}</div>
+                <div className="truncate text-base font-semibold leading-6 text-zinc-900">{displayNameForRow(r)}</div>
                 <div className="truncate text-sm leading-5 text-zinc-500">{r.email}</div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm leading-5 text-zinc-500">
                   <span className="text-zinc-600">{ROLE_LABELS[r.role] ?? r.role}</span>

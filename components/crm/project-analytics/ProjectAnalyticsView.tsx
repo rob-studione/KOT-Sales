@@ -9,7 +9,7 @@ import { CallsByDayBarChart } from "@/components/crm/CallsByDayBarChart";
 function KpiCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">{label}</div>
+      <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</div>
       <div className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-zinc-900">{value}</div>
       {sub ? <div className="mt-0.5 text-xs text-zinc-500">{sub}</div> : null}
     </div>

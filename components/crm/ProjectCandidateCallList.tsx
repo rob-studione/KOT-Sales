@@ -25,7 +25,7 @@ function PriorityBadge({ level }: { level: CallListPriority }) {
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${styles}`}
+      className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${styles}`}
     >
       {callListPriorityLabel(level)}
     </span>
@@ -75,7 +75,7 @@ function ExpandPanel({
     <div className={`space-y-4 border-t border-zinc-100 bg-zinc-50/40 px-4 py-4 text-sm ${indentClass}`}>
       {hasContact ? (
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Kontaktai</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Kontaktai</div>
           <dl className="mt-2 space-y-1 text-zinc-700">
             {detail!.email ? (
               <div className="flex flex-wrap gap-x-2">
@@ -111,7 +111,7 @@ function ExpandPanel({
 
       {hasInv ? (
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Naujausios sąskaitos</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Naujausios sąskaitos</div>
           <ul className="mt-2 divide-y divide-zinc-100 rounded-md border border-zinc-100 bg-white">
             {detail!.invoices.map((inv) => (
               <li key={inv.invoice_id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-2">
@@ -323,7 +323,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                 <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                   <PriorityBadge level={level} />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[15px] font-semibold tracking-tight text-zinc-900">
+                    <div className="truncate text-base font-semibold tracking-tight text-zinc-900">
                       <Link
                         href={href}
                         onClick={(e) => e.stopPropagation()}
@@ -342,7 +342,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               >
-                <div className="text-right text-[15px] font-semibold tabular-nums text-zinc-900">
+                <div className="text-right text-base font-semibold tabular-nums text-zinc-900">
                   {formatMoney(r.total_revenue)}
                 </div>
                 {mode === "pick" && projectId ? (

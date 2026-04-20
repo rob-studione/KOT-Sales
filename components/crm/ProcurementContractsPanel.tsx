@@ -948,15 +948,15 @@ export function ProcurementContractsPanel({
                   ) : (
                     <ul className="mt-3 grid gap-3 sm:grid-cols-3">
                       <li className="rounded-lg border border-zinc-200/80 bg-white px-3 py-2.5 text-center shadow-sm">
-                        <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Bus sukurta</div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Bus sukurta</div>
                         <div className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900">{importPreview.toCreate}</div>
                       </li>
                       <li className="rounded-lg border border-zinc-200/80 bg-white px-3 py-2.5 text-center shadow-sm">
-                        <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Bus atnaujinta</div>
+                        <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Bus atnaujinta</div>
                         <div className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900">{importPreview.toUpdate}</div>
                       </li>
                       <li className="rounded-lg border border-zinc-200/80 bg-white px-3 py-2.5 text-center shadow-sm">
-                        <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+                        <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">
                           Dublikatų (sujungta)
                         </div>
                         <div className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900">{importPreview.mergedInCsv}</div>

@@ -13,7 +13,15 @@ function summaryDateFromLostDetectedAt(lostDetectedAtIso: string | null | undefi
 }
 
 export type RebuildDailySummaryForCaseResult =
-  | ({ ok: true; summary_date: string; mailbox_id: string | null } & GenerateDailySummaryResult)
+  | {
+      ok: true;
+      summary_date: string;
+      mailbox_id: string | null;
+      outcome: "created_or_updated" | "skipped";
+      summary_id?: string;
+      reason?: string;
+      total_lost_count: number;
+    }
   | { ok: false; error: string };
 
 export async function rebuildDailySummaryForLostCase(
@@ -36,10 +44,7 @@ export async function rebuildDailySummaryForLostCase(
     force: true,
   });
 
-  return {
-    ...rebuilt,
-    summary_date: summaryDate,
-    mailbox_id: lostCase.mailbox_id,
-  };
+  if (!rebuilt.ok) return rebuilt;
+  return { ...rebuilt, summary_date: summaryDate, mailbox_id: lostCase.mailbox_id };
 }
 

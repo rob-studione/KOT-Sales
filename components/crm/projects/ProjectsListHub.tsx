@@ -23,7 +23,7 @@ function StatusLine({ status }: { status: string }) {
 function KpiCard({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-xl border border-zinc-200/90 bg-white px-5 py-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-900">{value}</p>
     </div>
   );
@@ -180,17 +180,17 @@ export function ProjectsListHub({
                         <div className="mt-1 flex flex-col gap-6 border-t border-zinc-100 pt-5 lg:flex-row lg:items-end lg:justify-between">
                         <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:flex-wrap sm:gap-x-10 sm:gap-y-3">
                           <div className="min-w-[7.5rem]">
-                            <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Sukurta</span>
-                            <p className="mt-1.5 tabular-nums text-[15px] font-medium leading-snug text-zinc-900">
+                            <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Sukurta</span>
+                            <p className="mt-1.5 tabular-nums text-base font-medium leading-snug text-zinc-900">
                               {formatDate(String(p.created_at ?? "").slice(0, 10))}
                             </p>
                           </div>
                             {isDeleted && deletedAtAvailable ? (
                               <div className="min-w-[10rem]">
-                                <span className="text-[11px] font-semibold uppercase tracking-wide text-red-700">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-red-700">
                                   Bus pašalintas
                                 </span>
-                                <p className="mt-1.5 tabular-nums text-[15px] font-semibold leading-snug text-red-800">
+                                <p className="mt-1.5 tabular-nums text-base font-semibold leading-snug text-red-800">
                                   {formatDate(
                                     plusDaysIso(String((p as { deleted_at?: string | null }).deleted_at ?? ""), 7) ?? ""
                                   )}
@@ -199,8 +199,8 @@ export function ProjectsListHub({
                             ) : null}
                           {ownerColumnAvailable ? (
                             <div className="min-w-0 sm:max-w-[17rem]">
-                              <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Atsakingas</span>
-                              <div className="mt-1.5 text-[15px] font-medium leading-snug text-zinc-900">
+                              <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Atsakingas</span>
+                              <div className="mt-1.5 text-base font-medium leading-snug text-zinc-900">
                                 {!p.owner_user_id ? (
                                   <span className="font-normal text-zinc-500">Nepriskirta</span>
                                 ) : (
@@ -213,7 +213,7 @@ export function ProjectsListHub({
 
                         <div className="flex flex-col items-stretch gap-5 sm:flex-row sm:items-end sm:gap-7 lg:shrink-0">
                           <div className="text-left sm:text-right">
-                            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Aktyvūs kontaktai</p>
+                            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Aktyvūs kontaktai</p>
                             <p className="mt-1.5 text-3xl font-semibold tabular-nums leading-none tracking-tight text-zinc-900">
                               {wc}
                             </p>

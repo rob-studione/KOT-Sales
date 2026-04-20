@@ -130,7 +130,7 @@ export function ProjectCreateForm({ users }: { users: CrmUser[] }) {
                 defaultValue={14}
                 className="max-w-[160px] rounded-md border border-zinc-200 px-2 py-1.5 text-sm tabular-nums"
               />
-              <span className="text-[11px] text-zinc-500">
+              <span className="text-xs text-zinc-500">
                 Po sukūrimo įkelkite sutarčių CSV skiltyje „Sutartys“. Numatytasis priminimas taikomas naujai importuotoms
                 eilutėms.
               </span>
@@ -180,7 +180,7 @@ export function ProjectCreateForm({ users }: { users: CrmUser[] }) {
                 defaultValue={90}
                 className="rounded-md border border-zinc-200 px-2 py-1.5 text-sm"
               />
-              <span className="text-[11px] text-zinc-500">
+              <span className="text-xs text-zinc-500">
                 Paskutinė sąskaita (iš visų duomenų) turi būti senesnė nei šiandien minus šis skaičius.
               </span>
             </label>
@@ -300,7 +300,7 @@ export function ProjectCreateForm({ users }: { users: CrmUser[] }) {
             <div className="mt-3">
               <ProjectCandidateCallList mode="preview" candidates={preview.previewRows} />
               {preview.clientCount > preview.previewRows.length ? (
-                <p className="mt-2 text-[11px] text-zinc-500">
+                <p className="mt-2 text-xs text-zinc-500">
                   Rodyti pirmos {preview.previewRows.length} eilutės iš {preview.clientCount}.
                 </p>
               ) : null}

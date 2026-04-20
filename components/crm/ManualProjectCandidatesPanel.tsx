@@ -266,12 +266,12 @@ export function ManualProjectCandidatesPanel({
 
   function crmStatusBadge(st: ProjectManualLeadRow["crm_status"]) {
     if (st === "existing_client") {
-      return "inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-900 ring-1 ring-inset ring-emerald-100";
+      return "inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-900 ring-1 ring-inset ring-emerald-100";
     }
     if (st === "former_client") {
-      return "inline-flex rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200";
+      return "inline-flex rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200";
     }
-    return "inline-flex rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-inset ring-amber-100";
+    return "inline-flex rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-inset ring-amber-100";
   }
 
   function crmStatusLabel(st: ProjectManualLeadRow["crm_status"]) {
@@ -432,7 +432,7 @@ export function ManualProjectCandidatesPanel({
               <li key={`linked-${row.linked.id}`} className="flex flex-col gap-0 sm:flex-row sm:items-stretch">
                 <div className="min-w-0 flex-1 px-4 py-3.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">Esamas klientas</span>
+                    <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">Esamas klientas</span>
                     <Link
                       href={clientDetailPath(row.linked.client_key)}
                       className="font-medium text-zinc-900 underline-offset-2 hover:underline"
@@ -828,7 +828,7 @@ export function ManualProjectCandidatesPanel({
                           csvDropActive ? "text-blue-600" : "text-zinc-400 transition-colors group-hover:text-zinc-500"
                         }
                       />
-                      <p className="mt-3 text-[15px] font-semibold tracking-tight text-zinc-900">Įkelk CSV failą</p>
+                      <p className="mt-3 text-base font-semibold tracking-tight text-zinc-900">Įkelk CSV failą</p>
                       <p id="csv-import-dropzone-hint" className="mt-1.5 max-w-[16rem] text-sm leading-snug text-zinc-500">
                         {"Drag & drop arba spausk pasirinkti"}
                       </p>

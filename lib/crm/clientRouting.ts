@@ -4,9 +4,17 @@ import { parseProcurementContractIdFromClientKey } from "@/lib/crm/procurementCo
 /** URL segment for clients grouped without company_code and without client_id (single bucket). */
 export const ORPHAN_CLIENT_PATH_SEGMENT = "orphan";
 
-export function clientDetailPath(clientKey: string | null | undefined): string {
+/**
+ * Canonical client detail path is `/klientai/[clientId]`.
+ *
+ * - Prefer `clientId` (internal id) when available.
+ * - Fallback to legacy `/clients/[client_key]` when only `clientKey` is known; it will redirect server-side.
+ */
+export function clientDetailPath(clientKey: string | null | undefined, clientId?: string | null | undefined): string {
+  const id = String(clientId ?? "").trim();
+  if (id) return `/klientai/${encodeURIComponent(id)}`;
   if (clientKey == null || clientKey === "") {
-    return `/clients/${ORPHAN_CLIENT_PATH_SEGMENT}`;
+    return `/klientai/${ORPHAN_CLIENT_PATH_SEGMENT}`;
   }
   return `/clients/${encodeURIComponent(clientKey)}`;
 }

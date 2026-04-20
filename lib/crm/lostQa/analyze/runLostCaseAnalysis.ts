@@ -17,14 +17,21 @@ import { requireOpenAiApiKey } from "@/lib/openai/serverClient";
 import { updateLostCase } from "@/lib/crm/lostQa/lostQaRepository";
 import { fetchLostCaseById, getCurrentPreparedInput } from "@/lib/crm/lostQa/prepare/preparedInputRepository";
 import { rebuildDailySummaryForLostCase } from "@/lib/crm/lostQa/daily/rebuildDailySummary";
+import { fetchLostQaControlSettings } from "@/lib/crm/lostQa/lostQaControlSettings";
+import { getLostQaMonthTotalAiCostEur } from "@/lib/crm/lostQa/aiUsageStats";
+import { decideLostQaAnalyze, type LostQaAnalyzeInvoke } from "@/lib/crm/lostQa/analyze/lostQaAnalyzeGate";
+import { estimateOpenAiCostEur } from "@/lib/openai/pricing";
+import { insertAiUsageLog } from "@/lib/crm/lostQa/aiUsageLogsRepository";
 
 export type RunLostCaseAnalysisParams = {
   lostCaseId: string;
   force?: boolean;
+  invoke?: LostQaAnalyzeInvoke;
 };
 
 export type RunLostCaseAnalysisSuccess =
   | { ok: true; outcome: "skipped_existing"; reason: string }
+  | { ok: true; outcome: "skipped_settings"; reason: string }
   | { ok: true; outcome: "analyzed_new"; analysis_id: string }
   | { ok: true; outcome: "updated_existing"; analysis_id: string };
 
@@ -83,17 +90,7 @@ export async function runLostCaseAnalysis(
   admin: SupabaseClient,
   params: RunLostCaseAnalysisParams
 ): Promise<RunLostCaseAnalysisResult> {
-  let requireKeyError: Error | null = null;
-  try {
-    requireOpenAiApiKey();
-  } catch (e) {
-    requireKeyError = e instanceof Error ? e : new Error(String(e));
-  }
-  if (requireKeyError) {
-    return { ok: false, error: requireKeyError.message };
-  }
-
-  const { lostCaseId, force } = params;
+  const { lostCaseId, force, invoke = "auto" } = params;
   const lostCase = await fetchLostCaseById(admin, lostCaseId);
   if (!lostCase) {
     return { ok: false, error: "Lost case not found." };
@@ -110,27 +107,85 @@ export async function runLostCaseAnalysis(
     LOST_QA_ANALYSIS_PROMPT_VERSION
   );
 
-  if (existing && !force && existing.prepared_input_id === prepared.id) {
-    return {
-      ok: true,
-      outcome: "skipped_existing",
-      reason: "Analysis already reflects current prepared input.",
-    };
+  const settings = await fetchLostQaControlSettings(admin);
+  const gate = decideLostQaAnalyze({
+    settings,
+    invoke,
+    force: Boolean(force),
+    existing,
+    preparedInputId: prepared.id,
+  });
+  if (gate.action === "skip") {
+    if (gate.reason === "Analysis already reflects current prepared input.") {
+      return { ok: true, outcome: "skipped_existing", reason: gate.reason };
+    }
+    return { ok: true, outcome: "skipped_settings", reason: gate.reason };
   }
 
-  let parsed: LostQaStructuredAnalysis;
+  if (invoke === "auto") {
+    const limit = settings.cost_limit_eur;
+    if (limit != null && Number.isFinite(limit) && settings.stop_on_limit) {
+      const spent = await getLostQaMonthTotalAiCostEur(admin);
+      if (spent >= limit) {
+        console.info("Skipped analyze – monthly AI cost limit reached", {
+          lost_case_id: lostCaseId,
+          spent_eur: spent,
+          limit_eur: limit,
+        });
+        return {
+          ok: true,
+          outcome: "skipped_settings",
+          reason: "Pasiektas mėnesio AI išlaidų limitas.",
+        };
+      }
+    }
+  }
+
+  let requireKeyError: Error | null = null;
   try {
-    parsed = await callOpenAiLostCaseAnalysis(prepared.prepared_text, prepared.prepared_payload);
+    requireOpenAiApiKey();
+  } catch (e) {
+    requireKeyError = e instanceof Error ? e : new Error(String(e));
+  }
+  if (requireKeyError) {
+    return { ok: false, error: requireKeyError.message };
+  }
+
+  let ai: Awaited<ReturnType<typeof callOpenAiLostCaseAnalysis>>;
+  try {
+    ai = await callOpenAiLostCaseAnalysis(prepared.prepared_text, prepared.prepared_payload);
   } catch (e) {
     console.error("[lost-qa analyze] OpenAI run failed", { lost_case_id: lostCaseId, error: e });
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 
-  const insert = buildAnalysisInsert(lostCase.id, prepared.id, parsed);
+  const insert = buildAnalysisInsert(lostCase.id, prepared.id, ai.parsed);
 
   try {
     const analysisId = await upsertLostCaseAnalysis(admin, insert);
     await applyLostCaseStatusAfterAnalysis(admin, lostCase.id, lostCase.status);
+
+    try {
+      const est = estimateOpenAiCostEur({ model: ai.model, usage: ai.usage });
+      await insertAiUsageLog(admin, {
+        type: "analyze",
+        model: ai.model,
+        input_tokens: est.input_tokens,
+        output_tokens: est.output_tokens,
+        total_tokens: est.total_tokens,
+        cost_eur: est.cost_eur,
+        meta: {
+          feature: "lost_qa_case_analysis",
+          lost_case_id: lostCase.id,
+          prepared_input_id: prepared.id,
+          analysis_id: analysisId,
+          response_id: ai.response_id,
+        },
+      });
+    } catch (e) {
+      console.error("[lost-qa analyze] ai usage log insert failed", { lost_case_id: lostCase.id, error: e });
+    }
+
     const summaryRefresh = await rebuildDailySummaryForLostCase(admin, lostCase.id);
     if (!summaryRefresh.ok) {
       console.error("[lost-qa analyze] daily summary rebuild failed", {

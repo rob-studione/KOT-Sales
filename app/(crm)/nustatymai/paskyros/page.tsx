@@ -24,7 +24,7 @@ type Row = {
 export const dynamic = "force-dynamic";
 
 export default async function PaskyrosPage() {
-  await requireAdmin({ mode: "redirect", redirectTo: "/analitika" });
+  await requireAdmin({ mode: "redirect", redirectTo: "/dashboard" });
 
   let admin;
   try {

@@ -1,19 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { CurrentCrmUser } from "@/lib/crm/currentUser";
 import { CrmNotificationBell } from "@/components/crm/CrmNotificationBell";
-
-function moduleLabel(pathname: string): string {
-  if (pathname.startsWith("/analitika")) return "Analitika";
-  if (pathname.startsWith("/projektai")) return "Projektai";
-  if (pathname.startsWith("/clients")) return "Klientai";
-  if (pathname.startsWith("/invoices")) return "Sąskaitos";
-  return "CRM";
-}
 
 function initialsFromNameOrEmail(name: string, email: string): string {
   const t = (name ?? "").trim();
@@ -41,9 +33,7 @@ export function AppHeader({
   user: CurrentCrmUser | null;
   onOpenMyAccount?: () => void;
 }) {
-  const pathname = usePathname();
   const router = useRouter();
-  const areaLabel = moduleLabel(pathname);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -73,8 +63,8 @@ export function AppHeader({
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <Link
-          href="/analitika"
-          className="inline-flex shrink-0 cursor-pointer items-center gap-2 text-[24px] font-semibold leading-none tracking-tight text-zinc-900 transition-colors hover:text-zinc-700"
+          href="/dashboard"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-2 text-2xl font-semibold leading-none tracking-tight text-zinc-900 transition-colors hover:text-zinc-700"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -85,8 +75,6 @@ export function AppHeader({
           <span className="font-bold">KoT</span>{" "}
           <span className="font-normal text-zinc-800">Sales</span>
         </Link>
-        <span className="hidden h-4 w-px shrink-0 bg-zinc-200 sm:block" aria-hidden />
-        <span className="min-w-0 truncate text-[15px] font-medium leading-none text-zinc-700">{areaLabel}</span>
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 text-zinc-300 sm:gap-1" aria-label="Vieta paieškai, veiksmams ir paskyrai">

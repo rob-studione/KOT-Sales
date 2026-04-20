@@ -39,24 +39,35 @@ function safeTimezone(raw: unknown): string | "__invalid__" {
 
 export async function updateGlobalSettingsAction(
   formData: FormData
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<void> {
   try {
     await requireAdmin({ mode: "throw" });
   } catch {
-    return { ok: false, error: "Neturite teisių." };
+    return;
   }
 
-  const dailyCall = safeInt(formData.get("daily_call_target"), 30);
-  const dailyAnswered = safeInt(formData.get("daily_answered_target"), 10);
-  const salesDirect = safeText(formData.get("sales_direct_rule"));
-  const salesInfluenced = safeText(formData.get("sales_influenced_rule"));
-  const tz = safeTimezone(formData.get("timezone"));
-  const lang = safeLanguage(formData.get("language"));
-
-  if (tz === "__invalid__") return { ok: false, error: "Neleistina laiko juosta." };
-  if (lang === "__invalid__") return { ok: false, error: "Neleistina kalba." };
-
   const supabase = await createSupabaseSsrClient();
+  const { data: cur, error: readErr } = await supabase.from("crm_global_settings").select("*").eq("id", 1).maybeSingle();
+  if (readErr) return;
+
+  const dailyCall = formData.has("daily_call_target")
+    ? safeInt(formData.get("daily_call_target"), 30)
+    : safeInt(cur?.daily_call_target ?? 30, 30);
+  const dailyAnswered = formData.has("daily_answered_target")
+    ? safeInt(formData.get("daily_answered_target"), 10)
+    : safeInt(cur?.daily_answered_target ?? 10, 10);
+  const salesDirect = formData.has("sales_direct_rule")
+    ? safeText(formData.get("sales_direct_rule"))
+    : safeText(cur?.sales_direct_rule ?? "");
+  const salesInfluenced = formData.has("sales_influenced_rule")
+    ? safeText(formData.get("sales_influenced_rule"))
+    : safeText(cur?.sales_influenced_rule ?? "");
+  const tz = formData.has("timezone") ? safeTimezone(formData.get("timezone")) : safeTimezone(cur?.timezone ?? "Europe/Vilnius");
+  const lang = formData.has("language") ? safeLanguage(formData.get("language")) : safeLanguage(cur?.language ?? "lt");
+
+  if (tz === "__invalid__") return;
+  if (lang === "__invalid__") return;
+
   const { error } = await supabase
     .from("crm_global_settings")
     .update({
@@ -69,31 +80,33 @@ export async function updateGlobalSettingsAction(
     })
     .eq("id", 1);
 
-  if (error) return { ok: false, error: error.message };
-  revalidatePath("/nustatymai/crm");
-  revalidatePath("/analitika");
-  revalidatePath("/analitika/vadybininku-kpi");
-  return { ok: true };
+  if (error) return;
+  revalidatePath("/nustatymai/bendri");
+  revalidatePath("/nustatymai/kpi");
+  revalidatePath("/dashboard");
+  revalidatePath("/analitika/kpi");
+  return;
 }
 
 export async function updateUserPreferencesAction(
   formData: FormData
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<void> {
   const tz = safeTimezone(formData.get("timezone"));
   const lang = safeLanguage(formData.get("language"));
-  if (tz === "__invalid__") return { ok: false, error: "Neleistina laiko juosta." };
-  if (lang === "__invalid__") return { ok: false, error: "Neleistina kalba." };
+  if (tz === "__invalid__") return;
+  if (lang === "__invalid__") return;
 
   const supabase = await createSupabaseSsrClient();
   const { data } = await supabase.auth.getUser();
   const uid = data.user?.id;
-  if (!uid) return { ok: false, error: "Neprisijungta." };
+  if (!uid) return;
 
   const { error } = await supabase.from("crm_users").update({ timezone: tz, language: lang }).eq("id", uid);
-  if (error) return { ok: false, error: error.message };
-  revalidatePath("/nustatymai/crm");
-  revalidatePath("/analitika");
-  return { ok: true };
+  if (error) return;
+  revalidatePath("/nustatymai/bendri");
+  revalidatePath("/nustatymai/kpi");
+  revalidatePath("/dashboard");
+  return;
 }
 
 export type StatusRowInput = {
@@ -112,15 +125,15 @@ function safeBool(v: unknown): boolean {
 
 export async function upsertStatusAction(
   formData: FormData
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<void> {
   try {
     await requireAdmin({ mode: "throw" });
   } catch {
-    return { ok: false, error: "Neturite teisių." };
+    return;
   }
 
   const key = safeText(formData.get("key"));
-  if (!key) return { ok: false, error: "Įveskite statuso pavadinimą." };
+  if (!key) return;
 
   const sort_order = safeInt(formData.get("sort_order"), 0);
   const row: StatusRowInput = {
@@ -135,10 +148,11 @@ export async function upsertStatusAction(
 
   const supabase = await createSupabaseSsrClient();
   const { error } = await supabase.from("crm_statuses").upsert(row, { onConflict: "key" });
-  if (error) return { ok: false, error: error.message };
-  revalidatePath("/nustatymai/crm");
-  revalidatePath("/analitika");
-  revalidatePath("/analitika/vadybininku-kpi");
-  return { ok: true };
+  if (error) return;
+  revalidatePath("/nustatymai/bendri");
+  revalidatePath("/nustatymai/kpi");
+  revalidatePath("/dashboard");
+  revalidatePath("/analitika/kpi");
+  return;
 }
 

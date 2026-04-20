@@ -11,11 +11,19 @@ import {
   type LostQaStructuredAnalysis,
   validateLostQaStructuredAnalysis,
 } from "@/lib/crm/lostQa/analyze/lostQaAnalysisSchema";
+import type { ResponseUsage } from "openai/resources/responses/responses";
+
+export type OpenAiLostCaseAnalysisResult = {
+  parsed: LostQaStructuredAnalysis;
+  model: string;
+  response_id: string | null;
+  usage: ResponseUsage | null;
+};
 
 export async function callOpenAiLostCaseAnalysis(
   preparedText: string,
   preparedPayload: unknown
-): Promise<LostQaStructuredAnalysis> {
+): Promise<OpenAiLostCaseAnalysisResult> {
   const client = createOpenAIClient();
 
   // Stage 4 prompt expects only the prepared conversation text.
@@ -47,7 +55,13 @@ export async function callOpenAiLostCaseAnalysis(
   }
 
   try {
-    return validateLostQaStructuredAnalysis(parsed);
+    const validated = validateLostQaStructuredAnalysis(parsed);
+    return {
+      parsed: validated,
+      model: LOST_QA_ANALYSIS_MODEL,
+      response_id: typeof (response as any).id === "string" ? String((response as any).id) : null,
+      usage: (response as any).usage ?? null,
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[lost-qa analyze] structured output validation failed:", msg, {
