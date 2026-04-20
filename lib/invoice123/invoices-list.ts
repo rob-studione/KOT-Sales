@@ -166,6 +166,28 @@ export function resolveInvoicesListNextUrl(nextFromApi: string): string {
   return new URL(u, INVOICES_LIST_BASE).toString();
 }
 
+/**
+ * Invoice123 `next_page_url` sometimes omits `range=`. Re-apply the incremental window so pagination
+ * cannot drift to an unbounded list.
+ */
+export function mergeInvoicesListRangeIntoUrl(
+  resolvedUrl: string,
+  rangeStart: string,
+  rangeEnd: string
+): string {
+  let u: URL;
+  try {
+    u = new URL(resolvedUrl);
+  } catch {
+    return resolvedUrl;
+  }
+  const want = `${rangeStart},${rangeEnd}`;
+  if (u.searchParams.get("range") !== want) {
+    u.searchParams.set("range", want);
+  }
+  return u.toString();
+}
+
 export function mapInvoiceListItems(invoices: AnyRecord[]): {
   rows: MappedListInvoiceRow[];
   pageErrors: string[];

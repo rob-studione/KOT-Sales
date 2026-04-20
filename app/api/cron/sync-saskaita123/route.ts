@@ -58,6 +58,30 @@ async function postSync(origin: string, lookbackDays: number): Promise<{
   return { status: res.status, body };
 }
 
+async function postReconciliationStep(
+  origin: string,
+  payload: Record<string, unknown>
+): Promise<{ status: number; body: unknown }> {
+  const secret = process.env.CRON_SECRET;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (secret) {
+    headers.Authorization = `Bearer ${secret}`;
+  }
+  const res = await fetch(`${origin}/api/sync-saskaita123/reconciliation-step`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  let body: unknown;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = { raw: text };
+  }
+  return { status: res.status, body };
+}
+
 function assertCronAuth(request: Request): NextResponse | null {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization");
@@ -75,8 +99,8 @@ function assertCronAuth(request: Request): NextResponse | null {
  *
  * `?job=tick` (recommended): one `every 15 minutes` UTC schedule.
  * - Frequent (lookback 1): only when local hour is within working hours (default 06–22, Europe/Vilnius).
- * - Daily (lookback 30): when local time is in the 03:00–03:14 window (configurable hour) — tracks Vilnius DST via Intl, not fixed UTC.
- * - Monthly (lookback 90): same window on day 1 only (monthly replaces daily that slot to avoid double work).
+ * - Daily/monthly: chunked reconciliation jobs (`invoice_reconciliation_jobs`) — init in 03:00–03:14 Vilnius window, one step per tick.
+ * - Monthly vs daily: day 1 initializes monthly (90d); other days initialize daily (30d). Large ranges use 5-day chunks, not one long POST.
  *
  * Legacy: `?job=frequent|daily|monthly` for manual/testing (still supported).
  */
@@ -114,6 +138,12 @@ export async function GET(request: Request) {
       sync?: unknown;
     }> = [];
 
+    const reconciliation: Array<{
+      name: string;
+      syncStatus: number;
+      sync: unknown;
+    }> = [];
+
     const inWorkingHours = local.hour >= WORK_START && local.hour <= WORK_END;
 
     if (inWorkingHours) {
@@ -135,26 +165,26 @@ export async function GET(request: Request) {
 
     if (inDailyReconciliationWindow) {
       if (local.day === 1) {
-        const r = await postSync(origin, 90);
-        actions.push({
-          name: "monthly",
-          lookbackDays: 90,
-          syncStatus: r.status,
-          sync: r.body,
-        });
+        const initM = await postReconciliationStep(origin, { action: "init", jobType: "monthly" });
+        reconciliation.push({ name: "reconciliation_init_monthly", syncStatus: initM.status, sync: initM.body });
       } else {
-        const r = await postSync(origin, 30);
-        actions.push({
-          name: "daily",
-          lookbackDays: 30,
-          syncStatus: r.status,
-          sync: r.body,
-        });
+        const initD = await postReconciliationStep(origin, { action: "init", jobType: "daily" });
+        reconciliation.push({ name: "reconciliation_init_daily", syncStatus: initD.status, sync: initD.body });
       }
     }
 
-    const anyFailed = actions.some((a) => a.syncStatus != null && a.syncStatus >= 400);
-    const worst = actions.reduce((m, a) => (a.syncStatus != null && a.syncStatus > m ? a.syncStatus : m), 0);
+    const step = await postReconciliationStep(origin, { action: "run" });
+    reconciliation.push({ name: "reconciliation_step", syncStatus: step.status, sync: step.body });
+
+    const anyFailed =
+      actions.some((a) => a.syncStatus != null && a.syncStatus >= 400) ||
+      reconciliation.some((a) => a.syncStatus >= 400);
+    const worstActions = actions.reduce(
+      (m, a) => (a.syncStatus != null && a.syncStatus > m ? a.syncStatus : m),
+      0
+    );
+    const worstReco = reconciliation.reduce((m, a) => (a.syncStatus > m ? a.syncStatus : m), 0);
+    const worst = Math.max(worstActions, worstReco);
 
     return NextResponse.json(
       {
@@ -163,6 +193,7 @@ export async function GET(request: Request) {
         localTime: local,
         workingHoursInclusive: { start: WORK_START, end: WORK_END },
         dailyReconciliationHour: DAILY_HOUR,
+        reconciliation,
         actions,
       },
       { status: anyFailed ? (worst >= 500 ? 502 : worst) : 200 }
@@ -192,6 +223,22 @@ export async function GET(request: Request) {
         workingHoursInclusive: { start: WORK_START, end: WORK_END },
       });
     }
+  }
+
+  const initType = job === "daily" ? "daily" : job === "monthly" ? "monthly" : null;
+  if (initType) {
+    const initR = await postReconciliationStep(origin, { action: "init", jobType: initType });
+    const stepR = await postReconciliationStep(origin, { action: "run" });
+    const legacyHttp = Math.max(initR.status, stepR.status);
+    return NextResponse.json(
+      {
+        job,
+        lookbackDays,
+        reconciliationInit: { syncStatus: initR.status, sync: initR.body },
+        reconciliationStep: { syncStatus: stepR.status, sync: stepR.body },
+      },
+      { status: legacyHttp < 400 ? 200 : legacyHttp >= 500 ? 502 : legacyHttp }
+    );
   }
 
   const { status, body } = await postSync(origin, lookbackDays);

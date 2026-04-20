@@ -7,7 +7,10 @@ import {
   buildInvoicesListUrl,
   INVOICES_LIST_BASE,
   isRecord,
+  type MappedListInvoiceRow,
   mapInvoiceListItems,
+  mergeInvoiceRowGroup,
+  mergeInvoicesListRangeIntoUrl,
   mergeMappedRowsByInvoiceId,
   parseInvoicesListJson,
   resolveInvoicesListNextUrl,
@@ -221,6 +224,10 @@ export async function POST(request: Request) {
     /** Updated during pagination so a hard timeout can still report partial progress. */
     const runDebug = {
       pagesFetched: 0,
+      /** Raw list rows seen so far (incremental + full); for partial metrics on timeout/error. */
+      listRowsRawSoFar: 0,
+      incrementalUpsertedSoFar: 0,
+      incrementalUniqueInvoicesSoFar: 0,
       earliestInvoiceDateSeenInFetch: null as string | null,
       firstPaginationFromApi: null as {
         current_page: number | null;
@@ -238,6 +245,7 @@ export async function POST(request: Request) {
       } | null,
       stoppedReason: "unknown" as string,
       nextUrlAfterLastPage: null as string | null,
+      incrementalUpsertError: null as string | null,
     };
 
     const run = async () => {
@@ -315,6 +323,9 @@ export async function POST(request: Request) {
       let pagesFetched = 0;
       /** Sum of `data.result.length` across pages (may exceed unique invoices if API returns line-level rows). */
       let listRowsRaw = 0;
+      /** Latest merged row per `invoice_id` during incremental (cross-page line items). */
+      const incrementalMergedById = new Map<string, MappedListInvoiceRow>();
+      const UPSERT_BATCH = 400;
       const snapshotPagination = (pagination: AnyRecord | null, nextResolved: string | null) => {
         const cur =
           typeof pagination?.current_page === "number"
@@ -473,6 +484,7 @@ export async function POST(request: Request) {
 
           const { invoices, pagination: paginationObj } = parseInvoicesListJson(json);
           listRowsRaw += invoices.length;
+          runDebug.listRowsRawSoFar = listRowsRaw;
 
           const nextFromApi = asString(paginationObj?.next_page_url) ?? asString(paginationObj?.nextPageUrl);
           const currentPage =
@@ -503,12 +515,46 @@ export async function POST(request: Request) {
 
           // Incremental: always paginate through the full lookback `range` window; do not stop on invoice_date vs DB max.
 
-          // Accumulate mapped rows from this page.
-          allMappedValid.push(...mappedPage);
+          if (effectiveFullSync) {
+            allMappedValid.push(...mappedPage);
+          } else {
+            const rowsToUpsert: MappedListInvoiceRow[] = [];
+            for (const r of mappedPage) {
+              const existing = incrementalMergedById.get(r.invoice_id);
+              if (!existing) {
+                incrementalMergedById.set(r.invoice_id, r);
+                rowsToUpsert.push(r);
+              } else {
+                const merged = mergeInvoiceRowGroup([existing, r]);
+                incrementalMergedById.set(r.invoice_id, merged);
+                rowsToUpsert.push(merged);
+              }
+            }
+            if (rowsToUpsert.length > 0) {
+              for (let i = 0; i < rowsToUpsert.length; i += UPSERT_BATCH) {
+                const batch = rowsToUpsert.slice(i, i + UPSERT_BATCH);
+                const upsertRes = await supabase
+                  .from("invoices")
+                  .upsert(batch, { onConflict: "invoice_id" })
+                  .select("invoice_id");
+                runDebug.incrementalUpsertedSoFar += upsertRes.data?.length ?? 0;
+                if (upsertRes.error) runDebug.incrementalUpsertError = upsertRes.error.message;
+              }
+            }
+            runDebug.incrementalUniqueInvoicesSoFar = incrementalMergedById.size;
+          }
 
           // Decide next page
           if (nextFromApi) {
-            nextUrl = resolveInvoicesListNextUrl(nextFromApi);
+            let resolvedNext = resolveInvoicesListNextUrl(nextFromApi);
+            if (incrementalWindow) {
+              resolvedNext = mergeInvoicesListRangeIntoUrl(
+                resolvedNext,
+                incrementalWindow.rangeStart,
+                incrementalWindow.rangeEnd
+              );
+            }
+            nextUrl = resolvedNext;
             runDebug.nextUrlAfterLastPage = nextUrl;
           } else {
             stoppedReason = "no_next_page_url";
@@ -551,9 +597,9 @@ export async function POST(request: Request) {
           effectiveFullSync,
           invoiceCount,
           invoiceCountAfter: null as number | null,
-          fetchedTotal: 0,
-          validRows: 0,
-          upsertedCount: 0,
+          fetchedTotal: effectiveFullSync ? 0 : runDebug.incrementalUniqueInvoicesSoFar,
+          validRows: effectiveFullSync ? 0 : runDebug.incrementalUniqueInvoicesSoFar,
+          upsertedCount: effectiveFullSync ? 0 : runDebug.incrementalUpsertedSoFar,
           latestKnownInvoiceDate,
           pagesFetched,
           stoppedReason: "error" as const,
@@ -576,40 +622,65 @@ export async function POST(request: Request) {
         );
       }
 
-      const uniqueRows = mergeMappedRowsByInvoiceId(allMappedValid);
-      const fetchedTotal = uniqueRows.length;
-      const validRows = uniqueRows.length;
-      const duplicateRowsMerged = Math.max(0, listRowsRaw - uniqueRows.length);
-      console.log("[sync-saskaita123] fetched count", {
-        listRowsRaw,
-        uniqueInvoices: uniqueRows.length,
-        duplicateRowsMerged,
-      });
+      let uniqueRows: MappedListInvoiceRow[];
+      let fetchedTotal: number;
+      let validRows: number;
+      let duplicateRowsMerged: number;
+      let upsertedCount: number;
+      let upsertError: string | null;
 
-      console.log("[sync-saskaita123] valid mapped rows count", validRows);
+      if (effectiveFullSync) {
+        uniqueRows = mergeMappedRowsByInvoiceId(allMappedValid);
+        fetchedTotal = uniqueRows.length;
+        validRows = uniqueRows.length;
+        duplicateRowsMerged = Math.max(0, listRowsRaw - uniqueRows.length);
+        console.log("[sync-saskaita123] fetched count", {
+          listRowsRaw,
+          uniqueInvoices: uniqueRows.length,
+          duplicateRowsMerged,
+        });
+        console.log("[sync-saskaita123] valid mapped rows count", validRows);
 
-      const UPSERT_BATCH = 400;
-      let upsertedCount = 0;
-      let upsertError: string | null = null;
-      if (uniqueRows.length > 0) {
-        for (let i = 0; i < uniqueRows.length; i += UPSERT_BATCH) {
-          const batch = uniqueRows.slice(i, i + UPSERT_BATCH);
-          const upsertRes = await supabase
-            .from("invoices")
-            .upsert(batch, { onConflict: "invoice_id" })
-            .select("invoice_id");
-          upsertedCount += upsertRes.data?.length ?? 0;
-          if (upsertRes.error) upsertError = upsertRes.error.message;
+        upsertedCount = 0;
+        upsertError = null;
+        if (uniqueRows.length > 0) {
+          for (let i = 0; i < uniqueRows.length; i += UPSERT_BATCH) {
+            const batch = uniqueRows.slice(i, i + UPSERT_BATCH);
+            const upsertRes = await supabase
+              .from("invoices")
+              .upsert(batch, { onConflict: "invoice_id" })
+              .select("invoice_id");
+            upsertedCount += upsertRes.data?.length ?? 0;
+            if (upsertRes.error) upsertError = upsertRes.error.message;
+          }
         }
+        console.log("[sync-saskaita123] upsert done", {
+          upsertedCount,
+          validRows,
+          listRowsRaw,
+          duplicateRowsMerged,
+          batches: Math.ceil(uniqueRows.length / UPSERT_BATCH),
+        });
+      } else {
+        uniqueRows = Array.from(incrementalMergedById.values());
+        fetchedTotal = incrementalMergedById.size;
+        validRows = incrementalMergedById.size;
+        duplicateRowsMerged = Math.max(0, listRowsRaw - incrementalMergedById.size);
+        upsertedCount = runDebug.incrementalUpsertedSoFar;
+        upsertError = runDebug.incrementalUpsertError;
+        console.log("[sync-saskaita123] fetched count", {
+          listRowsRaw,
+          uniqueInvoices: incrementalMergedById.size,
+          duplicateRowsMerged,
+        });
+        console.log("[sync-saskaita123] valid mapped rows count", validRows);
+        console.log("[sync-saskaita123] upsert done", {
+          upsertedCount,
+          validRows,
+          listRowsRaw,
+          duplicateRowsMerged,
+        });
       }
-
-      console.log("[sync-saskaita123] upsert done", {
-        upsertedCount,
-        validRows,
-        listRowsRaw,
-        duplicateRowsMerged,
-        batches: Math.ceil(uniqueRows.length / UPSERT_BATCH),
-      });
 
       let supabaseMinInvoiceDateAfter: string | null = null;
       let invoiceCountAfter: number | null = null;
@@ -682,7 +753,8 @@ export async function POST(request: Request) {
                 openapiNotes: [
                   "Invoice123 OpenAPI: GET /invoices query param page has maximum 500.",
                   "List `data.result` may contain line-level rows; we normalize to invoice id and merge duplicates before upsert.",
-                  "Incremental sync uses Invoice123 range + full pagination in the window; upsert by invoice_id.",
+                  "Incremental sync uses Invoice123 range + full pagination in the window; upsert by invoice_id after each page (cross-page merges use mergeInvoiceRowGroup).",
+                  "Incremental `next_page_url` is normalized to always include the same `range=` as the initial request.",
                   "If stoppedReason is max_pages_cap on incremental, remaining pages were not fetched this run; next overlapping run or a higher SYNC_MAX_PAGES_INCREMENTAL completes the window safely.",
                 ],
               },
@@ -705,15 +777,16 @@ export async function POST(request: Request) {
                   fullSync,
                   effectiveFullSync,
                   invoiceCount,
-                  fetchedTotal: 0,
-                  validRows: 0,
-                  upsertedCount: 0,
+                  fetchedTotal: effectiveFullSync ? 0 : runDebug.incrementalUniqueInvoicesSoFar,
+                  validRows: effectiveFullSync ? 0 : runDebug.incrementalUniqueInvoicesSoFar,
+                  upsertedCount: effectiveFullSync ? 0 : runDebug.incrementalUpsertedSoFar,
                   latestKnownInvoiceDate,
                   pagesFetched: runDebug.pagesFetched,
                   stoppedReason: "hard_timeout",
                   incrementalLookback: effectiveFullSync ? null : incrementalWindow,
-                  note:
-                    "The HTTP response was cut off by the server timeout; pagination may still be running until the process ends, and some pages may have been upserted before this response.",
+                  note: effectiveFullSync
+                    ? "Hard timeout before full-sync upsert; invoices may be partially fetched in memory only."
+                    : "Hard timeout during incremental pagination; rows already upserted per page remain in the database.",
                   debug: {
                     ...runDebug,
                     supabaseMinInvoiceDateBefore,
@@ -726,13 +799,16 @@ export async function POST(request: Request) {
                   fullSync,
                   effectiveFullSync,
                   invoiceCount,
-                  fetchedTotal: 0,
-                  validRows: 0,
-                  upsertedCount: 0,
+                  fetchedTotal: effectiveFullSync ? 0 : runDebug.incrementalUniqueInvoicesSoFar,
+                  validRows: effectiveFullSync ? 0 : runDebug.incrementalUniqueInvoicesSoFar,
+                  upsertedCount: effectiveFullSync ? 0 : runDebug.incrementalUpsertedSoFar,
                   latestKnownInvoiceDate,
                   pagesFetched: runDebug.pagesFetched,
                   stoppedReason: "hard_timeout",
                   incrementalLookback: effectiveFullSync ? null : incrementalWindow,
+                  note: effectiveFullSync
+                    ? "Hard timeout before full-sync upsert; invoices may be partially fetched in memory only."
+                    : "Hard timeout during incremental pagination; rows already upserted per page remain in the database.",
                   tookMs: Date.now() - startedAt,
                 },
             { status: 504 }
