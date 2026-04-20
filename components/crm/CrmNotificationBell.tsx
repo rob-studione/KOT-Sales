@@ -8,6 +8,8 @@ import type { CrmNotificationRow } from "@/lib/crm/notificationConstants";
 
 type ApiOk = { ok: true; items: CrmNotificationRow[]; unreadCount: number };
 
+const FOCUS_REFRESH_MIN_MS = 120_000;
+
 export function CrmNotificationBell() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -16,8 +18,12 @@ export function CrmNotificationBell() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const inFlightRef = useRef(false);
+  const lastSuccessFetchRef = useRef(0);
 
   const load = useCallback(async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -29,15 +35,32 @@ export function CrmNotificationBell() {
       }
       setItems(json.items);
       setUnreadCount(json.unreadCount);
+      lastSuccessFetchRef.current = Date.now();
     } catch {
       setError("Tinklo klaida");
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
     }
   }, []);
 
+  /** Ne critical path: idle arba vėlesnis fallback, be fetch ant mount. */
   useEffect(() => {
-    void load();
+    const schedule = () => {
+      void load();
+    };
+    const win = window as Window & {
+      requestIdleCallback?: (cb: IdleRequestCallback, opts?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof win.requestIdleCallback === "function") {
+      const id = win.requestIdleCallback(schedule, { timeout: 12_000 });
+      return () => {
+        if (typeof win.cancelIdleCallback === "function") win.cancelIdleCallback(id);
+      };
+    }
+    const t = window.setTimeout(schedule, 4_000);
+    return () => clearTimeout(t);
   }, [load]);
 
   useEffect(() => {
@@ -50,12 +73,16 @@ export function CrmNotificationBell() {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
+  /** Tik jei jau buvo sėkmingas fetch — retai atnaujinti grįžus į skirtuką. */
   useEffect(() => {
-    function onFocus() {
+    function onVisibility() {
+      if (document.visibilityState !== "visible") return;
+      if (lastSuccessFetchRef.current === 0) return;
+      if (Date.now() - lastSuccessFetchRef.current < FOCUS_REFRESH_MIN_MS) return;
       void load();
     }
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [load]);
 
   async function markRead(id: string) {
@@ -89,6 +116,9 @@ export function CrmNotificationBell() {
         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
         aria-label="Pranešimai"
         aria-expanded={open}
+        onPointerEnter={() => {
+          void load();
+        }}
         onClick={() => {
           setOpen((v) => !v);
           if (!open) void load();

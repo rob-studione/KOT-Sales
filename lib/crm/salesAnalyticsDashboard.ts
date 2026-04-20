@@ -460,9 +460,11 @@ export async function fetchSalesDashboard(
   const tAll = performance.now();
   const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   activeSalesDashboardRequests += 1;
-  console.log(
-    `[salesAnalyticsDashboard] request_start id=${requestId} active=${activeSalesDashboardRequests} period=${period} range=${range.from}..${range.to}`
-  );
+  if (CRM_ANALYTICS_DEBUG) {
+    console.log(
+      `[salesAnalyticsDashboard] request_start id=${requestId} active=${activeSalesDashboardRequests} period=${period} range=${range.from}..${range.to}`
+    );
+  }
   phaseLog(requestId, "start");
 
   const todayIso = vilniusTodayDateString();
@@ -482,38 +484,32 @@ export async function fetchSalesDashboard(
   phaseLog(requestId, "kpi_start", { todayIso, weekStartIso });
   phaseLog(requestId, "kpi_end");
 
-  phaseLog(requestId, "activities_start", { rangeStart: rangeStart.slice(0, 19), rangeEnd: rangeEnd.slice(0, 19) });
-  const activitiesRes = await withTimeout("activities_union_fetch", async () => {
-    const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "activities_union_fetch", TIMEOUT_MS);
-    try {
-      return await fetchActivitiesInRange(supabase, rangeStart, rangeEnd, signal);
-    } finally {
-      dispose();
-    }
-  }, TIMEOUT_MS, logs);
-  phaseLog(requestId, "activities_end");
-  const unionActs = activitiesRes.ok ? activitiesRes.value.rows : [];
-  const actTrunc = activitiesRes.ok ? activitiesRes.value.truncated : false;
-  const activityRowCount = activitiesRes.ok ? activitiesRes.value.rowCount : 0;
-  const activitiesErr = activitiesRes.ok ? activitiesRes.value.error : activitiesRes.error;
-  setLogNote(
-    logs,
-    "activities_union_fetch",
-    activitiesRes.ok
-      ? `rows=${activitiesRes.value.rowCount}${activitiesRes.value.truncated ? " truncated=1" : ""}${activitiesRes.value.error ? ` err=${activitiesRes.value.error}` : ""}`
-      : activitiesRes.error
-  );
-  if (activitiesErr) warnings.push(`Veiklos įrašai: ${activitiesErr}`);
-  if (actTrunc) warnings.push(`Veiklos įrašai apkirpti po ${MAX_ACTIVITY_ROWS.toLocaleString("lt-LT")} eilučių. Rodikliai gali būti netikslūs.`);
-  if (CRM_ANALYTICS_DEBUG) console.log(`[salesAnalyticsDashboard] activity rows: ${activityRowCount}`);
+  const allTimeActivityStart = vilniusStartUtc(REVENUE_ALL_TIME_ACTIVITY_FROM_ISO);
+  const allTimeActivityEnd = vilniusEndUtc(todayIso);
 
-  const rangeSlice = sliceByRange(unionActs, range);
-  const rangeDays = eachDayInclusive(range.from, range.to);
-  phaseLog(requestId, "derive_range", { activityRowCount, rangeSlice: rangeSlice.length, rangeDays: rangeDays.length });
-  const bestCallTimes = deriveBestCallTimes(rangeSlice);
-
-  phaseLog(requestId, "refs_start");
-  const [workResT, projResT, firstByWorkT] = await Promise.all([
+  phaseLog(requestId, "parallel_fetch_start", {
+    rangeStart: rangeStart.slice(0, 19),
+    rangeEnd: rangeEnd.slice(0, 19),
+    allTimeStart: allTimeActivityStart.slice(0, 19),
+    allTimeEnd: allTimeActivityEnd.slice(0, 19),
+  });
+  const [activitiesRes, activitiesAllTimeRes, workResT, projResT, firstByWorkT] = await Promise.all([
+    withTimeout("activities_union_fetch", async () => {
+      const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "activities_union_fetch", TIMEOUT_MS);
+      try {
+        return await fetchActivitiesInRange(supabase, rangeStart, rangeEnd, signal);
+      } finally {
+        dispose();
+      }
+    }, TIMEOUT_MS, logs),
+    withTimeout("activities_all_time_fetch", async () => {
+      const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "activities_all_time_fetch", TIMEOUT_MS);
+      try {
+        return await fetchActivitiesInRange(supabase, allTimeActivityStart, allTimeActivityEnd, signal);
+      } finally {
+        dispose();
+      }
+    }, TIMEOUT_MS, logs),
     withTimeout("project_work_items", async () => {
       const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "project_work_items", TIMEOUT_MS);
       try {
@@ -539,7 +535,46 @@ export async function fetchSalesDashboard(
       }
     }, TIMEOUT_MS, logs),
   ]);
-  phaseLog(requestId, "refs_end");
+  phaseLog(requestId, "parallel_fetch_end");
+
+  const unionActs = activitiesRes.ok ? activitiesRes.value.rows : [];
+  const actTrunc = activitiesRes.ok ? activitiesRes.value.truncated : false;
+  const activityRowCount = activitiesRes.ok ? activitiesRes.value.rowCount : 0;
+  const activitiesErr = activitiesRes.ok ? activitiesRes.value.error : activitiesRes.error;
+  setLogNote(
+    logs,
+    "activities_union_fetch",
+    activitiesRes.ok
+      ? `rows=${activitiesRes.value.rowCount}${activitiesRes.value.truncated ? " truncated=1" : ""}${activitiesRes.value.error ? ` err=${activitiesRes.value.error}` : ""}`
+      : activitiesRes.error
+  );
+  if (activitiesErr) warnings.push(`Veiklos įrašai: ${activitiesErr}`);
+  if (actTrunc) warnings.push(`Veiklos įrašai apkirpti po ${MAX_ACTIVITY_ROWS.toLocaleString("lt-LT")} eilučių. Rodikliai gali būti netikslūs.`);
+  if (CRM_ANALYTICS_DEBUG) console.log(`[salesAnalyticsDashboard] activity rows: ${activityRowCount}`);
+
+  const unionActsAllTime = activitiesAllTimeRes.ok ? activitiesAllTimeRes.value.rows : [];
+  const allTimeActTrunc = activitiesAllTimeRes.ok ? activitiesAllTimeRes.value.truncated : false;
+  setLogNote(
+    logs,
+    "activities_all_time_fetch",
+    activitiesAllTimeRes.ok
+      ? `rows=${activitiesAllTimeRes.value.rowCount}${activitiesAllTimeRes.value.truncated ? " truncated=1" : ""}${activitiesAllTimeRes.value.error ? ` err=${activitiesAllTimeRes.value.error}` : ""}`
+      : activitiesAllTimeRes.error
+  );
+  if (activitiesAllTimeRes.ok && activitiesAllTimeRes.value.error) {
+    warnings.push(`Viso laikotarpio veiklos įrašai: ${activitiesAllTimeRes.value.error}`);
+  }
+  if (!activitiesAllTimeRes.ok) warnings.push(`Viso laikotarpio veikla: ${activitiesAllTimeRes.error}`);
+  if (allTimeActTrunc) {
+    warnings.push(
+      `Viso laikotarpio veiklos istorija apkirpta po ${MAX_ACTIVITY_ROWS.toLocaleString("lt-LT")} eilučių. Sukauptos pajamos ir „Vid. € / skambutį“ gali būti netikslūs.`
+    );
+  }
+
+  const rangeSlice = sliceByRange(unionActs, range);
+  const rangeDays = eachDayInclusive(range.from, range.to);
+  phaseLog(requestId, "derive_range", { activityRowCount, rangeSlice: rangeSlice.length, rangeDays: rangeDays.length });
+  const bestCallTimes = deriveBestCallTimes(rangeSlice);
 
   const workRes = workResT.ok ? workResT.value : null;
   const projRes = projResT.ok ? projResT.value : null;
@@ -559,6 +594,7 @@ export async function fetchSalesDashboard(
       : projResT.error
   );
   setLogNote(logs, "first_contact_rpc", firstByWorkT.ok ? `rows=${firstByWork.size}` : firstByWorkT.error);
+  phaseLog(requestId, "refs_end");
 
   if (workRes && workRes.error) warnings.push(`Darbo eilutės: ${workRes.error.message}`);
   if (projRes && projRes.error) warnings.push(`Projektai: ${projRes.error.message}`);
@@ -630,37 +666,6 @@ export async function fetchSalesDashboard(
   }
 
   const { codeToKey, idOnlyToKey } = buildInvoiceLookupMaps(keyParts);
-
-  const allTimeActivityStart = vilniusStartUtc(REVENUE_ALL_TIME_ACTIVITY_FROM_ISO);
-  const allTimeActivityEnd = vilniusEndUtc(todayIso);
-  phaseLog(requestId, "activities_all_time_start");
-  const activitiesAllTimeRes = await withTimeout("activities_all_time_fetch", async () => {
-    const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "activities_all_time_fetch", TIMEOUT_MS);
-    try {
-      return await fetchActivitiesInRange(supabase, allTimeActivityStart, allTimeActivityEnd, signal);
-    } finally {
-      dispose();
-    }
-  }, TIMEOUT_MS, logs);
-  phaseLog(requestId, "activities_all_time_end");
-  const unionActsAllTime = activitiesAllTimeRes.ok ? activitiesAllTimeRes.value.rows : [];
-  const allTimeActTrunc = activitiesAllTimeRes.ok ? activitiesAllTimeRes.value.truncated : false;
-  setLogNote(
-    logs,
-    "activities_all_time_fetch",
-    activitiesAllTimeRes.ok
-      ? `rows=${activitiesAllTimeRes.value.rowCount}${activitiesAllTimeRes.value.truncated ? " truncated=1" : ""}${activitiesAllTimeRes.value.error ? ` err=${activitiesAllTimeRes.value.error}` : ""}`
-      : activitiesAllTimeRes.error
-  );
-  if (activitiesAllTimeRes.ok && activitiesAllTimeRes.value.error) {
-    warnings.push(`Viso laikotarpio veiklos įrašai: ${activitiesAllTimeRes.value.error}`);
-  }
-  if (!activitiesAllTimeRes.ok) warnings.push(`Viso laikotarpio veikla: ${activitiesAllTimeRes.error}`);
-  if (allTimeActTrunc) {
-    warnings.push(
-      `Viso laikotarpio veiklos istorija apkirpta po ${MAX_ACTIVITY_ROWS.toLocaleString("lt-LT")} eilučių. Sukauptos pajamos ir „Vid. € / skambutį“ gali būti netikslūs.`
-    );
-  }
 
   const isActualuText = (s: string) => /aktualu\s+pagal\s+poreikį/i.test(String(s ?? "").trim());
   const latestStatusByClientAllTime = new Map<string, { occurred_at: string; actualu: boolean }>();
@@ -751,22 +756,39 @@ export async function fetchSalesDashboard(
   }
 
   phaseLog(requestId, "invoices_start");
-  const invRes = await withTimeout("invoices_range", async () => {
-    const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "invoices_range", TIMEOUT_MS);
-    try {
-      return await supabase
-        .from("invoices")
-        .select("invoice_id,company_code,client_id,invoice_date,amount")
-        .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
-        .gte("invoice_date", range.from)
-        .lte("invoice_date", range.to)
-        .order("invoice_date", { ascending: true })
-        .limit(MAX_INVOICE_ROWS)
-        .abortSignal(signal);
-    } finally {
-      dispose();
-    }
-  }, TIMEOUT_MS, logs);
+  const [invRes, invAllTimeRes] = await Promise.all([
+    withTimeout("invoices_range", async () => {
+      const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "invoices_range", TIMEOUT_MS);
+      try {
+        return await supabase
+          .from("invoices")
+          .select("invoice_id,company_code,client_id,invoice_date,amount")
+          .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
+          .gte("invoice_date", range.from)
+          .lte("invoice_date", range.to)
+          .order("invoice_date", { ascending: true })
+          .limit(MAX_INVOICE_ROWS)
+          .abortSignal(signal);
+      } finally {
+        dispose();
+      }
+    }, TIMEOUT_MS, logs),
+    withTimeout("invoices_all_time", async () => {
+      const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "invoices_all_time", TIMEOUT_MS);
+      try {
+        return await supabase
+          .from("invoices")
+          .select("invoice_id,company_code,client_id,invoice_date,amount")
+          .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
+          .lte("invoice_date", todayIso)
+          .order("invoice_date", { ascending: true })
+          .limit(MAX_INVOICE_ROWS)
+          .abortSignal(signal);
+      } finally {
+        dispose();
+      }
+    }, TIMEOUT_MS, logs),
+  ]);
   phaseLog(requestId, "invoices_end");
 
   const invResp = invRes.ok ? invRes.value : null;
@@ -776,6 +798,15 @@ export async function fetchSalesDashboard(
     logs,
     "invoices_range",
     invRes.ok ? (invResp?.error ? `err=${invResp.error.message}` : `rows=${(invResp?.data ?? []).length}`) : invRes.error
+  );
+
+  const invAllResp = invAllTimeRes.ok ? invAllTimeRes.value : null;
+  if (invAllResp && invAllResp.error) warnings.push(`Viso laiko sąskaitos: ${invAllResp.error.message}`);
+  if (!invAllTimeRes.ok) warnings.push(`Viso laiko sąskaitos: ${invAllTimeRes.error}`);
+  setLogNote(
+    logs,
+    "invoices_all_time",
+    invAllTimeRes.ok ? (invAllResp?.error ? `err=${invAllResp.error.message}` : `rows=${(invAllResp?.data ?? []).length}`) : invAllTimeRes.error
   );
 
   const invoices =
@@ -829,33 +860,6 @@ export async function fetchSalesDashboard(
 
   let kpiDirectAllTime = 0;
   let kpiInfluencedAllTime = 0;
-
-  phaseLog(requestId, "invoices_all_time_start");
-  const invAllTimeRes = await withTimeout("invoices_all_time", async () => {
-    const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "invoices_all_time", TIMEOUT_MS);
-    try {
-      return await supabase
-        .from("invoices")
-        .select("invoice_id,company_code,client_id,invoice_date,amount")
-        .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
-        .lte("invoice_date", todayIso)
-        .order("invoice_date", { ascending: true })
-        .limit(MAX_INVOICE_ROWS)
-        .abortSignal(signal);
-    } finally {
-      dispose();
-    }
-  }, TIMEOUT_MS, logs);
-  phaseLog(requestId, "invoices_all_time_end");
-
-  const invAllResp = invAllTimeRes.ok ? invAllTimeRes.value : null;
-  if (invAllResp && invAllResp.error) warnings.push(`Viso laiko sąskaitos: ${invAllResp.error.message}`);
-  if (!invAllTimeRes.ok) warnings.push(`Viso laiko sąskaitos: ${invAllTimeRes.error}`);
-  setLogNote(
-    logs,
-    "invoices_all_time",
-    invAllTimeRes.ok ? (invAllResp?.error ? `err=${invAllResp.error.message}` : `rows=${(invAllResp?.data ?? []).length}`) : invAllTimeRes.error
-  );
 
   const invoicesAllTime =
     ((invAllResp?.data ?? []) as Array<{
@@ -932,16 +936,20 @@ export async function fetchSalesDashboard(
     note: `activityRows=${activityRowCount} warnings=${warnings.length}`,
   });
 
-  for (const l of logs) {
+  if (CRM_ANALYTICS_DEBUG) {
+    for (const l of logs) {
+      console.log(
+        `[salesAnalyticsDashboard] id=${requestId} ${l.label} ms=${l.ms.toFixed(1)} ok=${l.ok} timeout=${l.timedOut}${l.note ? ` note=${l.note}` : ""}`
+      );
+    }
     console.log(
-      `[salesAnalyticsDashboard] id=${requestId} ${l.label} ms=${l.ms.toFixed(1)} ok=${l.ok} timeout=${l.timedOut}${l.note ? ` note=${l.note}` : ""}`
+      `[salesAnalyticsDashboard] request_end id=${requestId} totalMs=${(performance.now() - tAll).toFixed(1)} warnings=${warnings.length}`
     );
   }
-  console.log(
-    `[salesAnalyticsDashboard] request_end id=${requestId} totalMs=${(performance.now() - tAll).toFixed(1)} warnings=${warnings.length}`
-  );
   activeSalesDashboardRequests = Math.max(0, activeSalesDashboardRequests - 1);
-  console.log(`[salesAnalyticsDashboard] request_active id=${requestId} active=${activeSalesDashboardRequests}`);
+  if (CRM_ANALYTICS_DEBUG) {
+    console.log(`[salesAnalyticsDashboard] request_active id=${requestId} active=${activeSalesDashboardRequests}`);
+  }
 
   return {
     range,
