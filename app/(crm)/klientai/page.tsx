@@ -109,6 +109,10 @@ function renderClientsShell(args: {
   footer?: React.ReactNode;
   description?: React.ReactNode;
 }) {
+  const searchHiddenFields = Object.fromEntries(
+    Object.entries(args.searchHiddenFields ?? {}).filter(([, value]) => typeof value === "string")
+  ) as Record<string, string>;
+
   return (
     <CrmTableContainer>
       <CrmListPageMain>
@@ -124,7 +128,7 @@ function renderClientsShell(args: {
               defaultQuery={args.qTrim}
               placeholder="Paieška (pavadinimas, kodas, PVM, el. paštas)"
               inputId="crm-klientai-search"
-              hiddenFields={args.searchHiddenFields}
+              hiddenFields={searchHiddenFields}
             />
             {args.toolbarFilters ? <div>{args.toolbarFilters}</div> : null}
           </div>
