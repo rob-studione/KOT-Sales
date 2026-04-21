@@ -3,7 +3,6 @@ import { CrmShellClient } from "@/components/crm/CrmShellClient";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
 
 export const metadata: Metadata = {
-  title: "CRM",
   description: "Klientai ir sąskaitos",
 };
 

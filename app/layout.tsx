@@ -14,7 +14,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Salex CRM", template: "%s · Salex" },
+  title: { default: "KOT Sales", template: "%s · KOT Sales" },
   description: "Klientai ir sąskaitos",
 };
 
