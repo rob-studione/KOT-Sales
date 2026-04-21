@@ -1935,7 +1935,7 @@ export async function renameProjectNameAction(
 
   let supabase;
   try {
-    supabase = createSupabaseServerClient();
+    supabase = await createSupabaseSsrClient();
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
   }
@@ -1972,7 +1972,7 @@ export async function updateProjectsSortOrderAction(
 
   let supabase;
   try {
-    supabase = createSupabaseServerClient();
+    supabase = await createSupabaseSsrClient();
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
   }
