@@ -13,9 +13,17 @@ function isCrmUserStatus(v: unknown): v is CrmUserStatus {
 }
 
 function inviteRedirectTo(): string | undefined {
+  const fallbackProd = "https://kot-sales.vercel.app";
   const base = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (!base) return undefined;
-  return `${base.replace(/\/+$/, "")}/auth/confirm?next=/analitika`;
+  if (!base) return `${fallbackProd}/auth/confirm?next=/analitika`;
+  const normalized = base.replace(/\/+$/, "");
+  if (normalized.startsWith("http://localhost") || normalized.includes("localhost:")) {
+    return `${fallbackProd}/auth/confirm?next=/analitika`;
+  }
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    return `${normalized}/auth/confirm?next=/analitika`;
+  }
+  return `${fallbackProd}/auth/confirm?next=/analitika`;
 }
 
 function safeEmail(raw: unknown): string {

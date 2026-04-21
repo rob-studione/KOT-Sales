@@ -42,6 +42,20 @@ export function LoginForm() {
   const [pending, setPending] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
 
+  function resolveResetRedirectTo(): string {
+    const prod = "https://kot-sales.vercel.app";
+    const envBase = typeof process.env.NEXT_PUBLIC_SITE_URL === "string" ? process.env.NEXT_PUBLIC_SITE_URL.trim() : "";
+    const base = envBase || window.location.origin;
+    const normalized = base.replace(/\/+$/, "");
+    if (normalized.startsWith("http://localhost") || normalized.includes("localhost:")) {
+      return `${prod}/auth/confirm`;
+    }
+    if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+      return `${normalized}/auth/confirm`;
+    }
+    return `${prod}/auth/confirm`;
+  }
+
   return (
     <div className="w-full max-w-[460px] rounded-[18px] border border-slate-200/80 bg-white p-8 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.12)] sm:p-10">
       <div className="text-center">
@@ -139,14 +153,14 @@ export function LoginForm() {
                 setPending(true);
                 try {
                   const supabase = createSupabaseBrowserClient();
-                  const redirectTo = `${window.location.origin}/auth/confirm`;
+                  const redirectTo = resolveResetRedirectTo();
                   const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
                   if (resetErr) {
                     const msg = String(resetErr.message ?? "");
                     const lower = msg.toLowerCase();
                     if (lower.includes("redirect") && (lower.includes("not allowed") || lower.includes("not whitelisted"))) {
                       setError(
-                        "Nepavyko išsiųsti atkūrimo nuorodos: neteisingas redirect URL. Patikrinkite Supabase Auth nustatymuose leidžiamus redirect URL (localhost:3000/3002)."
+                        "Nepavyko išsiųsti atkūrimo nuorodos: neteisingas redirect URL. Patikrinkite Supabase Auth nustatymuose leidžiamus redirect URL."
                       );
                     } else if (lower.includes("rate") && lower.includes("limit")) {
                       setError("Per dažnai bandote. Palaukite kelias minutes ir bandykite dar kartą.");
