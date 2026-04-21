@@ -9,8 +9,6 @@ export function GET() {
   return NextResponse.json(
     {
       appVersion: build.appVersion,
-      release: build.release,
-      commitHash: build.commitHash,
       buildDateIso: build.buildDateIso,
     },
     {

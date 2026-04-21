@@ -34,12 +34,10 @@ export default async function BendriSettingsPage() {
 
   const buildInfo = getRuntimeBuildInfo();
   const versionLabel = buildInfo.appVersion ? `v${buildInfo.appVersion}` : "nežinoma";
-  const releaseLabel = buildInfo.release ?? buildInfo.buildDateIso ?? "nežinoma";
-  const commitLabel = buildInfo.commitHash ?? "nežinoma";
+  const updatedLabel = buildInfo.buildDateIso ?? "nežinoma";
   const systemSummary = [
     `Versija: ${versionLabel}`,
-    `Release: ${releaseLabel}`,
-    `Commit: ${commitLabel}`,
+    `Atnaujinta: ${updatedLabel}`,
   ].join("\n");
 
   return (

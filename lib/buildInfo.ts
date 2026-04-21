@@ -1,19 +1,11 @@
 export type PublicBuildInfo = {
   appVersion: string | null;
-  release: string | null;
-  commitHash: string | null;
   buildDateIso: string | null; // YYYY-MM-DD
 };
 
 function normalizeNonEmpty(value: unknown): string | null {
   const v = String(value ?? "").trim();
   return v ? v : null;
-}
-
-function normalizeCommitHash(value: unknown): string | null {
-  const v = normalizeNonEmpty(value);
-  if (!v) return null;
-  return v.slice(0, 7);
 }
 
 function normalizeIsoDate(value: unknown): string | null {
@@ -30,8 +22,6 @@ export function getPublicBuildInfo(): PublicBuildInfo {
   // Must be safe in browser + server. Only NEXT_PUBLIC_* are exposed client-side.
   return {
     appVersion: normalizeNonEmpty(process.env.NEXT_PUBLIC_APP_VERSION),
-    release: normalizeNonEmpty(process.env.NEXT_PUBLIC_RELEASE),
-    commitHash: normalizeCommitHash(process.env.NEXT_PUBLIC_COMMIT_HASH),
     buildDateIso: normalizeIsoDate(process.env.NEXT_PUBLIC_BUILD_DATE),
   };
 }
@@ -44,8 +34,6 @@ export async function fetchPublicBuildInfo(signal?: AbortSignal): Promise<Public
   const json = (await res.json()) as Partial<PublicBuildInfo>;
   return {
     appVersion: normalizeNonEmpty(json.appVersion),
-    release: normalizeNonEmpty(json.release),
-    commitHash: normalizeCommitHash(json.commitHash),
     buildDateIso: normalizeIsoDate(json.buildDateIso),
   };
 }
