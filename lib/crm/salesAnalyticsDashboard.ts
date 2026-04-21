@@ -80,8 +80,8 @@ export type SalesDashboardData = {
   period: SalesDashboardPeriod;
   kpi: SalesDashboardKpi;
   trend: SalesDashboardTrendDay[];
-  directInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string }>;
-  influencedInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string }>;
+  directInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
+  influencedInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
   bestCallTimes: BestCallTimesData;
   warnings: string[];
 };
@@ -162,8 +162,8 @@ type RpcV1 = {
     conversionPercent: number | null;
   };
   trend: Array<{ date: string; calls: number; answered: number; notAnswered: number }>;
-  directInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string }>;
-  influencedInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string }>;
+  directInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string; companyName?: string | null }>;
+  influencedInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string; companyName?: string | null }>;
 };
 
 function asFiniteNumber(v: unknown, fallback = 0): number {
@@ -230,6 +230,8 @@ export async function fetchSalesDashboard(
         date: String((r as any).date ?? "").slice(0, 10),
         amount: asFiniteNumber((r as any).amount, 0),
         clientKey: String((r as any).clientKey ?? "").trim(),
+        companyName:
+          (r as any).companyName == null ? null : String((r as any).companyName ?? "").trim() || null,
       }))
       .filter((r) => r.invoiceNumber && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.clientKey),
     influencedInvoices: influencedInvoicesRaw
@@ -238,6 +240,8 @@ export async function fetchSalesDashboard(
         date: String((r as any).date ?? "").slice(0, 10),
         amount: asFiniteNumber((r as any).amount, 0),
         clientKey: String((r as any).clientKey ?? "").trim(),
+        companyName:
+          (r as any).companyName == null ? null : String((r as any).companyName ?? "").trim() || null,
       }))
       .filter((r) => r.invoiceNumber && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.clientKey),
     bestCallTimes: buildEmptyBestCallTimes(),

@@ -79,11 +79,7 @@ export function SalesAnalyticsDashboardView({
           {directInvoices.length > 0 || influencedInvoices.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {directInvoices.length > 0 ? (
-                <InvoicesBreakdownTable
-                  className="sm:col-start-1"
-                  rows={directInvoices}
-                  title="Direct breakdown"
-                />
+                <InvoicesBreakdownTable className="sm:col-start-1" rows={directInvoices} title="Direct breakdown" />
               ) : null}
               {influencedInvoices.length > 0 ? (
                 <InvoicesBreakdownTable
@@ -132,7 +128,7 @@ function InvoicesBreakdownTable({
   title,
   className,
 }: {
-  rows: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string }>;
+  rows: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
   title: string;
   className?: string;
 }) {
@@ -144,10 +140,10 @@ function InvoicesBreakdownTable({
         <table className="min-w-full text-[11px]">
           <thead className="border-b border-zinc-100 bg-zinc-50/80 text-left font-medium uppercase tracking-wide text-zinc-500">
             <tr>
-              <th className="px-2.5 py-1.5">Invoice No.</th>
+              <th className="px-2.5 py-1.5">Sąskaitos Nr.</th>
               <th className="px-2.5 py-1.5">Data</th>
               <th className="px-2.5 py-1.5 text-right">Suma</th>
-              <th className="px-2.5 py-1.5">Company code</th>
+              <th className="px-2.5 py-1.5">Įmonė</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
@@ -158,8 +154,8 @@ function InvoicesBreakdownTable({
                 <td className="px-2.5 py-1.5 text-right tabular-nums font-semibold text-zinc-900">
                   {formatMoney(inv.amount)}
                 </td>
-                <td className="max-w-[18rem] truncate px-2.5 py-1.5 font-mono text-[11px] text-zinc-600">
-                  {inv.clientKey}
+                <td className="max-w-[18rem] truncate px-2.5 py-1.5 text-zinc-700">
+                  {inv.companyName?.trim() ? inv.companyName : inv.clientKey}
                 </td>
               </tr>
             ))}

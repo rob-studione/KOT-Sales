@@ -197,8 +197,11 @@ direct_invoices as (
     iu.invoice_number,
     iu.invoice_day,
     iu.amount,
-    iu.client_key
+    iu.client_key,
+    nullif(trim(v.company_name), '') as company_name
   from invoices_union iu
+  left join public.v_client_list_from_invoices v
+    on v.client_key = iu.client_key
   join params p on true
   join first_call_sales fcs on fcs.client_key = iu.client_key
   left join latest_status_sales lss on lss.client_key = iu.client_key
@@ -263,7 +266,8 @@ select jsonb_build_object(
           'invoiceNumber', di.invoice_number,
           'date', to_char(di.invoice_day, 'YYYY-MM-DD'),
           'amount', di.amount,
-          'clientKey', di.client_key
+          'clientKey', di.client_key,
+          'companyName', di.company_name
         )
         order by di.invoice_day desc
       )
