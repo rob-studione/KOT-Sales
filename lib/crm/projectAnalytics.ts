@@ -232,6 +232,8 @@ export async function fetchProjectRevenueFeed(
     .from("invoices")
     .select("invoice_id,invoice_number,company_code,company_name,client_id,invoice_date,amount")
     .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
+    .not("invoice_number", "ilike", "VK-000IS%")
+    .not("invoice_number", "ilike", "VK-000KR%")
     .gte("invoice_date", range.from)
     .lte("invoice_date", range.to)
     .limit(8000);

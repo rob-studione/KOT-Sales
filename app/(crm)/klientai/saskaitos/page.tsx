@@ -19,6 +19,7 @@ export default async function SaskaitosPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  const HIDE_PREFIXES = ["VK-000IS", "VK-000KR"] as const;
   const sp = await searchParams;
   const qRaw = sp.q;
   const search = parseInvoiceSearchInput(typeof qRaw === "string" ? qRaw : undefined);
@@ -39,7 +40,11 @@ export default async function SaskaitosPage({
     );
   }
 
-  let countQuery = supabase.from("invoices").select("*", { count: "exact", head: true }).ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE);
+  let countQuery = supabase
+    .from("invoices")
+    .select("*", { count: "exact", head: true })
+    .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE);
+  for (const p of HIDE_PREFIXES) countQuery = countQuery.not("invoice_number", "ilike", `${p}%`);
 
   if (search) {
     const pat = `%${search}%`;
@@ -74,6 +79,8 @@ export default async function SaskaitosPage({
     .from("invoices")
     .select("invoice_id,invoice_date,created_at,amount,company_name,company_code,client_id,invoice_search_display,series_title,series_number,invoice_number")
     .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
+    .not("invoice_number", "ilike", "VK-000IS%")
+    .not("invoice_number", "ilike", "VK-000KR%")
     .order("invoice_date", { ascending: false })
     .order("invoice_number", { ascending: false })
     .order("created_at", { ascending: false });
