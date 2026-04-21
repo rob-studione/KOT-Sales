@@ -86,7 +86,7 @@ export type SalesDashboardData = {
 
 export function parseSalesDashboardPeriod(raw: string | undefined | null): SalesDashboardPeriod {
   if (raw === "today" || raw === "week" || raw === "month" || raw === "custom") return raw;
-  return "week";
+  return "today";
 }
 
 export function resolveSalesDashboardRange(
