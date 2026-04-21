@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { projectWorkItemCount, type ProjectListRow } from "@/lib/crm/projectListHelpers";
 import type { CrmUser } from "@/lib/crm/crmUsers";
-import { ProjectsSortableList } from "@/components/crm/projects/ProjectsSortableList";
+import { ProjectsSortableListLoader } from "@/components/crm/projects/ProjectsSortableListLoader";
 
 function StatusLine({ status }: { status: string }) {
   const archived = status === "archived";
@@ -143,7 +143,7 @@ export function ProjectsListHub({
             )}
           </div>
         ) : (
-          <ProjectsSortableList
+          <ProjectsSortableListLoader
             initialRows={rows}
             userById={userById}
             ownerColumnAvailable={ownerColumnAvailable}
