@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
+import type { FormEvent } from "react";
+import { useState, useTransition } from "react";
 import type { SalesDashboardPeriod, SalesDashboardRange } from "@/lib/crm/salesAnalyticsDashboard";
 
 const BTN =
@@ -20,6 +21,10 @@ export function AnalyticsDateFilter({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  /** Atidarytas „Pasirinkti laikotarpį“ juodraštis be URL keitimo — reload tik po „Taikyti“. */
+  const [customDraftOpen, setCustomDraftOpen] = useState(false);
+
+  const showCustomForm = period === "custom" || customDraftOpen;
 
   function navigate(next: URLSearchParams) {
     const q = next.toString();
@@ -29,14 +34,33 @@ export function AnalyticsDateFilter({
   }
 
   function setPeriod(p: SalesDashboardPeriod) {
-    if (p === period) return;
     if (isPending) return;
+    if (p === "custom") {
+      setCustomDraftOpen(true);
+      return;
+    }
+    setCustomDraftOpen(false);
+    if (p === period) return;
     const next = new URLSearchParams(searchParams.toString());
     next.set("period", p);
-    if (p !== "custom") {
-      next.delete("from");
-      next.delete("to");
-    }
+    next.delete("from");
+    next.delete("to");
+    navigate(next);
+  }
+
+  function applyCustomRange(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (isPending) return;
+    const fd = new FormData(e.currentTarget);
+    const from = fd.get("from");
+    const to = fd.get("to");
+    if (typeof from !== "string" || typeof to !== "string") return;
+    if (!from || !to) return;
+    setCustomDraftOpen(false);
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("period", "custom");
+    next.set("from", from);
+    next.set("to", to);
     navigate(next);
   }
 
@@ -46,7 +70,7 @@ export function AnalyticsDateFilter({
         <button
           type="button"
           disabled={isPending}
-          className={`${BTN} ${period === "today" ? ACTIVE : IDLE}`}
+          className={`${BTN} ${period === "today" && !customDraftOpen ? ACTIVE : IDLE}`}
           onClick={() => setPeriod("today")}
         >
           Šiandien
@@ -54,7 +78,7 @@ export function AnalyticsDateFilter({
         <button
           type="button"
           disabled={isPending}
-          className={`${BTN} ${period === "week" ? ACTIVE : IDLE}`}
+          className={`${BTN} ${period === "week" && !customDraftOpen ? ACTIVE : IDLE}`}
           onClick={() => setPeriod("week")}
         >
           Šią savaitę
@@ -62,7 +86,7 @@ export function AnalyticsDateFilter({
         <button
           type="button"
           disabled={isPending}
-          className={`${BTN} ${period === "month" ? ACTIVE : IDLE}`}
+          className={`${BTN} ${period === "month" && !customDraftOpen ? ACTIVE : IDLE}`}
           onClick={() => setPeriod("month")}
         >
           Šį mėnesį
@@ -70,15 +94,19 @@ export function AnalyticsDateFilter({
         <button
           type="button"
           disabled={isPending}
-          className={`${BTN} ${period === "custom" ? ACTIVE : IDLE}`}
+          className={`${BTN} ${period === "custom" || customDraftOpen ? ACTIVE : IDLE}`}
           onClick={() => setPeriod("custom")}
         >
           Pasirinkti laikotarpį
         </button>
       </div>
 
-      {period === "custom" ? (
-        <form className="flex flex-wrap items-center gap-2" action={pathname} method="get">
+      {showCustomForm ? (
+        <form
+          key={`${range.from}-${range.to}-${period}`}
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={applyCustomRange}
+        >
           <input type="hidden" name="period" value="custom" />
           <label className="flex items-center gap-1.5 text-xs text-zinc-600">
             Nuo
@@ -100,7 +128,7 @@ export function AnalyticsDateFilter({
               className="rounded-md border border-zinc-200 px-2 py-1 text-sm text-zinc-900"
             />
           </label>
-          <button type="submit" className={`${BTN} ${IDLE}`}>
+          <button type="submit" className={`${BTN} ${IDLE}`} disabled={isPending}>
             Taikyti
           </button>
         </form>

@@ -8,6 +8,7 @@ import {
 } from "@/lib/crm/projectBoardConstants";
 import { VAT_INVOICE_SERIES_TITLE_ILIKE } from "@/lib/crm/vatInvoiceListFilter";
 import {
+  addCivilDaysVilnius,
   eachDayInclusive,
   isoDateInVilnius,
   vilniusEndUtc,
@@ -24,9 +25,6 @@ const MAX_ACTIVITY_ROWS = 120_000;
 const MAX_INVOICE_ROWS = 50_000;
 
 const CRM_ANALYTICS_DEBUG = process.env.CRM_ANALYTICS_DEBUG === "1";
-
-/** Veiklos istorija KPI „Pardavimai“ (viso laiko) attribution — nuo šios datos (Vilnius). */
-const REVENUE_ALL_TIME_ACTIVITY_FROM_ISO = "2000-01-01";
 
 let activeSalesDashboardRequests = 0;
 
@@ -143,23 +141,14 @@ export type SalesDashboardKpi = {
   answeredCalls: number;
   /** Įrašai `project_work_item_activities` su `action_type = commercial` (pasirinktame intervale). */
   commercialActions: number;
-  /** Sukaupta per visą laiką (pagal `invoice_date` iki šiandien); nepriklauso nuo datos filtro. */
+  /** PVM sąskaitų direct suma pardavimų KPI lange (žr. `resolveSalesKpiRange`). */
   directRevenueEur: number;
-  /** Sukaupta per visą laiką; nepriklauso nuo datos filtro. */
+  /** PVM sąskaitų influenced suma tame pačiame KPI lange. */
   influencedRevenueEur: number;
-  /** `directRevenueEur` / visų laikų skambučių sk. (iš veiklos istorijos nuo 2000-01-01, gali būti apkirpta). */
+  /** `directRevenueEur` / skambučių skaičiaus tame pačiame KPI veiklos lange. */
   avgEurPerCall: number | null;
   /** Unikalūs klientai su priskirta sąskaita / skambučių skaičius intervale (kaip iki šiol). */
   conversionPercent: number | null;
-};
-
-export type SalesDashboardProjectRow = {
-  projectId: string;
-  projectName: string;
-  calls: number;
-  directRevenueEur: number;
-  influencedRevenueEur: number;
-  totalRevenueEur: number;
 };
 
 export type SalesDashboardTrendDay = {
@@ -191,7 +180,6 @@ export type SalesDashboardData = {
   range: SalesDashboardRange;
   period: SalesDashboardPeriod;
   kpi: SalesDashboardKpi;
-  projects: SalesDashboardProjectRow[];
   trend: SalesDashboardTrendDay[];
   bestCallTimes: BestCallTimesData;
   warnings: string[];
@@ -231,6 +219,26 @@ export function resolveSalesDashboardRange(
     return { from: mon, to: today };
   }
   return { from: vilniusMondayOfWeekIso(today), to: today };
+}
+
+function minIsoDate(a: string, b: string): string {
+  return a <= b ? a : b;
+}
+
+function maxIsoDate(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
+/**
+ * KPI „Pardavimai“ langas: `custom` — tas pats kaip pasirinktas dashboard range; kitaip — 30 kalendorinių dienų iki šiandien (Vilnius).
+ */
+export function resolveSalesKpiRange(
+  period: SalesDashboardPeriod,
+  range: SalesDashboardRange,
+  todayIso: string
+): SalesDashboardRange {
+  if (period === "custom") return { from: range.from, to: range.to };
+  return { from: addCivilDaysVilnius(todayIso, -29), to: todayIso };
 }
 
 async function fetchActivitiesInRange(
@@ -375,48 +383,6 @@ function deriveBestCallTimes(rangeSlice: ActivityRow[]): BestCallTimesData {
   return { weekdayKeys, slotKeys, matrix, slotStartHour, slotHours };
 }
 
-async function countCallsBetweenUtc(
-  supabase: SupabaseClient,
-  startIso: string,
-  endIso: string,
-  signal: AbortSignal
-): Promise<{ count: number; error: string | null }> {
-  const { count, error } = await supabase
-    .from("project_work_item_activities")
-    .select("*", { count: "exact", head: true })
-    .eq("action_type", "call")
-    .gte("occurred_at", startIso)
-    .lte("occurred_at", endIso)
-    .abortSignal(signal);
-  if (error) return { count: 0, error: error.message };
-  return { count: count ?? 0, error: null };
-}
-
-async function fetchFirstContactByWorkItem(
-  supabase: SupabaseClient,
-  warnings: string[],
-  signal: AbortSignal
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  const { data, error } = await supabase.rpc("dashboard_first_contact_per_work_item").abortSignal(signal);
-  if (error) {
-    warnings.push(
-      `Pirmo kontakto agregacija nepasiekiama (${error.message}). Pritaikykite migraciją 0021_dashboard_first_contact_aggregate.sql. Pajamos po kontakto gali būti netikslūs arba 0.`
-    );
-    return map;
-  }
-  const rows = (data ?? []) as Array<{ work_item_id?: string; first_occurred_at?: string }>;
-  for (const r of rows) {
-    const wid = String(r.work_item_id ?? "");
-    const t = String(r.first_occurred_at ?? "");
-    if (wid && t) map.set(wid, t);
-  }
-  if (CRM_ANALYTICS_DEBUG) {
-    console.log(`[salesAnalyticsDashboard] first_contact RPC rows: ${map.size}`);
-  }
-  return map;
-}
-
 function matchClientKeyFromMaps(
   inv: { company_code: string | null; client_id: string | null },
   codeToKey: Map<string, string>,
@@ -469,43 +435,30 @@ export async function fetchSalesDashboard(
 
   const todayIso = vilniusTodayDateString();
   const weekStartIso = vilniusMondayOfWeekIso(todayIso);
-
-  const rangeStart = vilniusStartUtc(range.from);
-  const rangeEnd = vilniusEndUtc(range.to);
+  const salesRange = resolveSalesKpiRange(period, range, todayIso);
+  const dataUnionFrom = minIsoDate(range.from, salesRange.from);
+  const dataUnionTo = maxIsoDate(range.to, salesRange.to);
+  const fetchStartUtc = vilniusStartUtc(dataUnionFrom);
+  const fetchEndUtc = vilniusEndUtc(dataUnionTo);
 
   if (CRM_ANALYTICS_DEBUG) {
     console.log(
-      `[salesAnalyticsDashboard] range=${JSON.stringify(range)} fetchUtc=[${rangeStart.slice(0, 19)}..${rangeEnd.slice(0, 19)}] week=${weekStartIso}..${todayIso}`
+      `[salesAnalyticsDashboard] range=${JSON.stringify(range)} salesKpi=${JSON.stringify(salesRange)} union=${dataUnionFrom}..${dataUnionTo} fetchUtc=[${fetchStartUtc.slice(0, 19)}..${fetchEndUtc.slice(0, 19)}] week=${weekStartIso}..${todayIso}`
     );
   }
 
-  // KPI per spec: tik pagal pasirinktą laikotarpį (be today/week split KPI bloke).
-  // Vis tiek paliekam weekStartIso/todayIso loguose, nes jie naudingi debug'ui.
-  phaseLog(requestId, "kpi_start", { todayIso, weekStartIso });
+  phaseLog(requestId, "kpi_start", { todayIso, weekStartIso, salesRange, dataUnionFrom, dataUnionTo });
   phaseLog(requestId, "kpi_end");
 
-  const allTimeActivityStart = vilniusStartUtc(REVENUE_ALL_TIME_ACTIVITY_FROM_ISO);
-  const allTimeActivityEnd = vilniusEndUtc(todayIso);
-
   phaseLog(requestId, "parallel_fetch_start", {
-    rangeStart: rangeStart.slice(0, 19),
-    rangeEnd: rangeEnd.slice(0, 19),
-    allTimeStart: allTimeActivityStart.slice(0, 19),
-    allTimeEnd: allTimeActivityEnd.slice(0, 19),
+    fetchStart: fetchStartUtc.slice(0, 19),
+    fetchEnd: fetchEndUtc.slice(0, 19),
   });
-  const [activitiesRes, activitiesAllTimeRes, workResT, projResT, firstByWorkT] = await Promise.all([
+  const [activitiesRes, workResT] = await Promise.all([
     withTimeout("activities_union_fetch", async () => {
       const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "activities_union_fetch", TIMEOUT_MS);
       try {
-        return await fetchActivitiesInRange(supabase, rangeStart, rangeEnd, signal);
-      } finally {
-        dispose();
-      }
-    }, TIMEOUT_MS, logs),
-    withTimeout("activities_all_time_fetch", async () => {
-      const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "activities_all_time_fetch", TIMEOUT_MS);
-      try {
-        return await fetchActivitiesInRange(supabase, allTimeActivityStart, allTimeActivityEnd, signal);
+        return await fetchActivitiesInRange(supabase, fetchStartUtc, fetchEndUtc, signal);
       } finally {
         dispose();
       }
@@ -514,22 +467,6 @@ export async function fetchSalesDashboard(
       const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "project_work_items", TIMEOUT_MS);
       try {
         return await supabase.from("project_work_items").select("id,client_key,project_id,picked_at").abortSignal(signal);
-      } finally {
-        dispose();
-      }
-    }, TIMEOUT_MS, logs),
-    withTimeout("projects", async () => {
-      const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "projects", TIMEOUT_MS);
-      try {
-        return await supabase.from("projects").select("id,name").abortSignal(signal);
-      } finally {
-        dispose();
-      }
-    }, TIMEOUT_MS, logs),
-    withTimeout("first_contact_rpc", async () => {
-      const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "first_contact_rpc", TIMEOUT_MS);
-      try {
-        return await fetchFirstContactByWorkItem(supabase, warnings, signal);
       } finally {
         dispose();
       }
@@ -550,35 +487,14 @@ export async function fetchSalesDashboard(
   );
   if (activitiesErr) warnings.push(`Veiklos įrašai: ${activitiesErr}`);
   if (actTrunc) warnings.push(`Veiklos įrašai apkirpti po ${MAX_ACTIVITY_ROWS.toLocaleString("lt-LT")} eilučių. Rodikliai gali būti netikslūs.`);
-  if (CRM_ANALYTICS_DEBUG) console.log(`[salesAnalyticsDashboard] activity rows: ${activityRowCount}`);
-
-  const unionActsAllTime = activitiesAllTimeRes.ok ? activitiesAllTimeRes.value.rows : [];
-  const allTimeActTrunc = activitiesAllTimeRes.ok ? activitiesAllTimeRes.value.truncated : false;
-  setLogNote(
-    logs,
-    "activities_all_time_fetch",
-    activitiesAllTimeRes.ok
-      ? `rows=${activitiesAllTimeRes.value.rowCount}${activitiesAllTimeRes.value.truncated ? " truncated=1" : ""}${activitiesAllTimeRes.value.error ? ` err=${activitiesAllTimeRes.value.error}` : ""}`
-      : activitiesAllTimeRes.error
-  );
-  if (activitiesAllTimeRes.ok && activitiesAllTimeRes.value.error) {
-    warnings.push(`Viso laikotarpio veiklos įrašai: ${activitiesAllTimeRes.value.error}`);
-  }
-  if (!activitiesAllTimeRes.ok) warnings.push(`Viso laikotarpio veikla: ${activitiesAllTimeRes.error}`);
-  if (allTimeActTrunc) {
-    warnings.push(
-      `Viso laikotarpio veiklos istorija apkirpta po ${MAX_ACTIVITY_ROWS.toLocaleString("lt-LT")} eilučių. Sukauptos pajamos ir „Vid. € / skambutį“ gali būti netikslūs.`
-    );
-  }
 
   const rangeSlice = sliceByRange(unionActs, range);
+  const salesSlice = sliceByRange(unionActs, salesRange);
   const rangeDays = eachDayInclusive(range.from, range.to);
-  phaseLog(requestId, "derive_range", { activityRowCount, rangeSlice: rangeSlice.length, rangeDays: rangeDays.length });
+  phaseLog(requestId, "derive_range", { activityRowCount, rangeSlice: rangeSlice.length, salesSlice: salesSlice.length, rangeDays: rangeDays.length });
   const bestCallTimes = deriveBestCallTimes(rangeSlice);
 
   const workRes = workResT.ok ? workResT.value : null;
-  const projRes = projResT.ok ? projResT.value : null;
-  const firstByWork = firstByWorkT.ok ? firstByWorkT.value : new Map<string, string>();
   setLogNote(
     logs,
     "project_work_items",
@@ -586,21 +502,10 @@ export async function fetchSalesDashboard(
       ? (workResT.value.error ? `err=${workResT.value.error.message}` : `rows=${(workResT.value.data ?? []).length}`)
       : workResT.error
   );
-  setLogNote(
-    logs,
-    "projects",
-    projResT.ok
-      ? (projResT.value.error ? `err=${projResT.value.error.message}` : `rows=${(projResT.value.data ?? []).length}`)
-      : projResT.error
-  );
-  setLogNote(logs, "first_contact_rpc", firstByWorkT.ok ? `rows=${firstByWork.size}` : firstByWorkT.error);
   phaseLog(requestId, "refs_end");
 
   if (workRes && workRes.error) warnings.push(`Darbo eilutės: ${workRes.error.message}`);
-  if (projRes && projRes.error) warnings.push(`Projektai: ${projRes.error.message}`);
   if (!workResT.ok) warnings.push(`Darbo eilutės: ${workResT.error}`);
-  if (!projResT.ok) warnings.push(`Projektai: ${projResT.error}`);
-  if (!firstByWorkT.ok) warnings.push(`Pirmas kontaktas: ${firstByWorkT.error}`);
 
   const workItems = ((workRes?.data ?? []) as Array<{
     id: string;
@@ -608,23 +513,15 @@ export async function fetchSalesDashboard(
     project_id: string;
     picked_at: string;
   }>);
-  phaseLog(requestId, "refs_rows", { projects: (projRes?.data ?? []).length, workItems: workItems.length, firstByWork: firstByWork.size });
-
-  const projectNames = new Map<string, string>();
-  for (const p of projRes?.data ?? []) {
-    projectNames.set(String((p as { id: string }).id), String((p as { name: string }).name ?? ""));
-  }
+  phaseLog(requestId, "refs_rows", { workItems: workItems.length });
 
   const workToProject = new Map<string, string>();
-  const clientToWorks = new Map<string, typeof workItems>();
   const workToClient = new Map<string, string>();
   for (const w of workItems) {
     const wid = String(w.id);
     const ck = String(w.client_key ?? "");
     workToProject.set(wid, String(w.project_id));
     workToClient.set(wid, ck);
-    if (!clientToWorks.has(ck)) clientToWorks.set(ck, []);
-    clientToWorks.get(ck)!.push(w);
   }
 
   const clientKeys = [...new Set(workItems.map((w) => String(w.client_key ?? "")))].filter(Boolean);
@@ -668,46 +565,40 @@ export async function fetchSalesDashboard(
   const { codeToKey, idOnlyToKey } = buildInvoiceLookupMaps(keyParts);
 
   const isActualuText = (s: string) => /aktualu\s+pagal\s+poreikį/i.test(String(s ?? "").trim());
-  const latestStatusByClientAllTime = new Map<string, { occurred_at: string; actualu: boolean }>();
-  let totalCallsAllTime = 0;
-  for (const a of unionActsAllTime) {
-    if (a.action_type === "call") totalCallsAllTime += 1;
+
+  /** KPI „Pardavimai“: naujausia būsena ir pirmas skambutis klientui tik `salesRange` veikloje. */
+  const latestStatusByClientSales = new Map<string, { occurred_at: string; actualu: boolean }>();
+  const firstCallByClientSales = new Map<string, { occurred_at: string; projectId: string }>();
+  let totalCallsInSalesRange = 0;
+  for (const a of salesSlice) {
+    const at = a.action_type;
+    const pid = workToProject.get(a.work_item_id);
+    if (at === "call") totalCallsInSalesRange += 1;
     const ck = workToClient.get(a.work_item_id);
     if (!ck) continue;
     const actualu = isActualuText(a.next_action) || isActualuText(a.call_status);
-    const prev = latestStatusByClientAllTime.get(ck);
-    if (!prev || a.occurred_at > prev.occurred_at) {
-      latestStatusByClientAllTime.set(ck, { occurred_at: a.occurred_at, actualu });
+    const prevSt = latestStatusByClientSales.get(ck);
+    if (!prevSt || a.occurred_at > prevSt.occurred_at) {
+      latestStatusByClientSales.set(ck, { occurred_at: a.occurred_at, actualu });
     }
-  }
-
-  const firstCallByClientAllTime = new Map<string, { occurred_at: string; projectId: string }>();
-  for (const w of workItems) {
-    const wid = String(w.id);
-    const t0 = firstByWork.get(wid);
-    if (!t0) continue;
-    const ck = String(w.client_key ?? "");
-    if (!ck) continue;
-    const pid = String(w.project_id);
-    const prev = firstCallByClientAllTime.get(ck);
-    if (!prev || t0 < prev.occurred_at) {
-      firstCallByClientAllTime.set(ck, { occurred_at: t0, projectId: pid });
+    if (at === "call" && pid) {
+      const prevCall = firstCallByClientSales.get(ck);
+      if (!prevCall || a.occurred_at < prevCall.occurred_at) {
+        firstCallByClientSales.set(ck, { occurred_at: a.occurred_at, projectId: pid });
+      }
     }
   }
 
   let totalCallsInRange = 0;
   let answeredCallsInRange = 0;
   let commercialActionsInRange = 0;
-  const projectAgg = new Map<string, { calls: number }>();
   const trendByDay = new Map<string, { calls: number; answered: number; notAnswered: number }>();
   for (const d of rangeDays) {
     trendByDay.set(d, { calls: 0, answered: 0, notAnswered: 0 });
   }
 
-  // Latest status bucket per client (within selected range), used for period project revenue split.
+  /** Konversijos KPI: sąskaitos priskyrimui pasirinktame `range` (naujausia būsena, pirmas skambutis intervale). */
   const latestStatusByClient = new Map<string, { occurred_at: string; actualu: boolean }>();
-
-  // First call per client within selected range (used for invoice attribution rule).
   const firstCallByClient = new Map<string, { occurred_at: string; projectId: string }>();
 
   for (const a of rangeSlice) {
@@ -715,15 +606,6 @@ export async function fetchSalesDashboard(
     if (at === "commercial") commercialActionsInRange += 1;
 
     const pid = workToProject.get(a.work_item_id);
-    if (pid) {
-      if (!projectAgg.has(pid)) {
-        projectAgg.set(pid, { calls: 0 });
-      }
-      const g = projectAgg.get(pid)!;
-      if (at === "call") {
-        g.calls += 1;
-      }
-    }
 
     if (at === "call") {
       totalCallsInRange += 1;
@@ -756,39 +638,22 @@ export async function fetchSalesDashboard(
   }
 
   phaseLog(requestId, "invoices_start");
-  const [invRes, invAllTimeRes] = await Promise.all([
-    withTimeout("invoices_range", async () => {
-      const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "invoices_range", TIMEOUT_MS);
-      try {
-        return await supabase
-          .from("invoices")
-          .select("invoice_id,company_code,client_id,invoice_date,amount")
-          .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
-          .gte("invoice_date", range.from)
-          .lte("invoice_date", range.to)
-          .order("invoice_date", { ascending: true })
-          .limit(MAX_INVOICE_ROWS)
-          .abortSignal(signal);
-      } finally {
-        dispose();
-      }
-    }, TIMEOUT_MS, logs),
-    withTimeout("invoices_all_time", async () => {
-      const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "invoices_all_time", TIMEOUT_MS);
-      try {
-        return await supabase
-          .from("invoices")
-          .select("invoice_id,company_code,client_id,invoice_date,amount")
-          .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
-          .lte("invoice_date", todayIso)
-          .order("invoice_date", { ascending: true })
-          .limit(MAX_INVOICE_ROWS)
-          .abortSignal(signal);
-      } finally {
-        dispose();
-      }
-    }, TIMEOUT_MS, logs),
-  ]);
+  const invRes = await withTimeout("invoices_union", async () => {
+    const { signal, dispose } = buildTimeoutSignalWithLogging(requestId, "invoices_union", TIMEOUT_MS);
+    try {
+      return await supabase
+        .from("invoices")
+        .select("invoice_id,company_code,client_id,invoice_date,amount")
+        .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
+        .gte("invoice_date", dataUnionFrom)
+        .lte("invoice_date", dataUnionTo)
+        .order("invoice_date", { ascending: true })
+        .limit(MAX_INVOICE_ROWS)
+        .abortSignal(signal);
+    } finally {
+      dispose();
+    }
+  }, TIMEOUT_MS, logs);
   phaseLog(requestId, "invoices_end");
 
   const invResp = invRes.ok ? invRes.value : null;
@@ -796,40 +661,28 @@ export async function fetchSalesDashboard(
   if (!invRes.ok) warnings.push(`Sąskaitos: ${invRes.error}`);
   setLogNote(
     logs,
-    "invoices_range",
+    "invoices_union",
     invRes.ok ? (invResp?.error ? `err=${invResp.error.message}` : `rows=${(invResp?.data ?? []).length}`) : invRes.error
   );
 
-  const invAllResp = invAllTimeRes.ok ? invAllTimeRes.value : null;
-  if (invAllResp && invAllResp.error) warnings.push(`Viso laiko sąskaitos: ${invAllResp.error.message}`);
-  if (!invAllTimeRes.ok) warnings.push(`Viso laiko sąskaitos: ${invAllTimeRes.error}`);
-  setLogNote(
-    logs,
-    "invoices_all_time",
-    invAllTimeRes.ok ? (invAllResp?.error ? `err=${invAllResp.error.message}` : `rows=${(invAllResp?.data ?? []).length}`) : invAllTimeRes.error
-  );
-
-  const invoices =
-    ((invResp?.data ?? []) as Array<{
-      invoice_id: string;
-      company_code: string | null;
-      client_id: string | null;
-      invoice_date: string;
-      amount: string | number;
-    }>) ?? [];
-  phaseLog(requestId, "invoices_rows", { invoices: invoices.length });
-  if (invoices.length >= MAX_INVOICE_ROWS) {
+  type InvRow = {
+    invoice_id: string;
+    company_code: string | null;
+    client_id: string | null;
+    invoice_date: string;
+    amount: string | number;
+  };
+  const invoiceRowsUnion = ((invResp?.data ?? []) as InvRow[]) ?? [];
+  phaseLog(requestId, "invoices_rows", { invoices: invoiceRowsUnion.length });
+  if (invoiceRowsUnion.length >= MAX_INVOICE_ROWS) {
     warnings.push(`Sąskaitos apkirptos po ${MAX_INVOICE_ROWS.toLocaleString("lt-LT")} eilučių.`);
   }
 
-  const revenueByProjectDirect = new Map<string, number>();
-  const revenueByProjectInfluenced = new Map<string, number>();
-  const invoiceSeenPeriod = new Set<string>();
+  const invoiceSeenConversion = new Set<string>();
   const clientsWithOrders = new Set<string>();
-
-  for (const inv of invoices) {
+  for (const inv of invoiceRowsUnion) {
     const iid = String((inv as { invoice_id?: string }).invoice_id ?? "");
-    if (!iid || invoiceSeenPeriod.has(iid)) continue;
+    if (!iid || invoiceSeenConversion.has(iid)) continue;
     const invDay =
       typeof inv.invoice_date === "string" ? inv.invoice_date.slice(0, 10) : String(inv.invoice_date ?? "").slice(0, 10);
     if (!invDay || invDay < range.from || invDay > range.to) continue;
@@ -841,47 +694,24 @@ export async function fetchSalesDashboard(
     );
     if (!matchedCk) continue;
     const firstCall = firstCallByClient.get(matchedCk);
-    if (!firstCall) continue; // rule: if no call -> no revenue attribution
+    if (!firstCall) continue;
     const callDay = firstCall.occurred_at.slice(0, 10);
-    if (!callDay || invDay <= callDay) continue; // rule: invoice_date must be > call_date
+    if (!callDay || invDay <= callDay) continue;
     const amt = typeof inv.amount === "number" ? inv.amount : Number(inv.amount);
     if (!Number.isFinite(amt)) continue;
-    invoiceSeenPeriod.add(iid);
+    invoiceSeenConversion.add(iid);
     clientsWithOrders.add(matchedCk);
-    const influenced = latestStatusByClient.get(matchedCk)?.actualu === true;
-
-    const pid = firstCall.projectId;
-    if (influenced) {
-      revenueByProjectInfluenced.set(pid, (revenueByProjectInfluenced.get(pid) ?? 0) + amt);
-    } else {
-      revenueByProjectDirect.set(pid, (revenueByProjectDirect.get(pid) ?? 0) + amt);
-    }
   }
 
-  let kpiDirectAllTime = 0;
-  let kpiInfluencedAllTime = 0;
-
-  const invoicesAllTime =
-    ((invAllResp?.data ?? []) as Array<{
-      invoice_id: string;
-      company_code: string | null;
-      client_id: string | null;
-      invoice_date: string;
-      amount: string | number;
-    }>) ?? [];
-  if (invoicesAllTime.length >= MAX_INVOICE_ROWS) {
-    warnings.push(
-      `Viso laiko PVM sąskaitų sąrašas apkirptas po ${MAX_INVOICE_ROWS.toLocaleString("lt-LT")} eilučių. Sukauptos pajamos gali būti mažesnės nei tikrosios.`
-    );
-  }
-
-  const invoiceSeenAllTime = new Set<string>();
-  for (const inv of invoicesAllTime) {
+  let kpiDirectSales = 0;
+  let kpiInfluencedSales = 0;
+  const invoiceSeenKpi = new Set<string>();
+  for (const inv of invoiceRowsUnion) {
     const iid = String((inv as { invoice_id?: string }).invoice_id ?? "");
-    if (!iid || invoiceSeenAllTime.has(iid)) continue;
+    if (!iid || invoiceSeenKpi.has(iid)) continue;
     const invDay =
       typeof inv.invoice_date === "string" ? inv.invoice_date.slice(0, 10) : String(inv.invoice_date ?? "").slice(0, 10);
-    if (!invDay || invDay > todayIso) continue;
+    if (!invDay || invDay < salesRange.from || invDay > salesRange.to) continue;
 
     const matchedCk = matchClientKeyFromMaps(
       inv as { company_code: string | null; client_id: string | null },
@@ -889,44 +719,23 @@ export async function fetchSalesDashboard(
       idOnlyToKey
     );
     if (!matchedCk) continue;
-    const firstCall = firstCallByClientAllTime.get(matchedCk);
+    const firstCall = firstCallByClientSales.get(matchedCk);
     if (!firstCall) continue;
     const callDay = firstCall.occurred_at.slice(0, 10);
     if (!callDay || invDay <= callDay) continue;
     const amt = typeof inv.amount === "number" ? inv.amount : Number(inv.amount);
     if (!Number.isFinite(amt)) continue;
-    invoiceSeenAllTime.add(iid);
-    const influencedAll = latestStatusByClientAllTime.get(matchedCk)?.actualu === true;
-    if (influencedAll) kpiInfluencedAllTime += amt;
-    else kpiDirectAllTime += amt;
+    invoiceSeenKpi.add(iid);
+    const influencedK = latestStatusByClientSales.get(matchedCk)?.actualu === true;
+    if (influencedK) kpiInfluencedSales += amt;
+    else kpiDirectSales += amt;
   }
-
-  const projectIds = new Set<string>([
-    ...projectAgg.keys(),
-    ...revenueByProjectDirect.keys(),
-    ...revenueByProjectInfluenced.keys(),
-  ]);
-  const projectRows: SalesDashboardProjectRow[] = [];
-  for (const pid of projectIds) {
-    const agg = projectAgg.get(pid) ?? { calls: 0 };
-    const d = revenueByProjectDirect.get(pid) ?? 0;
-    const inf = revenueByProjectInfluenced.get(pid) ?? 0;
-    projectRows.push({
-      projectId: pid,
-      projectName: projectNames.get(pid) ?? "—",
-      calls: agg.calls,
-      directRevenueEur: d,
-      influencedRevenueEur: inf,
-      totalRevenueEur: d + inf,
-    });
-  }
-  projectRows.sort((a, b) => b.totalRevenueEur - a.totalRevenueEur || a.projectName.localeCompare(b.projectName));
 
   const trend: SalesDashboardTrendDay[] = rangeDays.map((day) => {
     const b = trendByDay.get(day) ?? { calls: 0, answered: 0, notAnswered: 0 };
     return { date: day, calls: b.calls, answered: b.answered, notAnswered: b.notAnswered };
   });
-  phaseLog(requestId, "finalize", { projectRows: projectRows.length, trendDays: trend.length, warnings: warnings.length });
+  phaseLog(requestId, "finalize", { trendDays: trend.length, warnings: warnings.length });
 
   logs.push({
     label: "fetchSalesDashboard_total",
@@ -958,12 +767,11 @@ export async function fetchSalesDashboard(
       calls: totalCallsInRange,
       answeredCalls: answeredCallsInRange,
       commercialActions: commercialActionsInRange,
-      directRevenueEur: kpiDirectAllTime,
-      influencedRevenueEur: kpiInfluencedAllTime,
-      avgEurPerCall: totalCallsAllTime > 0 ? kpiDirectAllTime / totalCallsAllTime : null,
+      directRevenueEur: kpiDirectSales,
+      influencedRevenueEur: kpiInfluencedSales,
+      avgEurPerCall: totalCallsInSalesRange > 0 ? kpiDirectSales / totalCallsInSalesRange : null,
       conversionPercent: totalCallsInRange > 0 ? Math.round((clientsWithOrders.size / totalCallsInRange) * 1000) / 10 : null,
     },
-    projects: projectRows,
     trend,
     bestCallTimes,
     warnings,

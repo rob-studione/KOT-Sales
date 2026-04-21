@@ -1,6 +1,5 @@
 import type { SalesDashboardData } from "@/lib/crm/salesAnalyticsDashboard";
 import { formatMoney } from "@/lib/crm/format";
-import Link from "next/link";
 import { CallsByDayBarChart } from "@/components/crm/CallsByDayBarChart";
 import { SalesAnalyticsBestCallTimeClient } from "@/components/crm/SalesAnalyticsBestCallTimeClient";
 
@@ -13,7 +12,7 @@ export function SalesAnalyticsDashboardView({
   monthCallsTrend: Array<{ date: string; calls: number }>;
   monthRange: { from: string; to: string };
 }) {
-  const { kpi, projects, warnings, bestCallTimes } = data;
+  const { kpi, warnings, bestCallTimes } = data;
 
   const directDisplay = kpi.directRevenueEur === 0 ? "—" : formatMoney(kpi.directRevenueEur);
   const influencedDisplay = kpi.influencedRevenueEur === 0 ? "—" : formatMoney(kpi.influencedRevenueEur);
@@ -60,69 +59,20 @@ export function SalesAnalyticsDashboardView({
           Pardavimai
         </h2>
         <p className="mt-1 text-xs text-zinc-500">
-          Sukaupta per visą laiką: PVM sąskaitos pagal išrašymo datą (<span className="font-medium text-zinc-700">invoice_date</span>) iki
-          šiandien. <span className="font-medium text-zinc-700">Nepriklauso</span> nuo viršuje pasirinkto „Ši savaitė / mėnuo“ filtro.
-          Sąskaita priskiriama, jei data vėlesnė nei pirmas kliento kontaktas; direct / influenced skirstoma pagal naujausią veiklos būseną.
+          PVM sąskaitos pagal <span className="font-medium text-zinc-700">invoice_date</span> fiksuotame pardavimų lange: jei viršuje pasirinkta{" "}
+          <span className="font-medium text-zinc-700">Pasirinkti laikotarpį</span> — naudojamos tos pačios <span className="font-medium text-zinc-700">nuo / iki</span>{" "}
+          datos; kitu atveju — <span className="font-medium text-zinc-700">paskutinės 30 kalendorinių dienų</span> iki šiandien (Vilnius). Sąskaita
+          įtraukiama, jei sąskaitos data vėlesnė nei pirmas skambutis tame lange; direct / influenced skirstoma pagal naujausią veiklos būseną tame
+          lange.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <KpiCard label="Direct pajamos (€, viso laiko)" value={directDisplay} />
-          <KpiCard label="Influenced pajamos (€, viso laiko)" value={influencedDisplay} />
+          <KpiCard label="Direct pajamos (€, KPI langas)" value={directDisplay} />
+          <KpiCard label="Influenced pajamos (€, KPI langas)" value={influencedDisplay} />
           <KpiCard
-            label="Vid. € / skambutį (viso laiko)"
+            label="Vid. € / skambutį (KPI langas)"
             value={avgDisplay}
-            sub="direct pajamos / visų laikų skambučių sk."
+            sub="direct pajamos / skambučių sk. tame pačiame KPI lange"
           />
-        </div>
-      </section>
-
-      <section aria-labelledby="projects-heading">
-        <h2 id="projects-heading" className="text-sm font-semibold text-zinc-900">
-          Projektai
-        </h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          Pagal pasirinktą laikotarpį (skambučiai ir pajamos iš PVM sąskaitų, jei sąskaita įvyko po skambučio).
-        </p>
-        <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-zinc-100 bg-zinc-50/80 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-3 py-2">Projektas</th>
-                <th className="px-3 py-2 text-right">Skambučiai</th>
-                <th className="px-3 py-2 text-right">Direct €</th>
-                <th className="px-3 py-2 text-right">Influenced €</th>
-                <th className="px-3 py-2 text-right">Viso €</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-zinc-500">
-                    Nėra duomenų pasirinktam laikotarpiui.
-                  </td>
-                </tr>
-              ) : (
-                projects.map((p) => (
-                  <tr key={p.projectId} className="border-t border-zinc-100">
-                    <td className="max-w-[14rem] truncate px-3 py-2 font-medium text-zinc-900">
-                      <Link href={`/projektai/${p.projectId}`} className="hover:underline">
-                        {p.projectName}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-zinc-800">{p.calls}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-zinc-900">
-                      {formatMoney(p.directRevenueEur)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-zinc-900">
-                      {formatMoney(p.influencedRevenueEur)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-bold text-zinc-900">
-                      {formatMoney(p.totalRevenueEur)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
         </div>
       </section>
 

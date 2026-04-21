@@ -68,6 +68,11 @@ export function subtractOneCivilDayVilnius(yyyyMmDd: string): string {
   return addCivilDaysIso(yyyyMmDd, -1);
 }
 
+/** Civilinė diena ±`deltaDays` pagal Vilnių (YYYY-MM-DD). */
+export function addCivilDaysVilnius(yyyyMmDd: string, deltaDays: number): string {
+  return addCivilDaysIso(yyyyMmDd, deltaDays);
+}
+
 /** Pirmadienis (ISO savaitė) — kalendorinės dienos eilutė Vilniuje. */
 export function vilniusMondayOfWeekIso(todayIso: string): string {
   let cur = todayIso;
