@@ -2,7 +2,7 @@ import { requireAdmin } from "@/lib/crm/currentUser";
 import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { updateGlobalSettingsAction } from "@/lib/crm/crmSettingsActions";
-import { getPublicBuildInfo } from "@/lib/buildInfo";
+import { getRuntimeBuildInfo } from "@/app/runtime/env";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +32,10 @@ export default async function BendriSettingsPage() {
   const input =
     "mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm shadow-black/5 focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900/10";
 
-  const buildInfo = getPublicBuildInfo();
-  const versionLabel = buildInfo.appVersion ? `v${buildInfo.appVersion}` : "—";
-  const releaseLabel = buildInfo.buildDateIso ?? "—";
-  const commitLabel = buildInfo.commitHash ?? "—";
+  const buildInfo = getRuntimeBuildInfo();
+  const versionLabel = buildInfo.appVersion ? `v${buildInfo.appVersion}` : "nežinoma";
+  const releaseLabel = buildInfo.release ?? buildInfo.buildDateIso ?? "nežinoma";
+  const commitLabel = buildInfo.commitHash ?? "nežinoma";
   const systemSummary = [
     `Versija: ${versionLabel}`,
     `Release: ${releaseLabel}`,

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { formatBuildDateShort, getPublicBuildInfo } from "@/lib/buildInfo";
+import { fetchPublicBuildInfo, formatBuildDateShort, getPublicBuildInfo } from "@/lib/buildInfo";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   BarChart3,
@@ -96,16 +96,15 @@ function linkActive(pathname: string, href: string): boolean {
 }
 
 function klientaiLinkActive(pathname: string, href: string): boolean {
-  if (href === "/klientai") return pathname === "/klientai" || pathname.startsWith("/klientai/");
+  // Parent "Klientai" section stays active via `activeSectionForPath`.
+  // Sub-item "Klientai" must be active only on the exact list route.
+  if (href === "/klientai") return pathname === "/klientai";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function projektaiLinkActive(pathname: string, href: string): boolean {
   if (href === "/projektai") {
-    return (
-      pathname === "/projektai" ||
-      (pathname.startsWith("/projektai/") && !pathname.startsWith("/projektai/naujas"))
-    );
+    return pathname.startsWith("/projektai");
   }
   return pathname === href;
 }
@@ -198,7 +197,17 @@ const SUBMENU_MS = "duration-[180ms]";
 export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
   const pathname = usePathname();
   const routeSection = useMemo(() => activeSectionForPath(pathname), [pathname]);
-  const buildInfo = useMemo(() => getPublicBuildInfo(), []);
+  const [buildInfo, setBuildInfo] = useState(() => getPublicBuildInfo());
+
+  useEffect(() => {
+    const ac = new AbortController();
+    fetchPublicBuildInfo(ac.signal)
+      .then((v) => setBuildInfo(v))
+      .catch(() => {
+        // Ignore: keep env-derived values (or nulls) if endpoint isn't reachable yet.
+      });
+    return () => ac.abort();
+  }, []);
   const versionLabel = buildInfo.appVersion ? `v${buildInfo.appVersion}` : null;
   const dateShort = useMemo(() => formatBuildDateShort(buildInfo.buildDateIso), [buildInfo.buildDateIso]);
   const footerText =
@@ -339,19 +348,32 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                   routeActive ? "bg-zinc-100/80 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
                 ].join(" ")}
               >
-                <button
-                  type="button"
-                  onClick={() => toggleSection(id)}
-                  aria-expanded={expanded}
-                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus:outline-none"
-                >
-                  <SidebarIconSlot icon={SectionIcon} active={routeActive} />
-                  <span className="min-w-0 flex-1 truncate">{label}</span>
-                </button>
+                {id === "projektai" ? (
+                  <Link
+                    href="/projektai"
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus:outline-none"
+                  >
+                    <SidebarIconSlot icon={SectionIcon} active={routeActive} />
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(id)}
+                    aria-expanded={expanded}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus:outline-none"
+                  >
+                    <SidebarIconSlot icon={SectionIcon} active={routeActive} />
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
-                  onClick={() => toggleSection(id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSection(id);
+                  }}
                   aria-expanded={expanded}
                   className="shrink-0 rounded-md p-1.5 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/15"
                 >
