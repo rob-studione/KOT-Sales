@@ -27,7 +27,6 @@ export function getRuntimeBuildInfo(): RuntimeBuildInfo {
 
   const buildDateIso =
     normalizeIsoDate(process.env.BUILD_DATE) ??
-    normalizeIsoDate(process.env.VERCEL_GIT_COMMIT_DATE) ??
     normalizeIsoDate(process.env.NEXT_PUBLIC_BUILD_DATE);
 
   return { appVersion, buildDateIso };

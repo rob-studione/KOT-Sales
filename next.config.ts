@@ -15,10 +15,12 @@ function safeIsoDate(input: string | undefined | null): string {
 }
 
 const vercelCommitHash = safeShortSha(process.env.VERCEL_GIT_COMMIT_SHA);
-const vercelBuildDate = safeIsoDate(process.env.VERCEL_GIT_COMMIT_DATE);
 
 const nextPublicCommitHash = vercelCommitHash || String(process.env.NEXT_PUBLIC_COMMIT_HASH ?? "").trim();
-const nextPublicBuildDate = vercelBuildDate || String(process.env.NEXT_PUBLIC_BUILD_DATE ?? "").trim();
+const nextPublicBuildDate =
+  safeIsoDate(process.env.BUILD_DATE) ||
+  String(process.env.NEXT_PUBLIC_BUILD_DATE ?? "").trim() ||
+  new Date().toISOString().slice(0, 10);
 const nextPublicAppVersion = String(process.env.NEXT_PUBLIC_APP_VERSION ?? "").trim();
 
 const nextConfig: NextConfig = {
