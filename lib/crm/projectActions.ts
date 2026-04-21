@@ -45,6 +45,21 @@ import {
   type SnapshotCandidateRow,
 } from "@/lib/crm/projectSnapshot";
 
+type UpdateProjectsSortOrderResult = { ok: true } | { ok: false; error: string };
+
+function uniqueIdsPreserveOrder(ids: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of ids) {
+    const id = String(raw ?? "").trim();
+    if (!id) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 /** Postgres `date`: tik YYYY-MM-DD arba null. */
 function activityDateForDb(value: unknown): string | null {
   if (value == null) return null;
@@ -1929,6 +1944,32 @@ export async function renameProjectNameAction(
   revalidatePath("/projektai");
   revalidatePath(`/projektai/${projectId}`);
   return { ok: true, name };
+}
+
+export async function updateProjectsSortOrderAction(orderedProjectIds: string[]): Promise<UpdateProjectsSortOrderResult> {
+  const ids = uniqueIdsPreserveOrder(Array.isArray(orderedProjectIds) ? orderedProjectIds : []);
+  if (ids.length === 0) return { ok: false, error: "Trūksta projektų." };
+  if (ids.some((id) => !isValidUuid(id))) return { ok: false, error: "Neteisingas projekto identifikatorius." };
+
+  let supabase;
+  try {
+    supabase = createSupabaseServerClient();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
+  }
+
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return { ok: false, error: "Prisijungimas baigėsi. Perkraukite puslapį." };
+
+  const payload = ids.map((id, i) => ({ id, sort_order: i }));
+  const { error } = await supabase.from("projects").upsert(payload, { onConflict: "id" });
+  if (error) {
+    console.error("[projectActions] updateProjectsSortOrder failed", error);
+    return { ok: false, error: error.message ?? "Nepavyko išsaugoti tvarkos." };
+  }
+
+  revalidatePath("/projektai");
+  return { ok: true };
 }
 
 export async function archiveProjectFormAction(projectId: string, _formData?: FormData): Promise<void> {

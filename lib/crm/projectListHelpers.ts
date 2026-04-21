@@ -6,6 +6,7 @@ export type ProjectListRow = {
   description: string;
   status: string;
   created_at: string;
+  sort_order?: number | null;
   owner_user_id: string | null;
   deleted_at?: string | null;
   project_work_items?: { count: number }[] | null;

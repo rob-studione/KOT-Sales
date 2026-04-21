@@ -2,7 +2,6 @@ import { requireAdmin } from "@/lib/crm/currentUser";
 import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { updateGlobalSettingsAction } from "@/lib/crm/crmSettingsActions";
-import { getRuntimeBuildInfo } from "@/app/runtime/env";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +14,7 @@ export default async function BendriSettingsPage() {
   await requireAdmin({ mode: "redirect", redirectTo: "/dashboard" });
 
   const supabase = await createSupabaseSsrReadOnlyClient();
-  const [{ data: gs }, { data: auth }] = await Promise.all([
-    supabase.from("crm_global_settings").select("*").eq("id", 1).maybeSingle(),
-    supabase.auth.getUser(),
-  ]);
+  const [{ data: gs }] = await Promise.all([supabase.from("crm_global_settings").select("*").eq("id", 1).maybeSingle()]);
 
   const globalSettings: GlobalSettings = {
     timezone: String(gs?.timezone ?? "Europe/Vilnius"),
@@ -31,14 +27,6 @@ export default async function BendriSettingsPage() {
   const label = "text-xs font-medium text-zinc-700";
   const input =
     "mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm shadow-black/5 focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900/10";
-
-  const buildInfo = getRuntimeBuildInfo();
-  const versionLabel = buildInfo.appVersion ? `v${buildInfo.appVersion}` : "nežinoma";
-  const updatedLabel = buildInfo.buildDateIso ?? "nežinoma";
-  const systemSummary = [
-    `Versija: ${versionLabel}`,
-    `Atnaujinta: ${updatedLabel}`,
-  ].join("\n");
 
   return (
     <CrmTableContainer className="pb-10 pt-5">
@@ -78,11 +66,6 @@ export default async function BendriSettingsPage() {
             </div>
           </form>
         </section>
-
-        <div className="mt-8 whitespace-pre-line text-xs leading-5 text-zinc-500">
-          <div className="font-medium text-zinc-600">Sistema</div>
-          {systemSummary}
-        </div>
       </div>
     </CrmTableContainer>
   );

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { fetchPublicBuildInfo, formatBuildDateShort, getPublicBuildInfo } from "@/lib/buildInfo";
+import { fetchPublicBuildInfo, getPublicBuildInfo } from "@/lib/buildInfo";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   BarChart3,
@@ -208,10 +208,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
       });
     return () => ac.abort();
   }, []);
-  const versionLabel = buildInfo.appVersion ? `v${buildInfo.appVersion}` : null;
-  const dateShort = useMemo(() => formatBuildDateShort(buildInfo.buildDateIso), [buildInfo.buildDateIso]);
-  const footerText =
-    versionLabel && dateShort ? `${versionLabel} · ${dateShort}` : versionLabel ? versionLabel : null;
+  const footerText = buildInfo.buildDateIso ? `Atnaujinta ${buildInfo.buildDateIso}` : null;
 
   const [activeProjects, setActiveProjects] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -222,8 +219,9 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
         const supabase = createSupabaseBrowserClient();
         const base = supabase.from("projects");
         const first = await base
-          .select("id,name,status,deleted_at,created_at")
+          .select("id,name,status,deleted_at,created_at,sort_order")
           .eq("status", "active")
+          .order("sort_order", { ascending: true, nullsFirst: false })
           .order("created_at", { ascending: false });
 
         let data: Array<{ id: string; name: string | null }> = [];
@@ -231,10 +229,22 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
           const msg = String(first.error.message ?? "");
           const missingDeletedAt =
             msg.includes("deleted_at") && (msg.includes("does not exist") || msg.includes("column") || msg.includes("42703"));
-          if (missingDeletedAt) {
+          const missingSortOrder =
+            msg.includes("sort_order") && (msg.includes("does not exist") || msg.includes("column") || msg.includes("42703"));
+
+          if (missingSortOrder) {
             const retry = await base
-              .select("id,name,status,created_at")
+              .select("id,name,status,deleted_at,created_at")
               .eq("status", "active")
+              .order("created_at", { ascending: false });
+            if (retry.error) return;
+            const rows = (retry.data ?? []) as any[];
+            data = rows.filter((r) => !("deleted_at" in r) || r.deleted_at == null);
+          } else if (missingDeletedAt) {
+            const retry = await base
+              .select("id,name,status,created_at,sort_order")
+              .eq("status", "active")
+              .order("sort_order", { ascending: true, nullsFirst: false })
               .order("created_at", { ascending: false });
             if (retry.error) return;
             data = (retry.data ?? []) as any;
@@ -259,8 +269,13 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
       }
     }
     run();
+    function onOrderChanged() {
+      run();
+    }
+    window.addEventListener("projects:order-changed", onOrderChanged as EventListener);
     return () => {
       cancelled = true;
+      window.removeEventListener("projects:order-changed", onOrderChanged as EventListener);
     };
   }, []);
 
@@ -465,7 +480,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
       </nav>
 
       {footerText ? (
-        <div className="mt-auto border-t border-zinc-200/70 px-4 py-3 text-xs text-zinc-400">{footerText}</div>
+        <div className="mt-auto border-t border-zinc-200/70 px-4 py-3 text-[11px] text-zinc-400/80">{footerText}</div>
       ) : null}
     </aside>
   );
