@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ROLE_LABELS, type UserRole } from "@/lib/crm/roles";
 
 export type AccountListRow = {
@@ -98,6 +99,45 @@ export function AccountsCardList({
   onRequestDelete: (row: AccountListRow) => void;
 }) {
   const isEmpty = rows.length === 0;
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuPanelRefs = useRef(new Map<string, HTMLDivElement | null>());
+  const menuTriggerRefs = useRef(new Map<string, HTMLButtonElement | null>());
+
+  const closeMenu = useCallback(() => setOpenMenuId(null), []);
+
+  useEffect(() => {
+    if (openMenuId == null) return;
+    const openId = openMenuId;
+
+    function onPointerDownCapture(e: PointerEvent) {
+      const target = e.target as Node | null;
+      if (!target) return;
+
+      const panel = menuPanelRefs.current.get(openId);
+      const trigger = menuTriggerRefs.current.get(openId);
+      if (panel?.contains(target) || trigger?.contains(target)) return;
+
+      // If user opened another row menu trigger, let that click handler run,
+      // but still close the previous menu via controlled state in the trigger onClick.
+      if (target instanceof Element) {
+        const anyTrigger = target.closest("[data-accounts-row-menu-trigger='1']") as HTMLElement | null;
+        if (anyTrigger) return;
+      }
+
+      closeMenu();
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") closeMenu();
+    }
+
+    document.addEventListener("pointerdown", onPointerDownCapture, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDownCapture, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [openMenuId, closeMenu]);
 
   return (
     <div className="space-y-3">
@@ -164,6 +204,7 @@ export function AccountsCardList({
                 className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50"
                 onClick={(e) => {
                   e.stopPropagation();
+                  closeMenu();
                   onOpen(r);
                 }}
               >
@@ -171,50 +212,86 @@ export function AccountsCardList({
                 Redaguoti
               </button>
 
-              <details className="relative" onClick={(e) => e.stopPropagation()}>
-                <summary
+              <div className="relative" onPointerDown={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  data-accounts-row-menu-trigger="1"
+                  data-row-id={r.id}
+                  ref={(el) => {
+                    menuTriggerRefs.current.set(r.id, el);
+                  }}
                   className="inline-flex h-10 w-11 cursor-pointer list-none items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 shadow-sm hover:bg-zinc-50"
                   aria-label="Daugiau veiksmų"
+                  aria-haspopup="menu"
+                  aria-expanded={openMenuId === r.id}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMenuId((prev) => (prev === r.id ? null : r.id));
+                  }}
                 >
                   <IconDots className="h-5 w-5" />
-                </summary>
-                <div className="absolute right-0 top-12 z-20 w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg">
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-50"
-                    onClick={() => onOpen(r)}
-                  >
-                    <IconEye className="h-4 w-4 text-zinc-500" />
-                    Peržiūrėti
-                  </button>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-50"
-                    onClick={() => console.log("[accounts] deactivate click", { id: r.id })}
-                  >
-                    <IconPower className="h-4 w-4 text-zinc-500" />
-                    Deaktyvuoti
-                  </button>
-                  <div className="h-px bg-zinc-100" aria-hidden />
-                  <button
-                    type="button"
-                    disabled={r.id === currentUserId}
-                    className={[
-                      "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm",
-                      r.id === currentUserId
-                        ? "cursor-not-allowed text-zinc-300"
-                        : "text-red-700 hover:bg-red-50",
-                    ].join(" ")}
-                    onClick={() => {
-                      if (r.id === currentUserId) return;
-                      onRequestDelete(r);
+                </button>
+
+                {openMenuId === r.id ? (
+                  <div
+                    ref={(el) => {
+                      menuPanelRefs.current.set(r.id, el);
                     }}
+                    role="menu"
+                    className="absolute right-0 top-12 z-20 w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg"
+                    onPointerDown={(e) => e.stopPropagation()}
                   >
-                    <IconTrash className={["h-4 w-4", r.id === currentUserId ? "text-zinc-300" : "text-red-600"].join(" ")} />
-                    Ištrinti
-                  </button>
-                </div>
-              </details>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeMenu();
+                        onOpen(r);
+                      }}
+                    >
+                      <IconEye className="h-4 w-4 text-zinc-500" />
+                      Peržiūrėti
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeMenu();
+                        console.log("[accounts] deactivate click", { id: r.id });
+                      }}
+                    >
+                      <IconPower className="h-4 w-4 text-zinc-500" />
+                      Deaktyvuoti
+                    </button>
+                    <div className="h-px bg-zinc-100" aria-hidden />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={r.id === currentUserId}
+                      className={[
+                        "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm",
+                        r.id === currentUserId
+                          ? "cursor-not-allowed text-zinc-300"
+                          : "text-red-700 hover:bg-red-50",
+                      ].join(" ")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (r.id === currentUserId) return;
+                        closeMenu();
+                        onRequestDelete(r);
+                      }}
+                    >
+                      <IconTrash className={["h-4 w-4", r.id === currentUserId ? "text-zinc-300" : "text-red-600"].join(" ")} />
+                      Ištrinti
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         ))
