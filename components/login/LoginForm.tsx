@@ -48,12 +48,12 @@ export function LoginForm() {
     const base = envBase || window.location.origin;
     const normalized = base.replace(/\/+$/, "");
     if (normalized.startsWith("http://localhost") || normalized.includes("localhost:")) {
-      return `${prod}/auth/confirm`;
+      return `${prod}/auth/recovery`;
     }
     if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
-      return `${normalized}/auth/confirm`;
+      return `${normalized}/auth/recovery`;
     }
-    return `${prod}/auth/confirm`;
+    return `${prod}/auth/recovery`;
   }
 
   return (

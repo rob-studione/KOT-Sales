@@ -4,49 +4,33 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   createSupabaseAuthConfirmBrowserClient,
+  createSupabaseBrowserClient,
   resetSupabaseAuthConfirmBrowserClient,
   resetSupabaseBrowserClient,
 } from "@/lib/supabase/browser";
 import {
   parseAuthParamsFromWindow,
-  parseHashParams,
   normalizeAuthType,
-  isPasswordSetupFlow,
   looksLikeOpaqueOtpToken,
-  isRecoveryPkceCodeOnlyRedirect,
-  type AuthFlowType,
 } from "@/lib/login/authEmailLinkParams";
 import { waitForSupabaseSessionAfterAuth } from "@/lib/login/waitForSupabaseSession";
 
 type Phase = "verifying" | "set_password" | "done" | "error";
 
-const AUTH_CONFIRM_DEBUG =
-  process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_AUTH_CONFIRM_DEBUG === "1";
+const DEBUG = process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_AUTH_CONFIRM_DEBUG === "1";
 
-const SENSITIVE_KEYS = new Set([
-  "access_token",
-  "refresh_token",
-  "token",
-  "token_hash",
-  "code",
-  "provider_token",
-  "provider_refresh_token",
-]);
-
-function maskValue(key: string, value: string): string {
-  if (!SENSITIVE_KEYS.has(key)) return value;
-  const v = String(value ?? "");
-  if (v.length <= 10) return `[${key}:len=${v.length}]`;
-  return `[${key}:${v.slice(0, 4)}…${v.slice(-4)} len=${v.length}]`;
+function authRecoveryLog(message: string, data?: Record<string, unknown>) {
+  if (!DEBUG) return;
+  // eslint-disable-next-line no-console -- intentional field diagnostics for /auth/recovery
+  console.info(`[auth/recovery] ${message}`, data ?? {});
 }
 
-function authConfirmLog(message: string, data?: Record<string, unknown>) {
-  if (!AUTH_CONFIRM_DEBUG) return;
-  // eslint-disable-next-line no-console -- intentional field diagnostics for /auth/confirm
-  console.info(`[auth/confirm] ${message}`, data ?? {});
-}
-
-export function AuthConfirmClient() {
+/**
+ * Password reset from email: PKCE `code` is issued against the `code_challenge` sent with
+ * `resetPasswordForEmail` and the `code_verifier` stored in the browser. Do not call
+ * `signOut` before `exchangeCodeForSession` — signOut removes the verifier from storage.
+ */
+export function AuthRecoveryClient() {
   const router = useRouter();
   const sp = useSearchParams();
   const next = useMemo(() => {
@@ -63,183 +47,93 @@ export function AuthConfirmClient() {
   useEffect(() => {
     let cancelled = false;
     async function run() {
-      if (typeof window !== "undefined") {
-        const early = parseAuthParamsFromWindow();
-        if (isRecoveryPkceCodeOnlyRedirect(early)) {
-          authConfirmLog("delegate_to_auth_recovery", { reason: "pkce_code_without_invite_type" });
-          router.replace(`/auth/recovery${window.location.search}${window.location.hash}`);
-          return;
-        }
-      }
-
       setError(null);
       setInfo(null);
       setPhase("verifying");
       setSessionUserId(null);
       setSessionEmail(null);
 
-      resetSupabaseBrowserClient();
-      resetSupabaseAuthConfirmBrowserClient();
-      const supabase = createSupabaseAuthConfirmBrowserClient();
-
-      try {
-        await supabase.auth.signOut({ scope: "local" });
-      } catch {
-        // ignore
-      }
-
       const params = parseAuthParamsFromWindow();
-      const tokenHash = String(params.token_hash ?? "").trim();
-      const token = String(params.token ?? "").trim();
       const code = String(params.code ?? "").trim();
+      const token = String(params.token ?? "").trim();
       const accessToken = String(params.access_token ?? "").trim();
       const refreshToken = String(params.refresh_token ?? "").trim();
-      const type = normalizeAuthType(params.type) as AuthFlowType;
+      const type = normalizeAuthType(params.type);
 
-      const expectedEmail = String(params.email ?? "").trim().toLowerCase();
-
-      const queryKeys = typeof window !== "undefined" ? Array.from(new URLSearchParams(window.location.search).keys()) : [];
-      const masked: Record<string, string> = {};
-      for (const [k, v] of Object.entries(params)) {
-        masked[k] = maskValue(k, v);
-      }
-
-      authConfirmLog("incoming", {
-        href_masked:
-          typeof window !== "undefined"
-            ? `${window.location.origin}${window.location.pathname}?[query]&[hash]`
-            : null,
-        queryParamKeys: queryKeys,
-        hashParamKeys: Object.keys(parseHashParams(typeof window !== "undefined" ? window.location.hash : "")),
-        mergedKeys: Object.keys(params),
-        type_raw: params.type ?? null,
-        type_normalized: type,
-        params_masked: masked,
+      authRecoveryLog("incoming", {
+        keys: Object.keys(params),
+        type,
+        hasCode: !!code,
+        hasHashTokens: !!(accessToken && refreshToken),
+        hasToken: !!token,
       });
 
       try {
         let chosenBranch = "none";
 
-        // --- Invite / signup: token_hash in URL (email template → app) ---
-        if (tokenHash) {
-          chosenBranch = "token_hash";
-          authConfirmLog("branch", { chosen: chosenBranch, otpVerifyType: type });
-          if (!isPasswordSetupFlow(type) && type !== "unknown") {
-            throw new Error("Netinkamas nuorodos tipas.");
+        if (code) {
+          chosenBranch = "recovery_pkce_code";
+          resetSupabaseAuthConfirmBrowserClient();
+          resetSupabaseBrowserClient();
+          const pkce = createSupabaseBrowserClient();
+          authRecoveryLog("branch", { chosen: chosenBranch });
+          const { error: xErr } = await pkce.auth.exchangeCodeForSession(code);
+          authRecoveryLog("exchangeCodeForSession_result", { error: xErr?.message ?? null });
+          if (xErr) throw xErr;
+          const { userId, email } = await waitForSupabaseSessionAfterAuth(pkce, chosenBranch, authRecoveryLog);
+          if (!cancelled) {
+            setSessionUserId(userId);
+            setSessionEmail(email || null);
+            setPhase("set_password");
+            setInfo("Nustatykite naują slaptažodį.");
           }
-          if (type === "unknown") {
-            throw new Error("Trūksta nuorodos tipo (type).");
-          }
-          const { data: vData, error: vErr } = await supabase.auth.verifyOtp({
-            type: type as "invite" | "recovery" | "signup",
-            token_hash: tokenHash,
-          });
-          authConfirmLog("verifyOtp_result", {
-            branch: chosenBranch,
-            error: vErr?.message ?? null,
-            hasSession: !!vData?.session?.access_token,
-            hasUser: !!vData?.user?.id,
-          });
-          if (vErr) throw vErr;
+          return;
         }
-        // --- Recovery after GET /auth/v1/verify: implicit tokens (legacy redirect_to /auth/confirm) ---
-        else if (type === "recovery" && accessToken && refreshToken) {
+
+        resetSupabaseBrowserClient();
+        resetSupabaseAuthConfirmBrowserClient();
+        const supabase = createSupabaseAuthConfirmBrowserClient();
+        try {
+          await supabase.auth.signOut({ scope: "local" });
+        } catch {
+          // ignore
+        }
+
+        if (accessToken && refreshToken) {
           chosenBranch = "recovery_implicit_hash";
-          authConfirmLog("branch", { chosen: chosenBranch });
-          const { data: sData, error: sErr } = await supabase.auth.setSession({
+          authRecoveryLog("branch", { chosen: chosenBranch });
+          const { error: sErr } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
-          authConfirmLog("setSession_result", {
-            branch: chosenBranch,
-            error: sErr?.message ?? null,
-            hasSession: !!sData?.session?.access_token,
-          });
+          authRecoveryLog("setSession_result", { error: sErr?.message ?? null });
           if (sErr) throw sErr;
-        }
-        // --- PKCE: invite / signup / OAuth (not recovery — recovery PKCE is handled on /auth/recovery) ---
-        else if (code && type !== "recovery") {
-          chosenBranch = `pkce_code_exchange_${type}`;
-          authConfirmLog("branch", { chosen: chosenBranch });
-          const { data: xData, error: xErr } = await supabase.auth.exchangeCodeForSession(code);
-          authConfirmLog("exchangeCodeForSession_result", {
-            branch: chosenBranch,
-            error: xErr?.message ?? null,
-            hasSession: !!xData?.session?.access_token,
-          });
-          if (xErr) throw xErr;
-        }
-        // --- Recovery: ?token=…&type=recovery (legacy /auth/confirm) ---
-        else if (
-          token &&
-          (type === "recovery" ||
-            (type === "unknown" && looksLikeOpaqueOtpToken(token) && !code && !(accessToken && refreshToken)))
-        ) {
+        } else if (token && (type === "recovery" || looksLikeOpaqueOtpToken(token))) {
           chosenBranch = "recovery_token_query";
-          authConfirmLog("branch", { chosen: chosenBranch });
-          const { data: vData, error: vErr } = await supabase.auth.verifyOtp({
+          authRecoveryLog("branch", { chosen: chosenBranch });
+          const { error: vErr } = await supabase.auth.verifyOtp({
             type: "recovery",
             token_hash: token,
           });
-          authConfirmLog("verifyOtp_result", {
-            branch: chosenBranch,
-            error: vErr?.message ?? null,
-            hasSession: !!vData?.session?.access_token,
-            hasUser: !!vData?.user?.id,
-          });
+          authRecoveryLog("verifyOtp_result", { error: vErr?.message ?? null });
           if (vErr) throw vErr;
-        }
-        // --- Implicit tokens (magic link, etc.) ---
-        else if (accessToken && refreshToken) {
-          chosenBranch = "implicit_tokens_generic";
-          authConfirmLog("branch", { chosen: chosenBranch, type });
-          const { data: sData, error: sErr } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-          authConfirmLog("setSession_result", {
-            branch: chosenBranch,
-            error: sErr?.message ?? null,
-            hasSession: !!sData?.session?.access_token,
-          });
-          if (sErr) throw sErr;
         } else {
-          chosenBranch = "none";
-          authConfirmLog("branch", { chosen: chosenBranch, note: "no matching auth branch" });
+          throw new Error("Netinkama atkūrimo nuoroda. Naudokite nuorodą iš paskutinio slaptažodžio atkūrimo laiško.");
         }
 
-        const { userId, email } = await waitForSupabaseSessionAfterAuth(supabase, chosenBranch, authConfirmLog);
-
-        const { data: g2, error: g2e } = await supabase.auth.getUser();
-        authConfirmLog("getUser_final", {
-          error: g2e?.message ?? null,
-          userIdMatch: g2.user?.id === userId,
-        });
-
-        if (expectedEmail && email && expectedEmail !== email) {
-          if (type === "recovery") {
-            authConfirmLog("skip_email_mismatch_guard", { reason: "recovery_flow" });
-          } else {
-            throw new Error("Nuoroda neatitinka naudotojo. Atidarykite naujausią kvietimo laišką dar kartą.");
-          }
-        }
-
-        if (!isPasswordSetupFlow(type)) {
-          throw new Error("Ši nuoroda nėra slaptažodžio nustatymui.");
-        }
-
+        const { userId, email } = await waitForSupabaseSessionAfterAuth(supabase, chosenBranch, authRecoveryLog);
         if (!cancelled) {
           setSessionUserId(userId);
           setSessionEmail(email || null);
           setPhase("set_password");
-          setInfo("Nustatykite slaptažodį, kad galėtumėte prisijungti.");
+          setInfo("Nustatykite naują slaptažodį.");
         }
       } catch (e) {
         const msg = e && typeof e === "object" && "message" in e ? String((e as { message?: string }).message) : "Klaida";
-        authConfirmLog("catch_run", { message: msg });
+        authRecoveryLog("catch_run", { message: msg });
         if (!cancelled) {
           setPhase("error");
-          setError(msg || "Nepavyko patvirtinti nuorodos.");
+          setError(msg || "Nepavyko patvirtinti atkūrimo nuorodos.");
         }
       }
     }
@@ -247,7 +141,7 @@ export function AuthConfirmClient() {
     return () => {
       cancelled = true;
     };
-  }, [next, router]);
+  }, [next]);
 
   return (
     <div className="w-full max-w-[460px] rounded-[18px] border border-slate-200/80 bg-white p-8 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.12)] sm:p-10">
@@ -263,7 +157,7 @@ export function AuthConfirmClient() {
         </div>
         <p className="mt-1.5 text-sm text-slate-500">CRM platforma</p>
         <h1 className="mt-6 text-xl font-bold leading-snug tracking-tight text-slate-900 sm:text-[1.35rem]">
-          Slaptažodžio nustatymas
+          Slaptažodžio atkūrimas
         </h1>
       </div>
 
@@ -292,7 +186,7 @@ export function AuthConfirmClient() {
               setError("Slaptažodžiai nesutampa.");
               return;
             }
-            const supabase = createSupabaseAuthConfirmBrowserClient();
+            const supabase = createSupabaseBrowserClient();
             const { data: pre, error: preErr } = await supabase.auth.getUser();
             if (preErr) {
               setError("Nepavyko patvirtinti sesijos prieš keičiant slaptažodį.");
@@ -305,7 +199,7 @@ export function AuthConfirmClient() {
               return;
             }
             if (sessionEmail && email && sessionEmail !== email) {
-              setError("Sesija neatitinka kvietimo. Atnaujinkite puslapį ir bandykite dar kartą.");
+              setError("Sesija neatitinka. Atnaujinkite puslapį ir bandykite dar kartą.");
               return;
             }
             const { error: uErr } = await supabase.auth.updateUser({ password: p1 });
@@ -354,7 +248,7 @@ export function AuthConfirmClient() {
 
       {phase === "error" ? (
         <div className="mt-8">
-          <p className="text-sm text-red-600">{error ?? "Nepavyko patvirtinti nuorodos."}</p>
+          <p className="text-sm text-red-600">{error ?? "Nepavyko patvirtinti atkūrimo nuorodos."}</p>
           <button
             type="button"
             className="mt-4 w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"

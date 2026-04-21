@@ -40,7 +40,8 @@ export function createSupabaseBrowserClient(): SupabaseClient {
 }
 
 /**
- * Browser client for `/auth/confirm` only.
+ * Browser client for `/auth/confirm` (invite / implicit tokens) only.
+ * PKCE password recovery with `?code=` uses {@link createSupabaseBrowserClient} on `/auth/recovery`.
  *
  * `@supabase/ssr` `createBrowserClient` hardcodes `flowType: "pkce"`, which rejects
  * implicit-grant redirects from `GET /auth/v1/verify` (`#access_token=…&refresh_token=…`).
