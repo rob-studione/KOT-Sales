@@ -217,9 +217,20 @@ export function AuthConfirmClient() {
           });
           if (sErr) throw sErr;
         }
-        // --- PKCE / server auth code (invite, recovery, etc.) — implicit-flow client exchanges without a browser-stored verifier ---
-        else if (code) {
-          chosenBranch = `code_exchange_${type}`;
+        // Recovery must not use PKCE code exchange (no code_verifier in this flow).
+        else if (type === "recovery" && code && !(accessToken && refreshToken)) {
+          chosenBranch = "recovery_code_unsupported";
+          authConfirmLog("branch", {
+            chosen: chosenBranch,
+            note: "refuse exchangeCodeForSession for recovery",
+          });
+          throw new Error(
+            "Slaptažodžio atkūrimo nuoroda neatitinka laukiamo formato (trūksta sesijos duomenų). Atidarykite nuorodą tiesiai iš el. laiško arba užsisakykite naują slaptažodžio atkūrimą.",
+          );
+        }
+        // --- PKCE: auth `code` from same-browser OAuth / invite redirect (never recovery; see above) ---
+        else if (code && type !== "recovery") {
+          chosenBranch = `pkce_code_exchange_${type}`;
           authConfirmLog("branch", { chosen: chosenBranch });
           const { data: xData, error: xErr } = await supabase.auth.exchangeCodeForSession(code);
           authConfirmLog("exchangeCodeForSession_result", {
