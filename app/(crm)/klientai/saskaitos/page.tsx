@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import SyncInvoicesButton from "@/components/crm/SyncInvoicesButton";
-import LastSyncCard from "@/components/crm/LastSyncCard";
 import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 import { TablePagination } from "@/components/crm/TablePagination";
 import { clampPageIndex0, parsePageIndex0, parsePageSize, showingRange1Based, totalPagesFromCount } from "@/lib/crm/pagination";
@@ -102,17 +100,10 @@ export default async function SaskaitosPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Sąskaitos</h1>
-          <p className="mt-1 text-sm text-zinc-600">PVM sąskaitos iš invoice123 (filtruojamos pagal seriją).</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <SyncInvoicesButton />
-        </div>
+      <div>
+        <h1 className="text-xl font-semibold">Sąskaitos</h1>
+        <p className="mt-1 text-sm text-zinc-600">PVM sąskaitos iš invoice123 (filtruojamos pagal seriją).</p>
       </div>
-
-      <LastSyncCard />
 
       <div className="rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
