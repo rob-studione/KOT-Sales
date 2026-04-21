@@ -80,6 +80,7 @@ export type SalesDashboardData = {
   period: SalesDashboardPeriod;
   kpi: SalesDashboardKpi;
   trend: SalesDashboardTrendDay[];
+  directInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string }>;
   bestCallTimes: BestCallTimesData;
   warnings: string[];
 };
@@ -160,6 +161,7 @@ type RpcV1 = {
     conversionPercent: number | null;
   };
   trend: Array<{ date: string; calls: number; answered: number; notAnswered: number }>;
+  directInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string }>;
 };
 
 function asFiniteNumber(v: unknown, fallback = 0): number {
@@ -197,6 +199,7 @@ export async function fetchSalesDashboard(
   const payload = (data ?? {}) as Partial<RpcV1>;
   const k = payload.kpi ?? ({} as RpcV1["kpi"]);
   const trendRaw = Array.isArray(payload.trend) ? payload.trend : [];
+  const directInvoicesRaw = Array.isArray(payload.directInvoices) ? payload.directInvoices : [];
 
   const out: SalesDashboardData = {
     range,
@@ -218,6 +221,14 @@ export async function fetchSalesDashboard(
         notAnswered: asFiniteNumber((r as any).notAnswered, 0),
       }))
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date)),
+    directInvoices: directInvoicesRaw
+      .map((r) => ({
+        invoiceNumber: String((r as any).invoiceNumber ?? "").trim(),
+        date: String((r as any).date ?? "").slice(0, 10),
+        amount: asFiniteNumber((r as any).amount, 0),
+        clientKey: String((r as any).clientKey ?? "").trim(),
+      }))
+      .filter((r) => r.invoiceNumber && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.clientKey),
     bestCallTimes: buildEmptyBestCallTimes(),
     warnings,
   };

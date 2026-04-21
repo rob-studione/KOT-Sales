@@ -12,7 +12,7 @@ export function SalesAnalyticsDashboardView({
   monthCallsTrend: Array<{ date: string; calls: number }>;
   monthRange: { from: string; to: string };
 }) {
-  const { kpi, warnings, bestCallTimes } = data;
+  const { kpi, warnings, bestCallTimes, directInvoices } = data;
 
   const directDisplay = kpi.directRevenueEur === 0 ? "—" : formatMoney(kpi.directRevenueEur);
   const influencedDisplay = kpi.influencedRevenueEur === 0 ? "—" : formatMoney(kpi.influencedRevenueEur);
@@ -74,6 +74,35 @@ export function SalesAnalyticsDashboardView({
             sub="direct pajamos / skambučių sk. tame pačiame KPI lange"
           />
         </div>
+
+        {directInvoices.length > 0 ? (
+          <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+            <table className="min-w-full text-xs">
+              <thead className="border-b border-zinc-100 bg-zinc-50/80 text-left font-medium uppercase tracking-wide text-zinc-500">
+                <tr>
+                  <th className="px-3 py-2">Invoice nr</th>
+                  <th className="px-3 py-2">Data</th>
+                  <th className="px-3 py-2 text-right">Suma</th>
+                  <th className="px-3 py-2">client_key</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {directInvoices.map((inv) => (
+                  <tr key={`${inv.invoiceNumber}-${inv.date}-${inv.clientKey}`} className="text-zinc-800">
+                    <td className="px-3 py-2 font-medium text-zinc-900">{inv.invoiceNumber}</td>
+                    <td className="px-3 py-2 tabular-nums">{inv.date}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-zinc-900">
+                      {formatMoney(inv.amount)}
+                    </td>
+                    <td className="max-w-[18rem] truncate px-3 py-2 font-mono text-[11px] text-zinc-600">
+                      {inv.clientKey}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </section>
 
       {warnings.length > 0 ? (
