@@ -79,7 +79,7 @@ export function SalesAnalyticsDashboardView({
           {directInvoices.length > 0 || influencedInvoices.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {directInvoices.length > 0 ? (
-                <InvoicesBreakdownTable className="sm:col-start-1" rows={directInvoices} title="Direct breakdown" />
+                <InvoicesBreakdownTable className="sm:col-start-1" rows={directInvoices} title="Pajamų detalės" />
               ) : null}
               {influencedInvoices.length > 0 ? (
                 <InvoicesBreakdownTable
@@ -141,21 +141,21 @@ function InvoicesBreakdownTable({
           <thead className="border-b border-zinc-100 bg-zinc-50/80 text-left font-medium uppercase tracking-wide text-zinc-500">
             <tr>
               <th className="px-2.5 py-1.5">Sąskaitos Nr.</th>
+              <th className="px-2.5 py-1.5">Įmonė</th>
               <th className="px-2.5 py-1.5">Data</th>
               <th className="px-2.5 py-1.5 text-right">Suma</th>
-              <th className="px-2.5 py-1.5">Įmonė</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
             {rows.map((inv) => (
               <tr key={`${inv.invoiceNumber}-${inv.date}-${inv.clientKey}`} className="text-zinc-800">
                 <td className="px-2.5 py-1.5 font-medium text-zinc-900">{inv.invoiceNumber}</td>
+                <td className="max-w-[18rem] truncate px-2.5 py-1.5 text-zinc-700">
+                  {inv.companyName?.trim() ? inv.companyName : inv.clientKey}
+                </td>
                 <td className="px-2.5 py-1.5 tabular-nums">{inv.date}</td>
                 <td className="px-2.5 py-1.5 text-right tabular-nums font-semibold text-zinc-900">
                   {formatMoney(inv.amount)}
-                </td>
-                <td className="max-w-[18rem] truncate px-2.5 py-1.5 text-zinc-700">
-                  {inv.companyName?.trim() ? inv.companyName : inv.clientKey}
                 </td>
               </tr>
             ))}

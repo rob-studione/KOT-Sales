@@ -30,6 +30,7 @@ export function saveLastSync(value: Omit<LastSync, "at">) {
 
 export default function LastSyncCard() {
   const [last, setLast] = useState<LastSync | null>(null);
+  const [serverAt, setServerAt] = useState<string | null>(null);
 
   useEffect(() => {
     const read = () => {
@@ -49,20 +50,41 @@ export default function LastSyncCard() {
     return () => window.removeEventListener("salex:lastSync", read);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/sync-saskaita123/status", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { lastRunAt?: unknown };
+        const at = typeof json?.lastRunAt === "string" ? json.lastRunAt : null;
+        if (!cancelled) setServerAt(at);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const shownAt = serverAt ?? last?.at ?? null;
+
   return (
     <div className="rounded-lg border border-zinc-200 bg-white p-4">
       <div className="text-xs font-medium text-zinc-500">Paskutinė sinchronizacija</div>
-      {last ? (
+      {shownAt ? (
         <div className="mt-2 space-y-1 text-sm">
-          <div className="font-medium text-zinc-900">{formatDateTimeLt(last.at)}</div>
+          <div className="font-medium text-zinc-900">{formatDateTimeLt(shownAt)}</div>
           <div className="text-zinc-700">
-            {last.validRows} unikalios
-            {last.listRowsRaw != null && last.listRowsRaw > last.validRows
+            {last?.validRows ?? 0} unikalios
+            {last?.listRowsRaw != null && last.listRowsRaw > (last?.validRows ?? 0)
               ? ` (API ${last.listRowsRaw} eil.)`
               : ""}{" "}
-            • {last.upsertedCount} įrašyta • {last.pagesFetched} pusl. • {stoppedReasonLt(last.stoppedReason)}
+            • {last?.upsertedCount ?? 0} įrašyta • {last?.pagesFetched ?? 0} pusl. •{" "}
+            {stoppedReasonLt(last?.stoppedReason ?? "unknown")}
           </div>
-          {last.error ? <div className="text-xs text-red-600">{last.error}</div> : null}
+          {last?.error ? <div className="text-xs text-red-600">{last.error}</div> : null}
         </div>
       ) : (
         <div className="mt-2 text-sm text-zinc-600">Sinchronizacija dar nebuvo paleista.</div>

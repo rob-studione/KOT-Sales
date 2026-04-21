@@ -52,6 +52,7 @@ function todayUtcIso(): string {
 }
 
 const BOOTSTRAP_CHECKPOINT_ID = "default";
+const SYNC_STATE_ID = "default";
 
 function parseLookbackOverride(v: unknown): number | undefined {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -117,6 +118,26 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+
+  const persistSyncState = async (value: { last_result?: unknown; last_error?: string | null }) => {
+    try {
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from("invoice_sync_state")
+        .upsert(
+          {
+            id: SYNC_STATE_ID,
+            last_run_at: nowIso,
+            last_result: value.last_result ?? null,
+            last_error: value.last_error ?? null,
+            updated_at: nowIso,
+          },
+          { onConflict: "id" }
+        );
+    } catch {
+      // ignore persistence issues; never fail sync response because of status write
+    }
+  };
 
   let supabaseMinInvoiceDateBefore: string | null = null;
   {
@@ -737,6 +758,7 @@ export async function POST(request: Request) {
         tookMs: Date.now() - startedAt,
         ...(recoveryHint ? { recoveryHint } : {}),
       };
+      await persistSyncState({ last_result: slim, last_error: upsertError });
       return NextResponse.json(
         debugResponse
           ? {
@@ -828,6 +850,23 @@ export async function POST(request: Request) {
     const name = error instanceof Error ? error.name : "Error";
     console.log("[sync-saskaita123] error", { name, message });
     console.log("[sync-saskaita123] before returning response");
+    try {
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from("invoice_sync_state")
+        .upsert(
+          {
+            id: SYNC_STATE_ID,
+            last_run_at: nowIso,
+            last_result: null,
+            last_error: `${name}: ${message}`,
+            updated_at: nowIso,
+          },
+          { onConflict: "id" }
+        );
+    } catch {
+      // ignore
+    }
     return NextResponse.json(
       {
         tookMs: Date.now() - startedAt,

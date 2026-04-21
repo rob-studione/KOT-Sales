@@ -84,6 +84,10 @@ async function postReconciliationStep(
 
 function assertCronAuth(request: Request): NextResponse | null {
   const secret = process.env.CRON_SECRET;
+  // Vercel Cron requests include a dedicated header. Allow them to hit this endpoint
+  // without embedding secrets into `vercel.json` (which is versioned).
+  const isVercelCron = request.headers.get("x-vercel-cron") === "1";
+  if (isVercelCron) return null;
   const auth = request.headers.get("authorization");
   const bearer = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
   const headerSecret = request.headers.get("x-cron-secret");
@@ -146,7 +150,10 @@ export async function GET(request: Request) {
 
     const inWorkingHours = local.hour >= WORK_START && local.hour <= WORK_END;
 
-    if (inWorkingHours) {
+    // For invoices we want ≤15 min freshness; default to always-on.
+    // Set `SYNC_CRON_ALWAYS_ON=false` to restore the working-hours gate.
+    const alwaysOn = (process.env.SYNC_CRON_ALWAYS_ON ?? "true").trim().toLowerCase() !== "false";
+    if (alwaysOn || inWorkingHours) {
       const r = await postSync(origin, 1);
       actions.push({
         name: "frequent",

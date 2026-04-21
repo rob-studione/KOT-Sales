@@ -75,6 +75,7 @@ export default async function SaskaitosPage({
     .select("invoice_id,invoice_date,created_at,amount,company_name,company_code,client_id,invoice_search_display,series_title,series_number,invoice_number")
     .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
     .order("invoice_date", { ascending: false })
+    .order("invoice_number", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (search) {
