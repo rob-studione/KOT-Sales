@@ -75,12 +75,27 @@ function IconPower({ className }: { className?: string }) {
   );
 }
 
+function IconTrash({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path d="M9 3h6" strokeLinecap="round" />
+      <path d="M4 7h16" strokeLinecap="round" />
+      <path d="M7 7l1 14a2 2 0 002 1h6a2 2 0 002-1l1-14" strokeLinejoin="round" />
+      <path d="M10 11v7M14 11v7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function AccountsCardList({
   rows,
+  currentUserId,
   onOpen,
+  onRequestDelete,
 }: {
   rows: AccountListRow[];
+  currentUserId: string;
   onOpen: (row: AccountListRow) => void;
+  onRequestDelete: (row: AccountListRow) => void;
 }) {
   const isEmpty = rows.length === 0;
 
@@ -163,7 +178,7 @@ export function AccountsCardList({
                 >
                   <IconDots className="h-5 w-5" />
                 </summary>
-                <div className="absolute right-0 top-12 z-20 w-44 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg">
+                <div className="absolute right-0 top-12 z-20 w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg">
                   <button
                     type="button"
                     className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-50"
@@ -179,6 +194,24 @@ export function AccountsCardList({
                   >
                     <IconPower className="h-4 w-4 text-zinc-500" />
                     Deaktyvuoti
+                  </button>
+                  <div className="h-px bg-zinc-100" aria-hidden />
+                  <button
+                    type="button"
+                    disabled={r.id === currentUserId}
+                    className={[
+                      "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm",
+                      r.id === currentUserId
+                        ? "cursor-not-allowed text-zinc-300"
+                        : "text-red-700 hover:bg-red-50",
+                    ].join(" ")}
+                    onClick={() => {
+                      if (r.id === currentUserId) return;
+                      onRequestDelete(r);
+                    }}
+                  >
+                    <IconTrash className={["h-4 w-4", r.id === currentUserId ? "text-zinc-300" : "text-red-600"].join(" ")} />
+                    Ištrinti
                   </button>
                 </div>
               </details>

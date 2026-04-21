@@ -24,7 +24,8 @@ type Row = {
 export const dynamic = "force-dynamic";
 
 export default async function PaskyrosPage() {
-  await requireAdmin({ mode: "redirect", redirectTo: "/dashboard" });
+  const actor = await requireAdmin({ mode: "redirect", redirectTo: "/dashboard" });
+  const actorId = actor.id;
 
   let admin;
   try {
@@ -125,7 +126,7 @@ export default async function PaskyrosPage() {
       </div>
 
       <div className="mt-6">
-        <AccountsPageClient rows={rows} />
+        <AccountsPageClient rows={rows} currentUserId={actorId} />
       </div>
     </CrmTableContainer>
   );

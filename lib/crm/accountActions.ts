@@ -5,6 +5,7 @@ import { isUserRole, type UserRole } from "@/lib/crm/roles";
 import { requireAdmin } from "@/lib/crm/currentUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
+import { isValidUuid } from "@/lib/crm/crmUsers";
 
 export type CrmUserStatus = "active" | "inactive";
 
@@ -93,6 +94,46 @@ export async function createAccountAction(
 
   revalidatePath("/nustatymai/paskyros");
   return { ok: true, invitedEmail: email };
+}
+
+export async function deleteCrmUserAccountAction(
+  userId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const id = String(userId ?? "").trim();
+  if (!id || !isValidUuid(id)) return { ok: false, error: "Neteisingas naudotojas." };
+
+  let actor;
+  try {
+    actor = await requireAdmin({ mode: "throw" });
+  } catch {
+    return { ok: false, error: "Neturite teisių atlikti šį veiksmą." };
+  }
+
+  if (actor.id === id) {
+    return { ok: false, error: "Negalite ištrinti savo paskyros (administratoriaus)." };
+  }
+
+  let admin;
+  try {
+    admin = createSupabaseAdminClient();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Trūksta Supabase konfigūracijos." };
+  }
+
+  const { error: delCrmErr } = await admin.from("crm_users").delete().eq("id", id);
+  if (delCrmErr) {
+    console.error("[accounts] delete crm_users failed", delCrmErr);
+    return { ok: false, error: delCrmErr.message ?? "Nepavyko pašalinti CRM profilio." };
+  }
+
+  const { error: delAuthErr } = await admin.auth.admin.deleteUser(id);
+  if (delAuthErr) {
+    console.error("[accounts] delete auth user failed", delAuthErr);
+    return { ok: false, error: delAuthErr.message ?? "Nepavyko pašalinti Auth naudotojo." };
+  }
+
+  revalidatePath("/nustatymai/paskyros");
+  return { ok: true };
 }
 
 export async function getCrmUserAction(
