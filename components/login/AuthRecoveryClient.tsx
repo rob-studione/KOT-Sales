@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   createSupabaseAuthConfirmBrowserClient,
+  createSupabaseAuthRecoveryBrowserClient,
   createSupabaseBrowserClient,
   resetSupabaseAuthConfirmBrowserClient,
+  resetSupabaseAuthRecoveryBrowserClient,
   resetSupabaseBrowserClient,
 } from "@/lib/supabase/browser";
 import {
@@ -26,9 +28,11 @@ function authRecoveryLog(message: string, data?: Record<string, unknown>) {
 }
 
 /**
- * Password reset from email: PKCE `code` is issued against the `code_challenge` sent with
- * `resetPasswordForEmail` and the `code_verifier` stored in the browser. Do not call
- * `signOut` before `exchangeCodeForSession` — signOut removes the verifier from storage.
+ * Password reset from email: PKCE `code` matches `code_challenge` from `resetPasswordForEmail`;
+ * verifier lives in the same cookie storage as `createSupabaseBrowserClient()` on /login.
+ * Do not call `signOut` before `exchangeCodeForSession` — signOut removes the verifier.
+ * Use {@link createSupabaseAuthRecoveryBrowserClient} (detectSessionInUrl: false) so GoTrue
+ * does not consume the verifier in `initialize()` before our explicit exchange.
  */
 export function AuthRecoveryClient() {
   const router = useRouter();
@@ -74,12 +78,23 @@ export function AuthRecoveryClient() {
         if (code) {
           chosenBranch = "recovery_pkce_code";
           resetSupabaseAuthConfirmBrowserClient();
+          resetSupabaseAuthRecoveryBrowserClient();
           resetSupabaseBrowserClient();
-          const pkce = createSupabaseBrowserClient();
+          // Dedicated PKCE client with detectSessionInUrl: false — default createBrowserClient
+          // auto-exchanges in initialize() and deletes code-verifier before this explicit exchange.
+          const pkce = createSupabaseAuthRecoveryBrowserClient();
           authRecoveryLog("branch", { chosen: chosenBranch });
           const { error: xErr } = await pkce.auth.exchangeCodeForSession(code);
           authRecoveryLog("exchangeCodeForSession_result", { error: xErr?.message ?? null });
-          if (xErr) throw xErr;
+          if (xErr) {
+            const m = String(xErr.message ?? "").toLowerCase();
+            if (m.includes("verifier") && m.includes("not found")) {
+              throw new Error(
+                "Nepavyko patvirtinti nuorodos šiame įrenginyje. Atidarykite atkūrimo nuorodą toje pačioje naršyklėje, kurioje spaudėte „Pamiršote slaptažodį?“, arba užsisakykite naują atkūrimą.",
+              );
+            }
+            throw xErr;
+          }
           const { userId, email } = await waitForSupabaseSessionAfterAuth(pkce, chosenBranch, authRecoveryLog);
           if (!cancelled) {
             setSessionUserId(userId);
