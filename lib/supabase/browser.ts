@@ -3,6 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 let cached: SupabaseClient | null = null;
 
+export function resetSupabaseBrowserClient(): void {
+  cached = null;
+}
+
 export function createSupabaseBrowserClient(): SupabaseClient {
   if (cached) return cached;
 

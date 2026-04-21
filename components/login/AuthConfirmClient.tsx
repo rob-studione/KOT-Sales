@@ -2,9 +2,45 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { createSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type Phase = "verifying" | "set_password" | "done" | "error";
+
+type AuthFlowType = "invite" | "recovery" | "signup" | "email_change" | "magiclink" | "unknown";
+
+function parseHashParams(hash: string): Record<string, string> {
+  const raw = String(hash ?? "").trim();
+  if (!raw) return {};
+  const h = raw.startsWith("#") ? raw.slice(1) : raw;
+  const qs = new URLSearchParams(h);
+  const out: Record<string, string> = {};
+  for (const [k, v] of qs.entries()) out[k] = v;
+  return out;
+}
+
+function parseAuthParamsFromWindow(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const out: Record<string, string> = {};
+  const search = new URLSearchParams(window.location.search);
+  for (const [k, v] of search.entries()) out[k] = v;
+  const hashParams = parseHashParams(window.location.hash);
+  for (const [k, v] of Object.entries(hashParams)) {
+    // query wins if duplicated
+    if (!(k in out)) out[k] = v;
+  }
+  return out;
+}
+
+function normalizeAuthType(raw: string | null | undefined): AuthFlowType {
+  const t = String(raw ?? "").trim().toLowerCase();
+  if (t === "invite" || t === "recovery" || t === "signup" || t === "email_change" || t === "magiclink") return t;
+  if (t === "email") return "signup"; // common alias
+  return "unknown";
+}
+
+function isPasswordSetupFlow(t: AuthFlowType): boolean {
+  return t === "invite" || t === "recovery" || t === "signup";
+}
 
 export function AuthConfirmClient() {
   const router = useRouter();
@@ -17,6 +53,9 @@ export function AuthConfirmClient() {
   const [phase, setPhase] = useState<Phase>("verifying");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [flowType, setFlowType] = useState<AuthFlowType>("unknown");
 
   useEffect(() => {
     let cancelled = false;
@@ -24,35 +63,77 @@ export function AuthConfirmClient() {
       setError(null);
       setInfo(null);
       setPhase("verifying");
+      setSessionUserId(null);
+      setSessionEmail(null);
+      setFlowType("unknown");
+
+      // Critical: invite/recovery must not reuse a stale singleton client/session from another tab/user.
+      resetSupabaseBrowserClient();
       const supabase = createSupabaseBrowserClient();
 
-      // Supabase invite/recovery links can arrive as:
-      // - query params: ?token_hash=...&type=invite|recovery
-      // - hash params:  #access_token=...&refresh_token=...&type=invite|recovery
-      const tokenHash = sp.get("token_hash");
-      const type = sp.get("type");
+      // Always clear any existing browser session cookies before applying email-link tokens.
+      // This prevents "password update applies to currently logged-in admin" collisions.
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // ignore
+      }
+
+      const params = parseAuthParamsFromWindow();
+      const tokenHash = String(params.token_hash ?? "").trim();
+      const code = String(params.code ?? "").trim();
+      const accessToken = String(params.access_token ?? "").trim();
+      const refreshToken = String(params.refresh_token ?? "").trim();
+      const type = normalizeAuthType(params.type);
+      setFlowType(type);
+
+      const expectedEmail = String(params.email ?? "").trim().toLowerCase();
 
       try {
-        if (tokenHash && type) {
+        if (tokenHash) {
+          if (!isPasswordSetupFlow(type) && type !== "unknown") {
+            throw new Error("Netinkamas nuorodos tipas.");
+          }
+          if (type === "unknown") {
+            throw new Error("Trūksta nuorodos tipo (type).");
+          }
+
           const { error: vErr } = await supabase.auth.verifyOtp({
+            // invite/recovery/signup/email_change are supported by verifyOtp depending on project settings.
             type: type as any,
             token_hash: tokenHash,
           });
           if (vErr) throw vErr;
+        } else if (code) {
+          const { error: xErr } = await supabase.auth.exchangeCodeForSession(code);
+          if (xErr) throw xErr;
+        } else if (accessToken && refreshToken) {
+          const { error: sErr } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          if (sErr) throw sErr;
         }
 
-        // If we got hash tokens, Supabase JS usually parses them automatically on load.
-        const { data } = await supabase.auth.getSession();
-        if (!data.session) {
-          // No session yet; user may have opened link without tokens.
-          if (!cancelled) {
-            setPhase("error");
-            setError("Nepavyko patvirtinti nuorodos. Pabandykite atsidaryti kvietimo laišką dar kartą.");
-          }
-          return;
+        const { data, error: sErr } = await supabase.auth.getSession();
+        if (sErr) throw sErr;
+        if (!data.session?.user?.id) {
+          throw new Error("Nepavyko nustatyti sesijos pagal nuorodą.");
+        }
+
+        const uid = String(data.session.user.id);
+        const email = String(data.session.user.email ?? "").trim().toLowerCase();
+
+        if (expectedEmail && email && expectedEmail !== email) {
+          // Hard safety: if the email in the URL doesn't match the session user, refuse password changes.
+          throw new Error("Nuoroda neatitinka naudotojo. Atidarykite naujausią kvietimo laišką dar kartą.");
+        }
+
+        if (!isPasswordSetupFlow(type)) {
+          // Not a password setup flow; don't expose password UI.
+          throw new Error("Ši nuoroda nėra slaptažodžio nustatymui.");
         }
 
         if (!cancelled) {
+          setSessionUserId(uid);
+          setSessionEmail(email || null);
           setPhase("set_password");
           setInfo("Nustatykite slaptažodį, kad galėtumėte prisijungti.");
         }
@@ -68,7 +149,7 @@ export function AuthConfirmClient() {
     return () => {
       cancelled = true;
     };
-  }, [sp]);
+  }, [next]);
 
   return (
     <div className="w-full max-w-[460px] rounded-[18px] border border-slate-200/80 bg-white p-8 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.12)] sm:p-10">
@@ -98,6 +179,10 @@ export function AuthConfirmClient() {
           onSubmit={async (e) => {
             e.preventDefault();
             setError(null);
+            if (!sessionUserId) {
+              setError("Sesija nepatvirtinta. Atnaujinkite puslapį arba atidarykite nuorodą iš naujo.");
+              return;
+            }
             const fd = new FormData(e.currentTarget);
             const p1 = String(fd.get("password") ?? "");
             const p2 = String(fd.get("password2") ?? "");
@@ -110,6 +195,21 @@ export function AuthConfirmClient() {
               return;
             }
             const supabase = createSupabaseBrowserClient();
+            const { data: pre, error: preErr } = await supabase.auth.getUser();
+            if (preErr) {
+              setError("Nepavyko patvirtinti sesijos prieš keičiant slaptažodį.");
+              return;
+            }
+            const uid = pre.user?.id ? String(pre.user.id) : "";
+            const email = pre.user?.email ? String(pre.user.email).trim().toLowerCase() : "";
+            if (!uid || uid !== sessionUserId) {
+              setError("Sesija pasikeitė. Atnaujinkite puslapį ir bandykite dar kartą.");
+              return;
+            }
+            if (sessionEmail && email && sessionEmail !== email) {
+              setError("Sesija neatitinka kvietimo. Atnaujinkite puslapį ir bandykite dar kartą.");
+              return;
+            }
             const { error: uErr } = await supabase.auth.updateUser({ password: p1 });
             if (uErr) {
               setError("Nepavyko nustatyti slaptažodžio. Bandykite dar kartą.");
