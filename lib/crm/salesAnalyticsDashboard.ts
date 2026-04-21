@@ -81,6 +81,7 @@ export type SalesDashboardData = {
   kpi: SalesDashboardKpi;
   trend: SalesDashboardTrendDay[];
   directInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string }>;
+  influencedInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string }>;
   bestCallTimes: BestCallTimesData;
   warnings: string[];
 };
@@ -162,6 +163,7 @@ type RpcV1 = {
   };
   trend: Array<{ date: string; calls: number; answered: number; notAnswered: number }>;
   directInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string }>;
+  influencedInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string }>;
 };
 
 function asFiniteNumber(v: unknown, fallback = 0): number {
@@ -200,6 +202,7 @@ export async function fetchSalesDashboard(
   const k = payload.kpi ?? ({} as RpcV1["kpi"]);
   const trendRaw = Array.isArray(payload.trend) ? payload.trend : [];
   const directInvoicesRaw = Array.isArray(payload.directInvoices) ? payload.directInvoices : [];
+  const influencedInvoicesRaw = Array.isArray(payload.influencedInvoices) ? payload.influencedInvoices : [];
 
   const out: SalesDashboardData = {
     range,
@@ -222,6 +225,14 @@ export async function fetchSalesDashboard(
       }))
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date)),
     directInvoices: directInvoicesRaw
+      .map((r) => ({
+        invoiceNumber: String((r as any).invoiceNumber ?? "").trim(),
+        date: String((r as any).date ?? "").slice(0, 10),
+        amount: asFiniteNumber((r as any).amount, 0),
+        clientKey: String((r as any).clientKey ?? "").trim(),
+      }))
+      .filter((r) => r.invoiceNumber && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.clientKey),
+    influencedInvoices: influencedInvoicesRaw
       .map((r) => ({
         invoiceNumber: String((r as any).invoiceNumber ?? "").trim(),
         date: String((r as any).date ?? "").slice(0, 10),

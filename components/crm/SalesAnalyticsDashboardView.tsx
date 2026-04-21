@@ -12,7 +12,7 @@ export function SalesAnalyticsDashboardView({
   monthCallsTrend: Array<{ date: string; calls: number }>;
   monthRange: { from: string; to: string };
 }) {
-  const { kpi, warnings, bestCallTimes, directInvoices } = data;
+  const { kpi, warnings, bestCallTimes, directInvoices, influencedInvoices } = data;
 
   const directDisplay = kpi.directRevenueEur === 0 ? "—" : formatMoney(kpi.directRevenueEur);
   const influencedDisplay = kpi.influencedRevenueEur === 0 ? "—" : formatMoney(kpi.influencedRevenueEur);
@@ -65,44 +65,37 @@ export function SalesAnalyticsDashboardView({
           įtraukiama, jei sąskaitos data vėlesnė nei pirmas skambutis tame lange; direct / influenced skirstoma pagal naujausią veiklos būseną tame
           lange.
         </p>
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <KpiCard label="Direct pajamos (€, KPI langas)" value={directDisplay} />
-          <KpiCard label="Influenced pajamos (€, KPI langas)" value={influencedDisplay} />
-          <KpiCard
-            label="Vid. € / skambutį (KPI langas)"
-            value={avgDisplay}
-            sub="direct pajamos / skambučių sk. tame pačiame KPI lange"
-          />
-        </div>
-
-        {directInvoices.length > 0 ? (
-          <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-            <table className="min-w-full text-xs">
-              <thead className="border-b border-zinc-100 bg-zinc-50/80 text-left font-medium uppercase tracking-wide text-zinc-500">
-                <tr>
-                  <th className="px-3 py-2">Invoice nr</th>
-                  <th className="px-3 py-2">Data</th>
-                  <th className="px-3 py-2 text-right">Suma</th>
-                  <th className="px-3 py-2">client_key</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {directInvoices.map((inv) => (
-                  <tr key={`${inv.invoiceNumber}-${inv.date}-${inv.clientKey}`} className="text-zinc-800">
-                    <td className="px-3 py-2 font-medium text-zinc-900">{inv.invoiceNumber}</td>
-                    <td className="px-3 py-2 tabular-nums">{inv.date}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-zinc-900">
-                      {formatMoney(inv.amount)}
-                    </td>
-                    <td className="max-w-[18rem] truncate px-3 py-2 font-mono text-[11px] text-zinc-600">
-                      {inv.clientKey}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="mt-4 space-y-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <KpiCard label="Direct pajamos (€, KPI langas)" value={directDisplay} />
+            <KpiCard label="Influenced pajamos (€, KPI langas)" value={influencedDisplay} />
+            <KpiCard
+              label="Vid. € / skambutį (KPI langas)"
+              value={avgDisplay}
+              sub="direct pajamos / skambučių sk. tame pačiame KPI lange"
+            />
           </div>
-        ) : null}
+
+          {directInvoices.length > 0 || influencedInvoices.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {directInvoices.length > 0 ? (
+                <InvoicesBreakdownTable
+                  className="sm:col-start-1"
+                  rows={directInvoices}
+                  title="Direct breakdown"
+                />
+              ) : null}
+              {influencedInvoices.length > 0 ? (
+                <InvoicesBreakdownTable
+                  className="sm:col-start-2"
+                  rows={influencedInvoices}
+                  title="Influenced breakdown"
+                />
+              ) : null}
+              {/* 3 stulpelis (Avg €): niekada nieko nerodom */}
+            </div>
+          ) : null}
+        </div>
       </section>
 
       {warnings.length > 0 ? (
@@ -130,6 +123,49 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
         {value}
       </div>
       {sub ? <div className="mt-1 text-xs text-zinc-500">{sub}</div> : null}
+    </div>
+  );
+}
+
+function InvoicesBreakdownTable({
+  rows,
+  title,
+  className,
+}: {
+  rows: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string }>;
+  title: string;
+  className?: string;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className={className}>
+      <div className="mb-1 text-[11px] font-medium text-zinc-500">{title}</div>
+      <div className="overflow-x-auto rounded-md border border-zinc-200 bg-white">
+        <table className="min-w-full text-[11px]">
+          <thead className="border-b border-zinc-100 bg-zinc-50/80 text-left font-medium uppercase tracking-wide text-zinc-500">
+            <tr>
+              <th className="px-2.5 py-1.5">Invoice No.</th>
+              <th className="px-2.5 py-1.5">Data</th>
+              <th className="px-2.5 py-1.5 text-right">Suma</th>
+              <th className="px-2.5 py-1.5">Company code</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {rows.map((inv) => (
+              <tr key={`${inv.invoiceNumber}-${inv.date}-${inv.clientKey}`} className="text-zinc-800">
+                <td className="px-2.5 py-1.5 font-medium text-zinc-900">{inv.invoiceNumber}</td>
+                <td className="px-2.5 py-1.5 tabular-nums">{inv.date}</td>
+                <td className="px-2.5 py-1.5 text-right tabular-nums font-semibold text-zinc-900">
+                  {formatMoney(inv.amount)}
+                </td>
+                <td className="max-w-[18rem] truncate px-2.5 py-1.5 font-mono text-[11px] text-zinc-600">
+                  {inv.clientKey}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
