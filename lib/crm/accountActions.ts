@@ -120,16 +120,16 @@ export async function deleteCrmUserAccountAction(
     return { ok: false, error: e instanceof Error ? e.message : "Trūksta Supabase konfigūracijos." };
   }
 
-  const { error: delCrmErr } = await admin.from("crm_users").delete().eq("id", id);
-  if (delCrmErr) {
-    console.error("[accounts] delete crm_users failed", delCrmErr);
-    return { ok: false, error: delCrmErr.message ?? "Nepavyko pašalinti CRM profilio." };
-  }
-
   const { error: delAuthErr } = await admin.auth.admin.deleteUser(id);
   if (delAuthErr) {
     console.error("[accounts] delete auth user failed", delAuthErr);
     return { ok: false, error: delAuthErr.message ?? "Nepavyko pašalinti Auth naudotojo." };
+  }
+
+  const { error: delCrmErr } = await admin.from("crm_users").delete().eq("id", id);
+  if (delCrmErr) {
+    console.error("[accounts] delete crm_users failed", delCrmErr);
+    return { ok: false, error: delCrmErr.message ?? "Auth naudotojas pašalintas, bet nepavyko pašalinti CRM profilio." };
   }
 
   revalidatePath("/nustatymai/paskyros");
