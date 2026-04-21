@@ -163,7 +163,8 @@ invoices_union as (
     i.invoice_date::date as invoice_day,
     i.amount::numeric as amount,
     coalesce(nullif(trim(i.invoice_number), ''), i.invoice_id) as invoice_number,
-    coalesce(nullif(trim(i.company_code), ''), i.client_id, '') as client_key
+    coalesce(nullif(trim(i.company_code), ''), i.client_id, '') as client_key,
+    nullif(trim(i.company_name), '') as company_name_raw
   from public.invoices i
   join union_window uw on true
   where i.series_title ilike 'VK-%'
@@ -198,7 +199,7 @@ direct_invoices as (
     iu.invoice_day,
     iu.amount,
     iu.client_key,
-    nullif(trim(v.company_name), '') as company_name
+    coalesce(nullif(trim(v.company_name), ''), iu.company_name_raw) as company_name
   from invoices_union iu
   left join public.v_client_list_from_invoices v
     on v.client_key = iu.client_key
