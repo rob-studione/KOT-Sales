@@ -81,6 +81,7 @@ export function AuthConfirmClient() {
 
       const params = parseAuthParamsFromWindow();
       const tokenHash = String(params.token_hash ?? "").trim();
+      const token = String(params.token ?? "").trim();
       const code = String(params.code ?? "").trim();
       const accessToken = String(params.access_token ?? "").trim();
       const refreshToken = String(params.refresh_token ?? "").trim();
@@ -102,6 +103,14 @@ export function AuthConfirmClient() {
             // invite/recovery/signup/email_change are supported by verifyOtp depending on project settings.
             type: type as any,
             token_hash: tokenHash,
+          });
+          if (vErr) throw vErr;
+        } else if (token && type === "recovery") {
+          // Recovery links sometimes pass `token` query param (this is NOT the email-OTP 6-digit code path).
+          // In practice this value is handled as `token_hash` by GoTrue/Supabase Auth.
+          const { error: vErr } = await supabase.auth.verifyOtp({
+            type: "recovery",
+            token_hash: token,
           });
           if (vErr) throw vErr;
         } else if (code) {
