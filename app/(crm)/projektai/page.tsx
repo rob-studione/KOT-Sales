@@ -23,7 +23,7 @@ export default async function ProjektaiListPage({
   const statusRaw = typeof sp.status === "string" ? sp.status : undefined;
   const statusFilter = parseStatusFilter(statusRaw);
 
-  let supabase;
+  let supabase: Awaited<ReturnType<typeof createSupabaseSsrReadOnlyClient>>;
   try {
     supabase = await createSupabaseSsrReadOnlyClient();
   } catch (e) {
