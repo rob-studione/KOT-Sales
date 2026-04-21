@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
@@ -159,6 +159,18 @@ export function ProjectsSortableList({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<ProjectListRow[]>(() => initialRows);
+  const [sortError, setSortError] = useState<string | null>(null);
+
+  /** Sync client order with SSR after `router.refresh()` without clobbering mid-drag optimistic state. */
+  const initialRowsSignature = useMemo(
+    () => initialRows.map((r) => `${r.id}:${r.sort_order ?? ""}`).join("|"),
+    [initialRows],
+  );
+  useEffect(() => {
+    setRows(initialRows);
+    // Intentionally only when SSR-ordered payload changes (after refresh), not on every `initialRows` ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRowsSignature]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -188,29 +200,36 @@ export function ProjectsSortableList({
       if (!over) return;
       if (active.id === over.id) return;
 
+      setSortError(null);
+
       const oldIndex = rows.findIndex((r) => r.id === active.id);
       const newIndex = rows.findIndex((r) => r.id === over.id);
       if (oldIndex < 0 || newIndex < 0) return;
 
+      const previousRows = rows;
       const next = arrayMove(rows, oldIndex, newIndex);
       setRows(next);
 
-      const res = await updateProjectsSortOrderAction(next.map((r) => r.id));
+      const res = await updateProjectsSortOrderAction(
+        next.map((r) => r.id),
+        statusFilter,
+      );
       if (!res.ok) {
-        // Revert on error.
-        setRows(rows);
+        setRows(previousRows);
+        setSortError(res.error);
         return;
       }
 
       window.dispatchEvent(new Event("projects:order-changed"));
       router.refresh();
     },
-    [rows, router]
+    [rows, router, statusFilter],
   );
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        {sortError ? <p className="mb-3 text-sm text-red-600">{sortError}</p> : null}
         <ul className="flex flex-col gap-4">
           {rows.map((p) => {
             const wc = projectWorkItemCount(p);

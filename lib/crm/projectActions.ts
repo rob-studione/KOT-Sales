@@ -47,6 +47,8 @@ import {
 
 type UpdateProjectsSortOrderResult = { ok: true } | { ok: false; error: string };
 
+export type ProjectsSortOrderTabFilter = "active" | "archived" | "deleted";
+
 function uniqueIdsPreserveOrder(ids: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -1946,7 +1948,24 @@ export async function renameProjectNameAction(
   return { ok: true, name };
 }
 
-export async function updateProjectsSortOrderAction(orderedProjectIds: string[]): Promise<UpdateProjectsSortOrderResult> {
+function compareProjectsForStableOrder(
+  a: { sort_order: number | null; created_at: string | null },
+  b: { sort_order: number | null; created_at: string | null },
+): number {
+  const ao = a.sort_order ?? Number.MAX_SAFE_INTEGER;
+  const bo = b.sort_order ?? Number.MAX_SAFE_INTEGER;
+  if (ao !== bo) return ao - bo;
+  return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
+}
+
+/**
+ * Persists drag-and-drop order for one status tab without creating duplicate `sort_order`
+ * values across the whole `projects` table (which breaks global `.order("sort_order")`).
+ */
+export async function updateProjectsSortOrderAction(
+  orderedProjectIds: string[],
+  statusFilter: ProjectsSortOrderTabFilter,
+): Promise<UpdateProjectsSortOrderResult> {
   const ids = uniqueIdsPreserveOrder(Array.isArray(orderedProjectIds) ? orderedProjectIds : []);
   if (ids.length === 0) return { ok: false, error: "Trūksta projektų." };
   if (ids.some((id) => !isValidUuid(id))) return { ok: false, error: "Neteisingas projekto identifikatorius." };
@@ -1961,11 +1980,37 @@ export async function updateProjectsSortOrderAction(orderedProjectIds: string[])
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return { ok: false, error: "Prisijungimas baigėsi. Perkraukite puslapį." };
 
-  const payload = ids.map((id, i) => ({ id, sort_order: i }));
-  const { error } = await supabase.from("projects").upsert(payload, { onConflict: "id" });
-  if (error) {
-    console.error("[projectActions] updateProjectsSortOrder failed", error);
-    return { ok: false, error: error.message ?? "Nepavyko išsaugoti tvarkos." };
+  const { data: rows, error: selectError } = await supabase
+    .from("projects")
+    .select("id,status,sort_order,created_at");
+  if (selectError) {
+    console.error("[projectActions] updateProjectsSortOrder select failed", selectError);
+    return { ok: false, error: selectError.message ?? "Nepavyko nuskaityti projektų." };
+  }
+  if (!rows?.length) return { ok: false, error: "Nerasta projektų." };
+
+  const sameStatus = rows.filter((r) => r.status === statusFilter);
+  if (sameStatus.length !== ids.length) {
+    return { ok: false, error: "Nepilnas projektų sąrašas rikiavimui." };
+  }
+  const sameSet = new Set(sameStatus.map((r) => r.id));
+  for (const id of ids) {
+    if (!sameSet.has(id)) return { ok: false, error: "Projektų statusas neatitinka skirtuko." };
+  }
+
+  const others = rows
+    .filter((r) => r.status !== statusFilter)
+    .sort((a, b) => compareProjectsForStableOrder(a, b));
+
+  const finalOrder = [...ids, ...others.map((r) => r.id)];
+
+  for (let i = 0; i < finalOrder.length; i++) {
+    const id = finalOrder[i];
+    const { error } = await supabase.from("projects").update({ sort_order: i }).eq("id", id);
+    if (error) {
+      console.error("[projectActions] updateProjectsSortOrder update failed", error);
+      return { ok: false, error: error.message ?? "Nepavyko išsaugoti tvarkos." };
+    }
   }
 
   revalidatePath("/projektai");
