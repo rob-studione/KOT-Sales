@@ -72,6 +72,7 @@ import {
   showingRange1Based,
   totalPagesFromCount,
 } from "@/lib/crm/pagination";
+import { SimplePagination } from "@/components/crm/SimplePagination";
 import type { CrmNotificationRow } from "@/lib/crm/notificationConstants";
 
 export const dynamic = "force-dynamic";
@@ -200,6 +201,41 @@ export default async function ProjektasDetailPage({
     } else {
       candidatesError = candidatesRes.error;
     }
+  }
+
+  const AUTO_CANDIDATES_PAGE_SIZE = 20;
+  const requestedAutoCandidatesPageIndex0 =
+    !isManual && !isProcurement && tab === "kandidatai" ? parsePageIndex0(sp.page) : 0;
+  const autoCandidatesTotalCount = !isManual && !isProcurement ? candidates.length : 0;
+  const autoCandidatesTotalPages =
+    !isManual && !isProcurement ? totalPagesFromCount(autoCandidatesTotalCount, AUTO_CANDIDATES_PAGE_SIZE) : 0;
+  const autoCandidatesPageIndex0 =
+    !isManual && !isProcurement && tab === "kandidatai"
+      ? clampPageIndex0(requestedAutoCandidatesPageIndex0, autoCandidatesTotalPages)
+      : 0;
+  const autoCandidatesShowing =
+    !isManual && !isProcurement && tab === "kandidatai"
+      ? showingRange1Based(autoCandidatesPageIndex0, AUTO_CANDIDATES_PAGE_SIZE, autoCandidatesTotalCount)
+      : { from: 0, to: 0, total: 0 };
+  const autoCandidatesOffset = autoCandidatesPageIndex0 * AUTO_CANDIDATES_PAGE_SIZE;
+  const autoCandidatesPageRows =
+    !isManual && !isProcurement && tab === "kandidatai"
+      ? candidates.slice(autoCandidatesOffset, autoCandidatesOffset + AUTO_CANDIDATES_PAGE_SIZE)
+      : candidates;
+
+  if (
+    !isManual &&
+    !isProcurement &&
+    tab === "kandidatai" &&
+    autoCandidatesPageIndex0 !== requestedAutoCandidatesPageIndex0
+  ) {
+    redirect(
+      buildProjectDetailHref(id, {
+        tab: "kandidatai",
+        ...qOpts,
+        page: autoCandidatesPageIndex0,
+      })
+    );
   }
 
   const requestedManualPageIndex0 = isManual ? parsePageIndex0(sp.page) : 0;
@@ -761,12 +797,24 @@ export default async function ProjektasDetailPage({
                   </CrmListPageMain>
                 ) : (
                   <CrmListPageMain>
-                    <div className="w-full min-w-0">
+                    <div className="w-full min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white">
                       <ProjectCandidateCallList
                         mode="pick"
                         projectId={String(p.id ?? id).trim() || id}
                         defaultAssignee={defaultAssignee}
-                        candidates={candidates}
+                        candidates={autoCandidatesPageRows}
+                      />
+                      <SimplePagination
+                        basePath={`/projektai/${id}`}
+                        pageIndex0={autoCandidatesPageIndex0}
+                        totalPages={autoCandidatesTotalPages}
+                        extraQuery={{
+                          tab: "kandidatai",
+                          ...(period ? { period: String(period) } : {}),
+                          ...(period === "custom" && customFrom ? { from: String(customFrom) } : {}),
+                          ...(period === "custom" && customTo ? { to: String(customTo) } : {}),
+                        }}
+                        ariaLabel={`Kandidatų sąrašo puslapiai (${autoCandidatesShowing.from}–${autoCandidatesShowing.to} iš ${autoCandidatesShowing.total})`}
                       />
                     </div>
                   </CrmListPageMain>
