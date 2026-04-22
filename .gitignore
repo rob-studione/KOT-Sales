@@ -45,3 +45,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 env.txt
+
+# local / ops (do not commit)
+backup.sql
+scripts/crm/
