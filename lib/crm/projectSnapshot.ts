@@ -16,7 +16,7 @@ export function projectSortLabel(sort: ProjectSortOption): string {
     case "order_count_desc":
       return "Užsakymų skaičius (daugiausia, intervale)";
     default:
-      return "Apyvarta (didžiausia, intervale)";
+      return "Apyvarta (didžiausia, visur)";
   }
 }
 
