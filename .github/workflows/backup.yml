@@ -17,7 +17,9 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
+          set -euo pipefail
           pg_dump "$DATABASE_URL" | gzip > backup_$(date +%F).sql.gz
+          test -s backup_$(date +%F).sql.gz
 
       - name: Upload to Google Drive
         uses: adityak74/google-drive-upload-git-action@main
@@ -25,4 +27,3 @@ jobs:
           credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
           filename: backup_*.sql.gz
           folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
-          
