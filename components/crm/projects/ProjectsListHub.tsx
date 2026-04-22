@@ -2,6 +2,7 @@ import Link from "next/link";
 import { projectWorkItemCount, type ProjectListRow } from "@/lib/crm/projectListHelpers";
 import type { CrmUser } from "@/lib/crm/crmUsers";
 import { ProjectsSortableListLoader } from "@/components/crm/projects/ProjectsSortableListLoader";
+import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 
 function StatusLine({ status }: { status: string }) {
   const archived = status === "archived";
@@ -36,6 +37,7 @@ export function ProjectsListHub({
   counts,
   deletedAtAvailable,
   kpi,
+  qTrim,
 }: {
   rows: ProjectListRow[];
   userById: Map<string, CrmUser>;
@@ -48,6 +50,7 @@ export function ProjectsListHub({
     totalWorkItems: number;
     assignedProjects: number;
   };
+  qTrim: string;
 }) {
   const isArchived = statusFilter === "archived";
   const isDeleted = statusFilter === "deleted";
@@ -104,12 +107,24 @@ export function ProjectsListHub({
           </div>
         </div>
         <div className="shrink-0 sm:pt-0.5">
-          <Link
-            href="/projektai/naujas"
-            className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800"
-          >
-            + Sukurti projektą
-          </Link>
+          <div className="flex flex-col items-start gap-3 sm:items-end">
+            <Link
+              href="/projektai/naujas"
+              className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800"
+            >
+              + Sukurti projektą
+            </Link>
+            <ListPageSearchForm
+              action="/projektai"
+              defaultQuery={qTrim}
+              placeholder="Paieška (pavadinimas, aprašymas)"
+              inputId="crm-projektai-search"
+              hiddenFields={{
+                ...(isArchived ? { status: "archived" } : {}),
+                ...(isDeleted ? { status: "deleted" } : {}),
+              }}
+            />
+          </div>
         </div>
       </header>
 

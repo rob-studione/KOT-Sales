@@ -17,11 +17,13 @@ function parseStatusFilter(raw: unknown): StatusFilter {
 export default async function ProjektaiListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string | string[] }>;
+  searchParams: Promise<{ status?: string | string[]; q?: string | string[] }>;
 }) {
   const sp = await searchParams;
   const statusRaw = typeof sp.status === "string" ? sp.status : undefined;
   const statusFilter = parseStatusFilter(statusRaw);
+  const qTrim = typeof sp.q === "string" ? sp.q.trim() : "";
+  const qLower = qTrim.toLowerCase();
 
   let supabase: Awaited<ReturnType<typeof createSupabaseSsrReadOnlyClient>>;
   try {
@@ -146,21 +148,31 @@ export default async function ProjektaiListPage({
     return p.status === "active";
   });
 
+  const searchedRows =
+    qLower.length === 0
+      ? filteredRows
+      : filteredRows.filter((p) => {
+          const name = String(p.name ?? "").toLowerCase();
+          const desc = String(p.description ?? "").toLowerCase();
+          return name.includes(qLower) || desc.includes(qLower);
+        });
+
   const kpi = {
-    projectCount: filteredRows.length,
-    totalWorkItems: filteredRows.reduce((s, p) => s + projectWorkItemCount(p), 0),
-    assignedProjects: filteredRows.filter((p) => p.owner_user_id).length,
+    projectCount: searchedRows.length,
+    totalWorkItems: searchedRows.reduce((s, p) => s + projectWorkItemCount(p), 0),
+    assignedProjects: searchedRows.filter((p) => p.owner_user_id).length,
   };
 
   return (
     <ProjectsListHub
-      rows={filteredRows}
+      rows={searchedRows}
       userById={userById}
       ownerColumnAvailable={ownerColumnAvailable}
       statusFilter={statusFilter}
       counts={{ active: activeCount, archived: archivedCount, deleted: deletedCount }}
       deletedAtAvailable={deletedAtAvailable}
       kpi={kpi}
+      qTrim={qTrim}
     />
   );
 }
