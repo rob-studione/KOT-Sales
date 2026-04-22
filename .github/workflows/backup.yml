@@ -36,14 +36,16 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install -y python3 python3-pip
-          pip3 install --no-cache-dir google-auth requests
+          apt-get install -y python3 python3-venv
 
-          python3 <<'PY'
+          python3 -m venv /tmp/venv
+          . /tmp/venv/bin/activate
+          pip install --no-cache-dir google-auth requests
+
+          python <<'PY'
           import base64
           import json
           import os
-          import sys
 
           import requests
           from google.oauth2 import service_account
@@ -63,7 +65,7 @@ jobs:
 
           headers = {"Authorization": f"Bearer {token}"}
           params = {
-              "q": f"'{folder_id}' in parents and trashed = false and name contains 'backup_'",
+              "q": f"'{folder_id}' in parents and trashed = false",
               "fields": "files(id,name,createdTime),nextPageToken",
               "orderBy": "createdTime desc",
               "pageSize": 100,
@@ -98,16 +100,10 @@ jobs:
               if f["name"].startswith("backup_") and f["name"].endswith(".sql.gz")
           ]
 
-          keep = backups[:14]
           delete = backups[14:]
 
-          print("Keeping:")
-          for f in keep:
-              print(f"  {f['name']}")
-
-          print("Deleting:")
           for f in delete:
-              print(f"  {f['name']}")
+              print(f"Deleting {f['name']}")
               dr = requests.delete(
                   f"https://www.googleapis.com/drive/v3/files/{f['id']}",
                   headers=headers,
