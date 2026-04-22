@@ -25,3 +25,4 @@ jobs:
           credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
           filename: backup_*.sql.gz
           folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          parent: true
