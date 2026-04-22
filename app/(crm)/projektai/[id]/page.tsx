@@ -454,7 +454,7 @@ export default async function ProjektasDetailPage({
     }
   }
 
-  const workItemsAll: ProjectWorkItemDto[] = workRaw.map((row) => {
+  let workItemsAll: ProjectWorkItemDto[] = workRaw.map((row) => {
     const r = row;
     const st = r.source_type;
     return {
@@ -486,6 +486,36 @@ export default async function ProjektasDetailPage({
     result_status: String(row.result_status ?? ""),
   };
   });
+
+  // Display fix: show live (all-time) revenue in Kanban/list even for older picked items.
+  // Snapshot rows in DB are immutable by design, so we only override for rendering.
+  const liveRevenueByClientKey = new Map<string, number>();
+  const revenueKeys = Array.from(
+    new Set(
+      workItemsAll
+        .filter((w) => (w.source_type === "auto" || w.source_type === "linked_client") && w.client_key.trim() !== "")
+        .map((w) => w.client_key)
+    )
+  );
+  for (let i = 0; i < revenueKeys.length; i += 200) {
+    const part = revenueKeys.slice(i, i + 200);
+    const { data } = await supabase
+      .from("v_client_list_from_invoices")
+      .select("client_key,total_revenue")
+      .in("client_key", part);
+    for (const r of (data ?? []) as Array<{ client_key?: unknown; total_revenue?: unknown }>) {
+      const ck = String(r.client_key ?? "").trim();
+      if (!ck) continue;
+      const n = Number(r.total_revenue ?? 0);
+      if (Number.isFinite(n)) liveRevenueByClientKey.set(ck, n);
+    }
+  }
+  if (liveRevenueByClientKey.size > 0) {
+    workItemsAll = workItemsAll.map((w) => {
+      const v = liveRevenueByClientKey.get(w.client_key);
+      return v === undefined ? w : { ...w, snapshot_revenue: v };
+    });
+  }
 
   /** „Darbas“: tik neuždarytos eilutės (`result_status` ne „completed“ / completion_* ir pan.). */
   const workItems = workItemsAll.filter((w) => !isProjectWorkItemClosed(w.result_status));
