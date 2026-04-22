@@ -17,12 +17,17 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           set -euo pipefail
-          pg_dump "$DATABASE_URL" | gzip > backup_$(date +%F).sql.gz
-          test -s backup_$(date +%F).sql.gz
+          FILE="backup_$(date +%F).sql.gz"
+          pg_dump "$DATABASE_URL" | gzip > "$FILE"
+          test -s "$FILE"
+          echo "BACKUP_FILE=$FILE" >> $GITHUB_ENV
 
       - name: Upload to Google Drive
         uses: adityak74/google-drive-upload-git-action@main
         with:
           credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          filename: backup_*.sql.gz
+          filename: ${{ env.BACKUP_FILE }}
           folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+
+      - name: Delete local backup
+        run: rm -f "${{ env.BACKUP_FILE }}"
