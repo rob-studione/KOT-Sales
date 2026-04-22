@@ -20,7 +20,7 @@ import {
 import { projectSortLabel, parseProjectSortOption, type SnapshotCandidateRow } from "@/lib/crm/projectSnapshot";
 import { archiveProjectFormAction, restoreDeletedProjectFormAction, unarchiveProjectFormAction } from "@/lib/crm/projectActions";
 import { ProjectCandidateCallList } from "@/components/crm/ProjectCandidateCallList";
-import { CrmListPageIntro, CrmListPageMain } from "@/components/crm/CrmListPageLayout";
+import { CrmListPageControls, CrmListPageIntro, CrmListPageMain } from "@/components/crm/CrmListPageLayout";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { CRM_UNDERLINE_TAB_NAV_CLASS, crmUnderlineTabClass } from "@/components/crm/crmUnderlineTabStyles";
 import { ProjectWorkBoardClientWrapper } from "@/components/crm/ProjectWorkBoardClientWrapper";
@@ -73,6 +73,7 @@ import {
   totalPagesFromCount,
 } from "@/lib/crm/pagination";
 import { SimplePagination } from "@/components/crm/SimplePagination";
+import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 import type { CrmNotificationRow } from "@/lib/crm/notificationConstants";
 
 export const dynamic = "force-dynamic";
@@ -204,9 +205,21 @@ export default async function ProjektasDetailPage({
   }
 
   const AUTO_CANDIDATES_PAGE_SIZE = 20;
+  const autoCandidatesQTrim =
+    !isManual && !isProcurement && tab === "kandidatai" ? (typeof sp.q === "string" ? sp.q.trim() : "") : "";
+  const autoCandidatesQ = autoCandidatesQTrim.toLowerCase();
+  const autoCandidatesFiltered =
+    autoCandidatesQ.length === 0
+      ? candidates
+      : candidates.filter((c) => {
+          const name = String(c.company_name ?? "").toLowerCase();
+          const code = String(c.company_code ?? "").toLowerCase();
+          const cid = String(c.client_id ?? "").toLowerCase();
+          return name.includes(autoCandidatesQ) || code.includes(autoCandidatesQ) || cid.includes(autoCandidatesQ);
+        });
   const requestedAutoCandidatesPageIndex0 =
     !isManual && !isProcurement && tab === "kandidatai" ? parsePageIndex0(sp.page) : 0;
-  const autoCandidatesTotalCount = !isManual && !isProcurement ? candidates.length : 0;
+  const autoCandidatesTotalCount = !isManual && !isProcurement ? autoCandidatesFiltered.length : 0;
   const autoCandidatesTotalPages =
     !isManual && !isProcurement ? totalPagesFromCount(autoCandidatesTotalCount, AUTO_CANDIDATES_PAGE_SIZE) : 0;
   const autoCandidatesPageIndex0 =
@@ -220,7 +233,7 @@ export default async function ProjektasDetailPage({
   const autoCandidatesOffset = autoCandidatesPageIndex0 * AUTO_CANDIDATES_PAGE_SIZE;
   const autoCandidatesPageRows =
     !isManual && !isProcurement && tab === "kandidatai"
-      ? candidates.slice(autoCandidatesOffset, autoCandidatesOffset + AUTO_CANDIDATES_PAGE_SIZE)
+      ? autoCandidatesFiltered.slice(autoCandidatesOffset, autoCandidatesOffset + AUTO_CANDIDATES_PAGE_SIZE)
       : candidates;
 
   if (
@@ -234,6 +247,7 @@ export default async function ProjektasDetailPage({
         tab: "kandidatai",
         ...qOpts,
         page: autoCandidatesPageIndex0,
+        ...(autoCandidatesQTrim ? { q: autoCandidatesQTrim } : {}),
       })
     );
   }
@@ -411,7 +425,7 @@ export default async function ProjektasDetailPage({
     ? manualCandidatesTotal
     : isProcurement
       ? procurementContractsTotal
-      : candidates.length;
+      : autoCandidatesTotalCount;
 
   let workRaw: Record<string, unknown>[] = [];
   let wErr;
@@ -821,6 +835,22 @@ export default async function ProjektasDetailPage({
                   title="Kandidatai"
                   description="Sąrašas perskaičiuojamas kiekvieną kartą. Jei klientas užsako prieš būdamas paimtas — dingsta iš kandidatų. Uždarius darbo eilutę (rezultatas „Užbaigta“ ir kt.), klientas vėl gali atsirasti čia, jei vis dar tenkina taisykles."
                 />
+                <CrmListPageControls>
+                  <div className="flex justify-end">
+                    <ListPageSearchForm
+                      action={`/projektai/${id}`}
+                      defaultQuery={autoCandidatesQTrim}
+                      placeholder="Paieška (pavadinimas, kodas, klientas ID)"
+                      inputId="crm-project-candidates-search"
+                      hiddenFields={{
+                        tab: "kandidatai",
+                        ...(period ? { period: String(period) } : {}),
+                        ...(period === "custom" && customFrom ? { from: String(customFrom) } : {}),
+                        ...(period === "custom" && customTo ? { to: String(customTo) } : {}),
+                      }}
+                    />
+                  </div>
+                </CrmListPageControls>
                 {candidatesError ? (
                   <CrmListPageMain>
                     <p className="text-sm text-red-600">{candidatesError}</p>
@@ -840,6 +870,7 @@ export default async function ProjektasDetailPage({
                         totalPages={autoCandidatesTotalPages}
                         extraQuery={{
                           tab: "kandidatai",
+                          q: autoCandidatesQTrim || undefined,
                           ...(period ? { period: String(period) } : {}),
                           ...(period === "custom" && customFrom ? { from: String(customFrom) } : {}),
                           ...(period === "custom" && customTo ? { to: String(customTo) } : {}),
