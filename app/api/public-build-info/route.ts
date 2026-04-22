@@ -10,6 +10,7 @@ export function GET() {
     {
       appVersion: build.appVersion,
       buildDateIso: build.buildDateIso,
+      deploymentCreatedAt: build.deploymentCreatedAt,
     },
     {
       headers: {

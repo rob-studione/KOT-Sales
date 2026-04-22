@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { fetchPublicBuildInfo, getPublicBuildInfo } from "@/lib/buildInfo";
+import { fetchPublicBuildInfo, formatDeploymentUpdatedAt, getPublicBuildInfo } from "@/lib/buildInfo";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   BarChart3,
@@ -208,7 +208,10 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
       });
     return () => ac.abort();
   }, []);
-  const footerText = buildInfo.buildDateIso ? `Atnaujinta ${buildInfo.buildDateIso}` : null;
+  const footerText = useMemo(() => {
+    const updatedAt = formatDeploymentUpdatedAt(buildInfo.deploymentCreatedAt, "Europe/Vilnius");
+    return updatedAt ? `Atnaujinta: ${updatedAt}` : null;
+  }, [buildInfo.deploymentCreatedAt]);
 
   const [activeProjects, setActiveProjects] = useState<Array<{ id: string; name: string }>>([]);
 

@@ -3,6 +3,7 @@ import pkg from "@/package.json";
 export type RuntimeBuildInfo = {
   appVersion: string | null;
   buildDateIso: string | null; // YYYY-MM-DD
+  deploymentCreatedAt: string | null; // raw value from env (stringified)
 };
 
 function normalizeNonEmpty(value: unknown): string | null {
@@ -29,6 +30,8 @@ export function getRuntimeBuildInfo(): RuntimeBuildInfo {
     normalizeIsoDate(process.env.BUILD_DATE) ??
     normalizeIsoDate(process.env.NEXT_PUBLIC_BUILD_DATE);
 
-  return { appVersion, buildDateIso };
+  const deploymentCreatedAt = normalizeNonEmpty(process.env.VERCEL_DEPLOYMENT_CREATED_AT);
+
+  return { appVersion, buildDateIso, deploymentCreatedAt };
 }
 
