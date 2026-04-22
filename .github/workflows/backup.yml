@@ -8,11 +8,10 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    container:
+      image: postgres:17
 
     steps:
-      - name: Install Postgres client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client-17
-
       - name: Dump DB
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
