@@ -210,8 +210,10 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
   }, []);
   const footerText = useMemo(() => {
     const updatedAt = formatDeploymentUpdatedAt(buildInfo.deploymentCreatedAt, "Europe/Vilnius");
-    return updatedAt ? `Atnaujinta: ${updatedAt}` : null;
-  }, [buildInfo.deploymentCreatedAt]);
+    if (updatedAt) return `Atnaujinta: ${updatedAt}`;
+    if (buildInfo.buildDateIso) return `Atnaujinta: ${buildInfo.buildDateIso}`;
+    return null;
+  }, [buildInfo.buildDateIso, buildInfo.deploymentCreatedAt]);
 
   const [activeProjects, setActiveProjects] = useState<Array<{ id: string; name: string }>>([]);
 
