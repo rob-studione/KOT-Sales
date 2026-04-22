@@ -833,7 +833,7 @@ export default async function ProjektasDetailPage({
               <>
                 <CrmListPageIntro
                   title="Kandidatai"
-                  description="Sąrašas perskaičiuojamas kiekvieną kartą. Jei klientas užsako prieš būdamas paimtas — dingsta iš kandidatų. Uždarius darbo eilutę (rezultatas „Užbaigta“ ir kt.), klientas vėl gali atsirasti čia, jei vis dar tenkina taisykles."
+                  description="Sąrašas perskaičiuojamas kiekvieną kartą. Jei klientas užsako prieš būdamas paimtas — dingsta iš kandidatų. Jei klientas jau buvo paimtas į „Darbas“ šiame projekte, jis čia neberodomas (nebent darbo eilutė buvo grąžinta į kandidatus)."
                 />
                 <CrmListPageControls>
                   <div className="flex justify-end">
