@@ -271,7 +271,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
         const open = openKey === rowUiKey;
         const level = priorityFromRankInList(i, total);
         const href = clientDetailPath(r.client_key === "" ? null : r.client_key);
-        const lastInv = formatDate(r.last_invoice_date);
+        const lastInv = formatDate(r.last_invoice_anywhere);
         const meta = `Paskutinė sąskaita: ${lastInv}`;
 
         return (
