@@ -20,17 +20,46 @@ function normalizeIsoDate(value: unknown): string | null {
   return d.toISOString().slice(0, 10);
 }
 
+function readBuildInfoJson(): Partial<RuntimeBuildInfo> | null {
+  try {
+    // Keep `fs` out of client bundles (this module should stay server-only).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("node:fs") as typeof import("node:fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("node:path") as typeof import("node:path");
+
+    const p = path.join(process.cwd(), "public", "build-info.json");
+    if (!fs.existsSync(p)) return null;
+    const raw = fs.readFileSync(p, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const obj = parsed as Record<string, unknown>;
+    return {
+      buildDateIso: normalizeIsoDate(obj.buildDateIso),
+      deploymentCreatedAt: normalizeNonEmpty(obj.deploymentCreatedAt),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function getRuntimeBuildInfo(): RuntimeBuildInfo {
   const appVersion =
     normalizeNonEmpty(process.env.APP_VERSION) ??
     normalizeNonEmpty(process.env.NEXT_PUBLIC_APP_VERSION) ??
     normalizeNonEmpty(pkg.version);
 
+  const buildInfoJson = readBuildInfoJson();
+
   const buildDateIso =
     normalizeIsoDate(process.env.BUILD_DATE) ??
-    normalizeIsoDate(process.env.NEXT_PUBLIC_BUILD_DATE);
+    normalizeIsoDate(process.env.NEXT_PUBLIC_BUILD_DATE) ??
+    normalizeIsoDate(buildInfoJson?.buildDateIso);
 
-  const deploymentCreatedAt = normalizeNonEmpty(process.env.VERCEL_DEPLOYMENT_CREATED_AT);
+  const deploymentCreatedAt =
+    normalizeNonEmpty(process.env.VERCEL_DEPLOYMENT_CREATED_AT) ??
+    normalizeNonEmpty(buildInfoJson?.deploymentCreatedAt);
 
   return { appVersion, buildDateIso, deploymentCreatedAt };
 }

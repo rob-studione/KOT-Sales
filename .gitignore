@@ -49,3 +49,6 @@ env.txt
 # local / ops (do not commit)
 backup.sql
 scripts/crm/
+
+# generated at build time (do not commit)
+public/build-info.json
