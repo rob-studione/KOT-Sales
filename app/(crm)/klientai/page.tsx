@@ -8,7 +8,7 @@ import { KlientaiSubNav } from "@/components/crm/KlientaiSubNav";
 import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 import { TablePagination } from "@/components/crm/TablePagination";
 import { clampPageIndex0, parsePageIndex0, parsePageSize, showingRange1Based, totalPagesFromCount } from "@/lib/crm/pagination";
-import { sanitizeForPostgrestOrClause } from "@/lib/crm/postgrestSearch";
+import { buildClientListSearchOrClause } from "@/lib/crm/postgrestSearch";
 import { formatDate } from "@/lib/crm/format";
 import { ACTIVE_WINDOW_MONTHS, DEFAULT_LOST_MONTHS, LOST_PRESET_MONTHS, calendarDateMonthsAgo, parseLostMonthsParam } from "@/lib/crm/analyticsDates";
 import { AnalyticsClientTable } from "@/components/crm/AnalyticsClientTable";
@@ -145,7 +145,7 @@ function renderClientsShell(args: {
 async function renderAllClients(sp: { [key: string]: string | string[] | undefined }) {
   const qRaw = sp.q;
   const qTrim = typeof qRaw === "string" ? qRaw.trim() : "";
-  const q = sanitizeForPostgrestOrClause(qTrim);
+  const q = buildClientListSearchOrClause(qTrim);
 
   const sortRaw = sp.sort;
   const sort: SortOption = sortRaw === "last_invoice_date" ? "last_invoice_date" : "revenue";
@@ -288,7 +288,7 @@ async function renderAllClients(sp: { [key: string]: string | string[] | undefin
 async function renderActiveClients(sp: { [key: string]: string | string[] | undefined }) {
   const qRaw = sp.q;
   const qTrim = typeof qRaw === "string" ? qRaw.trim() : "";
-  const q = sanitizeForPostgrestOrClause(qTrim);
+  const q = buildClientListSearchOrClause(qTrim);
   const requestedPageIndex0 = parsePageIndex0(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
   const activeCutoff = calendarDateMonthsAgo(ACTIVE_WINDOW_MONTHS);
@@ -397,7 +397,7 @@ async function renderActiveClients(sp: { [key: string]: string | string[] | unde
 async function renderLostClients(sp: { [key: string]: string | string[] | undefined }) {
   const qRaw = sp.q;
   const qTrim = typeof qRaw === "string" ? qRaw.trim() : "";
-  const q = sanitizeForPostgrestOrClause(qTrim);
+  const q = buildClientListSearchOrClause(qTrim);
   const months = parseLostMonthsParam(sp.months);
   const sort = parseLostSort(typeof sp.sort === "string" ? sp.sort : undefined);
   const requestedPageIndex0 = parsePageIndex0(sp.page);
