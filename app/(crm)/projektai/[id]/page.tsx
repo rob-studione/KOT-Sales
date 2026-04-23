@@ -1025,6 +1025,7 @@ export default async function ProjektasDetailPage({
                     </p>
                     <div className="w-full min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white">
                       <ProjectCandidateCallList
+                        key={autoCandidateListStatus}
                         mode="pick"
                         projectId={String(p.id ?? id).trim() || id}
                         defaultAssignee={defaultAssignee}
