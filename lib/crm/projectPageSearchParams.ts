@@ -11,6 +11,8 @@ export function parseManualCandidatesStatus(raw: string | undefined): ManualCand
 
 export type ProjectDetailTab = "apzvalga" | "kandidatai" | "sutartys" | "darbas" | "kontaktuota" | "pajamos";
 
+export type ProjectAutoCandidatesListStatus = "active" | "netinkamas";
+
 export function parseProjectDetailTab(raw: string | undefined): ProjectDetailTab {
   if (
     raw === "kandidatai" ||
@@ -36,6 +38,8 @@ export function buildProjectDetailHref(
     pageSize?: number;
     /** Rankinio projekto kandidatų filtras (crm_status). */
     status?: ManualCandidateCrmStatusFilter | string;
+    /** Auto kandidatų sąrašo filtras (default: active). */
+    candidateStatus?: ProjectAutoCandidatesListStatus;
     /** Paieška (company_name / company_code). */
     q?: string;
   }
@@ -50,6 +54,8 @@ export function buildProjectDetailHref(
   if (opts.pageSize !== undefined && opts.pageSize !== 20) params.set("pageSize", String(opts.pageSize));
   const st = opts.status !== undefined ? String(opts.status).trim() : "";
   if (st !== "") params.set("status", st);
+  const candSt = opts.candidateStatus !== undefined ? String(opts.candidateStatus).trim() : "";
+  if (candSt !== "" && candSt !== "active") params.set("candidateStatus", candSt);
   const searchQ = opts.q !== undefined ? String(opts.q).trim() : "";
   if (searchQ !== "") params.set("q", searchQ);
   return `/projektai/${projectId}?${params.toString()}`;
