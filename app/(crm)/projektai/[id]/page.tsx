@@ -961,6 +961,7 @@ export default async function ProjektasDetailPage({
                   <div className="flex flex-wrap items-center justify-end gap-3">
                     <div className="inline-flex rounded-md border border-zinc-200 bg-white p-0.5">
                       <Link
+                        prefetch={false}
                         href={buildProjectDetailHref(id, {
                           tab: "kandidatai",
                           ...qOpts,
@@ -977,6 +978,7 @@ export default async function ProjektasDetailPage({
                         Aktyvūs
                       </Link>
                       <Link
+                        prefetch={false}
                         href={buildProjectDetailHref(id, {
                           tab: "kandidatai",
                           ...qOpts,
