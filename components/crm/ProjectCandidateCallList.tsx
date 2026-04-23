@@ -309,6 +309,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                   });
                   setRowError(res.error);
                 });
+                router.refresh();
               }}
             >
               Pažymėti kaip netinkamą
@@ -497,6 +498,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                           });
                           setRowError(res.error);
                         });
+                        router.refresh();
                       }}
                     >
                       Grąžinti
