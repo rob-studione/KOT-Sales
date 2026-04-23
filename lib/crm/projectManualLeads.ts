@@ -6,7 +6,6 @@ import type { ManualCandidateCrmStatusFilter } from "@/lib/crm/projectPageSearch
 export type ManualCandidatesRpcFilters = {
   status?: ManualCandidateCrmStatusFilter | null;
   search?: string | null;
-  candidateStatus?: "active" | "netinkamas" | null;
 };
 
 /** Visada 6 named paramų – PostgREST aiškiai renkasi vieną signatūrą; NULL = be filtro. */
@@ -19,7 +18,6 @@ function rpcManualCandidatesArgs(
 ): Record<string, unknown> {
   const st = filters?.status ?? null;
   const q = (filters?.search ?? "").trim();
-  const cs = filters?.candidateStatus ?? null;
   return {
     p_project_id: projectId,
     p_limit: pageSize,
@@ -27,17 +25,16 @@ function rpcManualCandidatesArgs(
     p_count_only: countOnly,
     p_status: st,
     p_search: q === "" ? null : q,
-    p_candidate_status: cs,
   };
 }
 
 /** Po migracijos 0044_project_manual_leads_import_fields.sql */
 const PROJECT_MANUAL_LEADS_SELECT_FULL =
-  "id,project_id,company_name,company_code,annual_revenue,annual_revenue_year,crm_status,crm_client_id,last_order_at,status,email,phone,contact_name,notes,created_at";
+  "id,project_id,company_name,company_code,annual_revenue,annual_revenue_year,crm_status,crm_client_id,last_order_at,email,phone,contact_name,notes,created_at";
 
 /** Tik 0034_project_manual_leads.sql — jei 0044 dar nepritaikyta. */
 const PROJECT_MANUAL_LEADS_SELECT_LEGACY =
-  "id,project_id,company_name,company_code,status,email,phone,contact_name,notes,created_at";
+  "id,project_id,company_name,company_code,email,phone,contact_name,notes,created_at";
 
 /** Kai DB dar neturi CSV importo stulpelių (migracija 0044). */
 function isMissingManualLeadImportColumnsError(err: { message?: string; code?: string } | null | undefined): boolean {
@@ -49,8 +46,7 @@ function isMissingManualLeadImportColumnsError(err: { message?: string; code?: s
     m.includes("annual_revenue") ||
     m.includes("crm_status") ||
     m.includes("crm_client_id") ||
-    m.includes("last_order_at") ||
-    m.includes("status")
+    m.includes("last_order_at")
   );
 }
 
@@ -65,7 +61,6 @@ function normalizeLegacyManualLeadRow(row: Record<string, unknown>): ProjectManu
     crm_status: "new_lead",
     crm_client_id: null,
     last_order_at: null,
-    status: row.status != null && String(row.status).trim() === "netinkamas" ? "netinkamas" : "active",
     email: row.email != null && String(row.email).trim() !== "" ? String(row.email).trim() : null,
     phone: row.phone != null && String(row.phone).trim() !== "" ? String(row.phone).trim() : null,
     contact_name: row.contact_name != null && String(row.contact_name).trim() !== "" ? String(row.contact_name).trim() : null,
@@ -84,7 +79,6 @@ export type ProjectManualLeadRow = {
   crm_status: "existing_client" | "former_client" | "new_lead";
   crm_client_id: string | null;
   last_order_at: string | null;
-  status: "active" | "netinkamas";
   email: string | null;
   phone: string | null;
   contact_name: string | null;
@@ -110,7 +104,6 @@ export async function fetchManualLeadsForProject(
     .from("project_manual_leads")
     .select(PROJECT_MANUAL_LEADS_SELECT_FULL)
     .eq("project_id", projectId)
-    .or("status.is.null,status.eq.active")
     .order("created_at", { ascending: false });
 
   if (full.error) {
@@ -123,7 +116,6 @@ export async function fetchManualLeadsForProject(
         .from("project_manual_leads")
         .select(PROJECT_MANUAL_LEADS_SELECT_LEGACY)
         .eq("project_id", projectId)
-        .or("status.is.null,status.eq.active")
         .order("created_at", { ascending: false });
       if (leg.error) {
         logSupabaseError("projectManualLeads.fetch legacy select", leg.error);
@@ -158,7 +150,6 @@ function leadRowFromRpcJson(row: Record<string, unknown>): ProjectManualLeadRow 
       ? Number(rev)
       : null;
   const y = row.annual_revenue_year;
-  const st = String(row.status ?? "").trim();
   return {
     id: String(row.id ?? ""),
     project_id: String(row.project_id ?? ""),
@@ -172,7 +163,6 @@ function leadRowFromRpcJson(row: Record<string, unknown>): ProjectManualLeadRow 
       row.last_order_at != null && String(row.last_order_at).trim() !== ""
         ? String(row.last_order_at).slice(0, 10)
         : null,
-    status: st === "netinkamas" ? "netinkamas" : "active",
     email: row.email != null && String(row.email).trim() !== "" ? String(row.email).trim() : null,
     phone: row.phone != null && String(row.phone).trim() !== "" ? String(row.phone).trim() : null,
     contact_name: row.contact_name != null && String(row.contact_name).trim() !== "" ? String(row.contact_name).trim() : null,

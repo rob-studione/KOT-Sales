@@ -27,7 +27,6 @@ function SearchIcon({ className }: { className?: string }) {
 export function ManualProjectCandidatesFiltersBar({
   projectId,
   defaultStatus,
-  defaultCandidateStatus,
   defaultQuery,
   periodHidden,
   fromHidden,
@@ -36,7 +35,6 @@ export function ManualProjectCandidatesFiltersBar({
 }: {
   projectId: string;
   defaultStatus: string;
-  defaultCandidateStatus: "active" | "netinkamas";
   defaultQuery: string;
   periodHidden: string;
   fromHidden?: string;
@@ -53,45 +51,9 @@ export function ManualProjectCandidatesFiltersBar({
       {pageSizeHidden != null && pageSizeHidden !== "" && pageSizeHidden !== "20" ? (
         <input type="hidden" name="pageSize" value={pageSizeHidden} />
       ) : null}
-      <input
-        type="hidden"
-        name="candidateStatus"
-        value={defaultCandidateStatus === "active" ? "" : defaultCandidateStatus}
-      />
 
       <div className="max-w-full overflow-x-auto pb-0.5">
         <div className="inline-flex flex-nowrap items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-          <div className="shrink-0">
-            <div className="inline-flex rounded-md border border-zinc-200 bg-white p-0.5">
-              <button
-                type="submit"
-                name="candidateStatus"
-                value=""
-                className={[
-                  "h-8 rounded-[6px] px-3 text-sm font-medium transition-colors",
-                  defaultCandidateStatus === "active"
-                    ? "bg-zinc-900 text-white"
-                    : "text-zinc-700 hover:bg-zinc-50",
-                ].join(" ")}
-              >
-                Aktyvūs
-              </button>
-              <button
-                type="submit"
-                name="candidateStatus"
-                value="netinkamas"
-                className={[
-                  "h-8 rounded-[6px] px-3 text-sm font-medium transition-colors",
-                  defaultCandidateStatus === "netinkamas"
-                    ? "bg-zinc-900 text-white"
-                    : "text-zinc-700 hover:bg-zinc-50",
-                ].join(" ")}
-              >
-                Netinkami
-              </button>
-            </div>
-          </div>
-
           <div className="relative h-9 w-[360px] shrink-0">
             <span className="pointer-events-none absolute left-2.5 top-1/2 z-[1] -translate-y-1/2 text-zinc-400">
               <SearchIcon className="block" />

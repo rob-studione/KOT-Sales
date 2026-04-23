@@ -13,8 +13,7 @@ export async function rpcMatchProjectCandidates(
   dateTo: string,
   minOrderCount: number,
   inactivityDays: number,
-  projectId: string | null,
-  candidateStatus?: "active" | "netinkamas"
+  projectId: string | null
 ): Promise<{ ok: true; rows: SnapshotCandidateRow[] } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("match_project_candidates", {
     p_date_from: dateFrom,
@@ -22,7 +21,6 @@ export async function rpcMatchProjectCandidates(
     p_min_orders: minOrderCount,
     p_inactivity_days: inactivityDays,
     p_project_id: projectId,
-    p_candidate_status: candidateStatus ?? "active",
   });
 
   if (error) {
@@ -53,8 +51,7 @@ export type ProjectRulesRow = {
 
 export async function fetchSortedCandidatesForProject(
   supabase: SupabaseClient,
-  p: ProjectRulesRow,
-  opts?: { candidateStatus?: "active" | "netinkamas" }
+  p: ProjectRulesRow
 ): Promise<{ ok: true; rows: SnapshotCandidateRow[] } | { ok: false; error: string }> {
   const t = projectTypeFromDbRow(p) ?? p.project_type;
   if (isManualProjectType(t) || isProcurementProjectType(t)) {
@@ -67,8 +64,7 @@ export async function fetchSortedCandidatesForProject(
     String(p.filter_date_to).slice(0, 10),
     Number(p.min_order_count ?? 1),
     Number(p.inactivity_days ?? 90),
-    p.id,
-    opts?.candidateStatus ?? "active"
+    p.id
   );
   if (!loaded.ok) return loaded;
   const sort = parseProjectSortOption(String(p.sort_option ?? ""));
