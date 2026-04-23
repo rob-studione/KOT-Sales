@@ -619,6 +619,43 @@ export async function markAutoCandidateAsInvalidAction(
   return { ok: true };
 }
 
+export async function markManualCandidateAsInvalidAction(
+  projectId: string,
+  manualLeadId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pid = String(projectId ?? "").trim();
+  const leadId = String(manualLeadId ?? "").trim();
+  if (!pid || !isValidUuid(pid)) return { ok: false, error: "Neteisingas projektas." };
+  if (!leadId || !isValidUuid(leadId)) return { ok: false, error: "Neteisingas kandidatas." };
+
+  let supabase;
+  try {
+    supabase = await createSupabaseSsrClient();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
+  }
+
+  const { data: proj, error: projErr } = await supabase.from("projects").select("id, project_type").eq("id", pid).maybeSingle();
+  if (projErr || !proj) return { ok: false, error: "Projektas nerastas." };
+  if (!isManualProjectType(projectTypeFromDbRow(proj))) {
+    return { ok: false, error: "Netinkamo statusas taikomas tik rankiniams projektams." };
+  }
+
+  const { error } = await supabase
+    .from("project_manual_leads")
+    .update({ status: "netinkamas" })
+    .eq("project_id", pid)
+    .eq("id", leadId);
+
+  if (error) {
+    console.error("[projectActions] markManualCandidateAsInvalidAction failed", error);
+    return { ok: false, error: error.message ?? "Nepavyko pažymėti kandidato kaip netinkamo." };
+  }
+
+  revalidatePath(`/projektai/${pid}`);
+  return { ok: true };
+}
+
 export async function restoreAutoCandidateAction(
   projectId: string,
   clientKey: string
@@ -650,6 +687,43 @@ export async function restoreAutoCandidateAction(
 
   if (error) {
     console.error("[projectActions] restoreAutoCandidateAction failed", error);
+    return { ok: false, error: error.message ?? "Nepavyko grąžinti kandidato." };
+  }
+
+  revalidatePath(`/projektai/${pid}`);
+  return { ok: true };
+}
+
+export async function restoreManualCandidateAction(
+  projectId: string,
+  manualLeadId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pid = String(projectId ?? "").trim();
+  const leadId = String(manualLeadId ?? "").trim();
+  if (!pid || !isValidUuid(pid)) return { ok: false, error: "Neteisingas projektas." };
+  if (!leadId || !isValidUuid(leadId)) return { ok: false, error: "Neteisingas kandidatas." };
+
+  let supabase;
+  try {
+    supabase = await createSupabaseSsrClient();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
+  }
+
+  const { data: proj, error: projErr } = await supabase.from("projects").select("id, project_type").eq("id", pid).maybeSingle();
+  if (projErr || !proj) return { ok: false, error: "Projektas nerastas." };
+  if (!isManualProjectType(projectTypeFromDbRow(proj))) {
+    return { ok: false, error: "Netinkamo statusas taikomas tik rankiniams projektams." };
+  }
+
+  const { error } = await supabase
+    .from("project_manual_leads")
+    .update({ status: "active" })
+    .eq("project_id", pid)
+    .eq("id", leadId);
+
+  if (error) {
+    console.error("[projectActions] restoreManualCandidateAction failed", error);
     return { ok: false, error: error.message ?? "Nepavyko grąžinti kandidato." };
   }
 

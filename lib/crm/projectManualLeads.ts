@@ -1,10 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logSupabaseError } from "@/lib/supabase/supabaseErrorLog";
 import type { PageSize } from "@/lib/crm/pagination";
-import type { ManualCandidateCrmStatusFilter } from "@/lib/crm/projectPageSearchParams";
+import type { ManualCandidateListStatus } from "@/lib/crm/projectPageSearchParams";
 
 export type ManualCandidatesRpcFilters = {
-  status?: ManualCandidateCrmStatusFilter | null;
+  candidateStatus?: ManualCandidateListStatus;
   search?: string | null;
 };
 
@@ -16,21 +16,21 @@ function rpcManualCandidatesArgs(
   countOnly: boolean,
   filters?: ManualCandidatesRpcFilters
 ): Record<string, unknown> {
-  const st = filters?.status ?? null;
+  const candidateStatus = filters?.candidateStatus === "netinkamas" ? "netinkamas" : "active";
   const q = (filters?.search ?? "").trim();
   return {
     p_project_id: projectId,
     p_limit: pageSize,
     p_offset: offset,
     p_count_only: countOnly,
-    p_status: st,
+    p_candidate_status: candidateStatus,
     p_search: q === "" ? null : q,
   };
 }
 
 /** Po migracijos 0044_project_manual_leads_import_fields.sql */
 const PROJECT_MANUAL_LEADS_SELECT_FULL =
-  "id,project_id,company_name,company_code,annual_revenue,annual_revenue_year,crm_status,crm_client_id,last_order_at,email,phone,contact_name,notes,created_at";
+  "id,project_id,company_name,company_code,annual_revenue,annual_revenue_year,crm_status,crm_client_id,last_order_at,email,phone,contact_name,notes,status,created_at";
 
 /** Tik 0034_project_manual_leads.sql — jei 0044 dar nepritaikyta. */
 const PROJECT_MANUAL_LEADS_SELECT_LEGACY =
@@ -65,6 +65,7 @@ function normalizeLegacyManualLeadRow(row: Record<string, unknown>): ProjectManu
     phone: row.phone != null && String(row.phone).trim() !== "" ? String(row.phone).trim() : null,
     contact_name: row.contact_name != null && String(row.contact_name).trim() !== "" ? String(row.contact_name).trim() : null,
     notes: row.notes != null && String(row.notes).trim() !== "" ? String(row.notes).trim() : null,
+    status: "active",
     created_at: String(row.created_at ?? ""),
   };
 }
@@ -83,6 +84,7 @@ export type ProjectManualLeadRow = {
   phone: string | null;
   contact_name: string | null;
   notes: string | null;
+  status: "active" | "netinkamas";
   created_at: string;
 };
 
@@ -143,6 +145,10 @@ function parseCrmStatus(raw: unknown): ProjectManualLeadRow["crm_status"] {
   return "new_lead";
 }
 
+function parseManualCandidateStatus(raw: unknown): ProjectManualLeadRow["status"] {
+  return String(raw ?? "").trim() === "netinkamas" ? "netinkamas" : "active";
+}
+
 function leadRowFromRpcJson(row: Record<string, unknown>): ProjectManualLeadRow {
   const rev = row.annual_revenue;
   const revNum =
@@ -167,6 +173,7 @@ function leadRowFromRpcJson(row: Record<string, unknown>): ProjectManualLeadRow 
     phone: row.phone != null && String(row.phone).trim() !== "" ? String(row.phone).trim() : null,
     contact_name: row.contact_name != null && String(row.contact_name).trim() !== "" ? String(row.contact_name).trim() : null,
     notes: row.notes != null && String(row.notes).trim() !== "" ? String(row.notes).trim() : null,
+    status: parseManualCandidateStatus(row.status),
     created_at: String(row.created_at ?? ""),
   };
 }

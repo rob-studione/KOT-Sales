@@ -8,7 +8,9 @@ import {
   createManualProjectLeadAction,
   importManualProjectLeadsCsvAction,
   linkExistingClientToManualProjectAction,
+  markManualCandidateAsInvalidAction,
   previewManualProjectLeadsCsvAction,
+  restoreManualCandidateAction,
   type CreateManualProjectLeadActionResult,
   type ImportManualProjectLeadsCsvResult,
   type ManualCsvImportMapping,
@@ -24,6 +26,7 @@ import type {
 import { getManualImportCsvFields } from "@/lib/crm/manualImportCsv";
 import { TablePagination } from "@/components/crm/TablePagination";
 import type { PageSize } from "@/lib/crm/pagination";
+import type { ReactNode } from "react";
 
 function formatCsvFileSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
@@ -100,6 +103,8 @@ export function ManualProjectCandidatesPanel({
   paginationBasePath,
   paginationExtraQuery,
   defaultAssignee,
+  listStatus,
+  controlsLeft,
 }: {
   projectId: string;
   pageRows: ManualCandidatePageRow[];
@@ -112,6 +117,8 @@ export function ManualProjectCandidatesPanel({
   paginationBasePath: string;
   paginationExtraQuery: Record<string, string | undefined>;
   defaultAssignee: string;
+  listStatus: "active" | "netinkamas";
+  controlsLeft?: ReactNode;
 }) {
   const router = useRouter();
   const [hiddenLeadIds, setHiddenLeadIds] = useState<Set<string>>(() => new Set());
@@ -121,6 +128,11 @@ export function ManualProjectCandidatesPanel({
   const [importOpen, setImportOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [rowActionPending, startRowActionTransition] = useTransition();
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+  const invalidDialogRef = useRef<HTMLDialogElement>(null);
+  const [pendingInvalidLeadId, setPendingInvalidLeadId] = useState<string | null>(null);
   const [duplicateMatch, setDuplicateMatch] = useState<ExistingClientMatch | null>(null);
   const [linkPending, setLinkPending] = useState(false);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -153,6 +165,12 @@ export function ManualProjectCandidatesPanel({
     });
   }, [pageRows, hiddenLeadIds, hiddenLinkIds]);
   const empty = totalCount === 0;
+
+  useEffect(() => {
+    if (!successToast) return;
+    const t = window.setTimeout(() => setSuccessToast(null), 2600);
+    return () => window.clearTimeout(t);
+  }, [successToast]);
 
   useEffect(() => {
     if (!open) return;
@@ -289,11 +307,62 @@ export function ManualProjectCandidatesPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="max-w-xl text-sm leading-relaxed text-zinc-600">
-          Rankinis projektas: kandidatai neįtraukiami pagal sąskaitų taisykles. Pridėkite įmones kaip leadus arba prijunkite jau
-          esančius CRM klientus — jie rodomi tik šiame projekte.
-        </p>
+      {successToast ? (
+        <div className="fixed right-4 top-4 z-50 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 shadow-sm">
+          {successToast}
+        </div>
+      ) : null}
+
+      <dialog ref={invalidDialogRef} className="fixed inset-0 m-auto w-[min(92vw,28rem)] rounded-xl p-0 backdrop:bg-black/30">
+        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.35)]">
+          <div className="text-base font-semibold text-zinc-900">Pažymėti kandidatą kaip netinkamą?</div>
+          <p className="mt-1 text-sm text-zinc-600">Jis dings iš aktyvaus kandidatų sąrašo šiame projekte.</p>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              className="cursor-pointer rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              onClick={() => {
+                invalidDialogRef.current?.close();
+                setPendingInvalidLeadId(null);
+              }}
+            >
+              Atšaukti
+            </button>
+            <button
+              type="button"
+              className="cursor-pointer rounded-md bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-60"
+              disabled={!pendingInvalidLeadId || rowActionPending}
+              onClick={() => {
+                const leadId = pendingInvalidLeadId;
+                if (!leadId) return;
+                invalidDialogRef.current?.close();
+                setPendingInvalidLeadId(null);
+                setRowError(null);
+                setHiddenLeadIds((prev) => new Set(prev).add(leadId));
+                startRowActionTransition(async () => {
+                  const res = await markManualCandidateAsInvalidAction(projectId, leadId);
+                  if (!res.ok) {
+                    setHiddenLeadIds((prev) => {
+                      const next = new Set(prev);
+                      next.delete(leadId);
+                      return next;
+                    });
+                    setRowError(res.error);
+                    return;
+                  }
+                  setSuccessToast("Kandidatas pažymėtas kaip netinkamas");
+                  router.refresh();
+                });
+              }}
+            >
+              Pažymėti kaip netinkamą
+            </button>
+          </div>
+        </div>
+      </dialog>
+
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0 flex-1">{controlsLeft ?? null}</div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button
             type="button"
@@ -327,9 +396,15 @@ export function ManualProjectCandidatesPanel({
         </div>
       </div>
 
+      {rowError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50/60 px-3 py-2 text-sm text-red-700">{rowError}</div>
+      ) : null}
+
       {empty ? (
         <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 px-6 py-10 text-center">
-          <p className="text-sm text-zinc-600">Dar nėra kandidatų.</p>
+          <p className="text-sm text-zinc-600">
+            {listStatus === "netinkamas" ? "Nėra netinkamų kandidatų." : "Dar nėra kandidatų."}
+          </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             <button
               type="button"
@@ -427,24 +502,67 @@ export function ManualProjectCandidatesPanel({
                   className="flex shrink-0 flex-col items-end justify-center gap-1 border-t border-zinc-100 px-4 py-3 sm:border-t-0 sm:border-l sm:pl-4"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <ProjectCandidatePickForm
-                    projectId={projectId}
-                    defaultAssignee={defaultAssignee}
-                    candidateType="manual_lead"
-                    candidateId={row.lead.id}
-                    onOptimisticPick={(t) => {
-                      if (t.kind === "manual_lead") setHiddenLeadIds((s) => new Set(s).add(t.leadId));
-                    }}
-                    onOptimisticRevert={(t) => {
-                      if (t.kind === "manual_lead") {
-                        setHiddenLeadIds((s) => {
-                          const n = new Set(s);
-                          n.delete(t.leadId);
-                          return n;
+                  {listStatus === "active" ? (
+                    <>
+                      <ProjectCandidatePickForm
+                        projectId={projectId}
+                        defaultAssignee={defaultAssignee}
+                        candidateType="manual_lead"
+                        candidateId={row.lead.id}
+                        onOptimisticPick={(t) => {
+                          if (t.kind === "manual_lead") setHiddenLeadIds((s) => new Set(s).add(t.leadId));
+                        }}
+                        onOptimisticRevert={(t) => {
+                          if (t.kind === "manual_lead") {
+                            setHiddenLeadIds((s) => {
+                              const n = new Set(s);
+                              n.delete(t.leadId);
+                              return n;
+                            });
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={rowActionPending}
+                        className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                        onClick={() => {
+                          setRowError(null);
+                          setPendingInvalidLeadId(row.lead.id);
+                          invalidDialogRef.current?.showModal();
+                        }}
+                      >
+                        Netinkamas
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={rowActionPending}
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      onClick={() => {
+                        const leadId = row.lead.id;
+                        setRowError(null);
+                        setHiddenLeadIds((prev) => new Set(prev).add(leadId));
+                        startRowActionTransition(async () => {
+                          const res = await restoreManualCandidateAction(projectId, leadId);
+                          if (!res.ok) {
+                            setHiddenLeadIds((prev) => {
+                              const next = new Set(prev);
+                              next.delete(leadId);
+                              return next;
+                            });
+                            setRowError(res.error);
+                            return;
+                          }
+                          setSuccessToast("Kandidatas grąžintas į aktyvius");
+                          router.refresh();
                         });
-                      }
-                    }}
-                  />
+                      }}
+                    >
+                      Grąžinti
+                    </button>
+                  )}
                 </div>
               </li>
             ) : (

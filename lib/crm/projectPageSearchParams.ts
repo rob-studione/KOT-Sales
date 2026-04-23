@@ -1,12 +1,12 @@
 /** Bendri projekto puslapio query parametrai (skirtukai + apžvalgos periodas). */
 
-export type ManualCandidateCrmStatusFilter = "new_lead" | "former_client" | "existing_client";
+export type ManualCandidateListStatus = "active" | "netinkamas";
 
-/** ?status= — tik CRM lead statusai; tuščia / nežinoma → visi. */
-export function parseManualCandidatesStatus(raw: string | undefined): ManualCandidateCrmStatusFilter | null {
+/** ?candidateStatus= — manual kandidatų rodinio būsena; default: active. */
+export function parseManualCandidatesStatus(raw: string | undefined): ManualCandidateListStatus {
   const s = typeof raw === "string" ? raw.trim() : "";
-  if (s === "new_lead" || s === "former_client" || s === "existing_client") return s;
-  return null;
+  if (s === "netinkamas") return "netinkamas";
+  return "active";
 }
 
 export type ProjectDetailTab = "apzvalga" | "kandidatai" | "sutartys" | "darbas" | "kontaktuota" | "pajamos";
@@ -36,8 +36,8 @@ export function buildProjectDetailHref(
     /** 0-based; jei > 0 – įdedamas į URL (skirtukas „Kandidatai“ puslapiavimui). */
     page?: number;
     pageSize?: number;
-    /** Rankinio projekto kandidatų filtras (crm_status). */
-    status?: ManualCandidateCrmStatusFilter | string;
+    /** Papildomas rankinio projekto query parametras (paliktas suderinamumui). */
+    status?: string;
     /** Auto kandidatų sąrašo filtras (default: active). */
     candidateStatus?: ProjectAutoCandidatesListStatus;
     /** Paieška (company_name / company_code). */

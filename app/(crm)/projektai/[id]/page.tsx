@@ -229,9 +229,9 @@ export default async function ProjektasDetailPage({
 
   const tab = tabParsed;
 
-  const autoCandidateStatusRaw = typeof sp.candidateStatus === "string" ? sp.candidateStatus : "";
-  const autoCandidateListStatus: "active" | "netinkamas" =
-    autoCandidateStatusRaw.trim().toLowerCase() === "netinkamas" ? "netinkamas" : "active";
+  const candidateStatusRaw = typeof sp.candidateStatus === "string" ? sp.candidateStatus : undefined;
+  const autoCandidateListStatus: "active" | "netinkamas" = parseManualCandidatesStatus(candidateStatusRaw);
+  const manualCandidateListStatus: "active" | "netinkamas" = parseManualCandidatesStatus(candidateStatusRaw);
 
   /** Visada tas pats kaip „Kandidatai“ skirtuko sąrašas — skaitiklis neturi būti 0 kituose tab’uose. */
   let candidates: SnapshotCandidateRow[] = [];
@@ -328,11 +328,13 @@ export default async function ProjektasDetailPage({
 
   const requestedManualPageIndex0 = isManual ? parsePageIndex0(sp.page) : 0;
   const manualCandidatesPageSize = isManual ? parsePageSize(sp.pageSize) : 20;
-  const manualStatusFilter = isManual ? parseManualCandidatesStatus(typeof sp.status === "string" ? sp.status : undefined) : null;
   const manualQRaw = typeof sp.q === "string" ? sp.q : "";
   const manualQueryTrim = manualQRaw.trim();
   const manualSearchFilter = manualQueryTrim.length > 0 ? manualQueryTrim : null;
-  const manualRpcFilters = { status: manualStatusFilter, search: manualSearchFilter };
+  const manualRpcFilters = {
+    candidateStatus: manualCandidateListStatus,
+    search: manualSearchFilter,
+  };
 
   let manualCandidatesTotal = 0;
   let manualCandidatesPage: { rows: ManualCandidatePageRow[]; totalCount: number } = { rows: [], totalCount: 0 };
@@ -360,7 +362,7 @@ export default async function ProjektasDetailPage({
             ...qOpts,
             page: manualPageIndex0,
             pageSize: manualCandidatesPageSize,
-            ...(manualStatusFilter ? { status: manualStatusFilter } : {}),
+            ...(manualCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
             ...(manualQueryTrim !== "" ? { q: manualQueryTrim } : {}),
           })
         );
@@ -903,28 +905,14 @@ export default async function ProjektasDetailPage({
           <CrmTableContainer>
             {isManual ? (
               <>
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
-                  <div className="min-w-0 flex-1">
-                    <CrmListPageIntro
-                      title="Kandidatai"
-                      description="Rankinis projektas: čia rodomi tik jūsų pridėti kandidatai. Jie nėra įrašomi į „Visų klientų“ sąrašą."
-                    />
-                  </div>
-                  <div className="w-full min-w-0 shrink-0 lg:w-auto">
-                    <ManualProjectCandidatesFiltersBar
-                      projectId={id}
-                      defaultStatus={manualStatusFilter ?? ""}
-                      defaultQuery={manualQueryTrim}
-                      periodHidden={period}
-                      fromHidden={period === "custom" && customFrom ? customFrom : undefined}
-                      toHidden={period === "custom" && customTo ? customTo : undefined}
-                      pageSizeHidden={manualCandidatesPageSize !== 20 ? String(manualCandidatesPageSize) : undefined}
-                    />
-                  </div>
-                </div>
+                <CrmListPageIntro
+                  title="Kandidatai"
+                  description="Rankinis projektas: čia rodomi tik jūsų pridėti kandidatai. Jie nėra įrašomi į „Visų klientų“ sąrašą."
+                />
                 <CrmListPageMain>
                   <div className="w-full min-w-0">
                     <ManualProjectCandidatesPanel
+                      key={manualCandidateListStatus}
                       projectId={p.id}
                       pageRows={manualCandidatesPage.rows}
                       totalCount={manualCandidatesTotal}
@@ -940,13 +928,25 @@ export default async function ProjektasDetailPage({
                         ...(period === "custom" && customFrom && customTo
                           ? { from: customFrom, to: customTo }
                           : {}),
-                        ...(manualStatusFilter ? { status: manualStatusFilter } : {}),
+                        ...(manualCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
                         ...(manualQueryTrim !== "" ? { q: manualQueryTrim } : {}),
                         ...(manualCandidatesPageSize !== 20
                           ? { pageSize: String(manualCandidatesPageSize) }
                           : {}),
                       }}
                       defaultAssignee={defaultAssignee}
+                      listStatus={manualCandidateListStatus}
+                      controlsLeft={
+                        <ManualProjectCandidatesFiltersBar
+                          projectId={id}
+                          defaultCandidateStatus={manualCandidateListStatus}
+                          defaultQuery={manualQueryTrim}
+                          periodHidden={period}
+                          fromHidden={period === "custom" && customFrom ? customFrom : undefined}
+                          toHidden={period === "custom" && customTo ? customTo : undefined}
+                          pageSizeHidden={manualCandidatesPageSize !== 20 ? String(manualCandidatesPageSize) : undefined}
+                        />
+                      }
                     />
                   </div>
                 </CrmListPageMain>
