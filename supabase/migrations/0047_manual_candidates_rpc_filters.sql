@@ -3,6 +3,7 @@
 -- (vienodi created_at anksčiau darydavo neapibrėžtą eiliškumą tarp puslapių).
 
 drop function if exists public.fetch_manual_project_candidates_page(uuid, integer, integer, boolean, text, text);
+drop function if exists public.fetch_manual_project_candidates_page(uuid, integer, integer, boolean, text, text, text);
 drop function if exists public.fetch_manual_project_candidates_page(uuid, integer, integer, boolean);
 
 create or replace function public.fetch_manual_project_candidates_page(
@@ -11,7 +12,9 @@ create or replace function public.fetch_manual_project_candidates_page(
   p_offset integer default 0,
   p_count_only boolean default false,
   p_status text default null,
-  p_search text default null
+  p_search text default null,
+  -- Kandidatų sąrašo togglas (tik manual leads): active / netinkamas.
+  p_candidate_status text default null
 )
 returns jsonb
 language sql
@@ -23,7 +26,8 @@ as $$
   params as (
     select
       nullif(btrim(coalesce(p_status, '')), '') as st,
-      nullif(btrim(coalesce(p_search, '')), '') as q
+      nullif(btrim(coalesce(p_search, '')), '') as q,
+      nullif(btrim(coalesce(p_candidate_status, '')), '') as cst
   ),
   blocking as (
     select distinct w.client_key as ck
@@ -62,6 +66,11 @@ as $$
       )
       and (p.st is null or l.crm_status = p.st)
       and (
+        p.cst is null
+        or p.cst = 'active' and (l.status is null or l.status = 'active')
+        or p.cst = 'netinkamas' and l.status = 'netinkamas'
+      )
+      and (
         p.q is null
         or l.company_name ilike '%' || p.q || '%'
         or coalesce(l.company_code, '') ilike '%' || p.q || '%'
@@ -87,6 +96,7 @@ as $$
       and not exists (
         select 1 from blocking b where b.ck = c.client_key
       )
+      and (p.cst is null or p.cst = 'active')
       and (p.st is null or p.st = 'existing_client')
       and (
         p.q is null
@@ -152,7 +162,7 @@ as $$
   );
 $$;
 
-grant execute on function public.fetch_manual_project_candidates_page(uuid, integer, integer, boolean, text, text) to authenticated;
-grant execute on function public.fetch_manual_project_candidates_page(uuid, integer, integer, boolean, text, text) to anon;
+grant execute on function public.fetch_manual_project_candidates_page(uuid, integer, integer, boolean, text, text, text) to authenticated;
+grant execute on function public.fetch_manual_project_candidates_page(uuid, integer, integer, boolean, text, text, text) to anon;
 
 notify pgrst, 'reload schema';

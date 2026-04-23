@@ -8,7 +8,9 @@ import {
   createManualProjectLeadAction,
   importManualProjectLeadsCsvAction,
   linkExistingClientToManualProjectAction,
+  markCandidateAsInvalidAction,
   previewManualProjectLeadsCsvAction,
+  restoreCandidateAction,
   type CreateManualProjectLeadActionResult,
   type ImportManualProjectLeadsCsvResult,
   type ManualCsvImportMapping,
@@ -99,6 +101,7 @@ export function ManualProjectCandidatesPanel({
   showingTo,
   paginationBasePath,
   paginationExtraQuery,
+  listStatus,
   defaultAssignee,
 }: {
   projectId: string;
@@ -111,6 +114,7 @@ export function ManualProjectCandidatesPanel({
   showingTo: number;
   paginationBasePath: string;
   paginationExtraQuery: Record<string, string | undefined>;
+  listStatus: "active" | "netinkamas";
   defaultAssignee: string;
 }) {
   const router = useRouter();
@@ -329,7 +333,9 @@ export function ManualProjectCandidatesPanel({
 
       {empty ? (
         <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 px-6 py-10 text-center">
-          <p className="text-sm text-zinc-600">Dar nėra kandidatų.</p>
+          <p className="text-sm text-zinc-600">
+            {listStatus === "netinkamas" ? "Nėra netinkamų kandidatų" : "Dar nėra kandidatų."}
+          </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             <button
               type="button"
@@ -445,6 +451,49 @@ export function ManualProjectCandidatesPanel({
                       }
                     }}
                   />
+                  {listStatus === "active" ? (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      onClick={() => {
+                        const leadId = row.lead.id;
+                        setError(null);
+                        setHiddenLeadIds((s) => new Set(s).add(leadId));
+                        void markCandidateAsInvalidAction(leadId).then((r) => {
+                          if (r.ok) return;
+                          setHiddenLeadIds((s) => {
+                            const n = new Set(s);
+                            n.delete(leadId);
+                            return n;
+                          });
+                          setError(r.error);
+                        });
+                      }}
+                    >
+                      Netinkamas
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      onClick={() => {
+                        const leadId = row.lead.id;
+                        setError(null);
+                        setHiddenLeadIds((s) => new Set(s).add(leadId));
+                        void restoreCandidateAction(leadId).then((r) => {
+                          if (r.ok) return;
+                          setHiddenLeadIds((s) => {
+                            const n = new Set(s);
+                            n.delete(leadId);
+                            return n;
+                          });
+                          setError(r.error);
+                        });
+                      }}
+                    >
+                      Grąžinti
+                    </button>
+                  )}
                 </div>
               </li>
             ) : (
@@ -517,6 +566,7 @@ export function ManualProjectCandidatesPanel({
         />
         </div>
       )}
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       {open ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" role="presentation">

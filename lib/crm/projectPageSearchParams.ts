@@ -9,6 +9,15 @@ export function parseManualCandidatesStatus(raw: string | undefined): ManualCand
   return null;
 }
 
+export type ManualCandidatesListStatus = "active" | "netinkamas";
+
+/** ?candidateStatus= — aktyvūs / netinkami. Default: active. */
+export function parseManualCandidatesListStatus(raw: string | undefined): ManualCandidatesListStatus {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (s === "netinkamas") return "netinkamas";
+  return "active";
+}
+
 export type ProjectDetailTab = "apzvalga" | "kandidatai" | "sutartys" | "darbas" | "kontaktuota" | "pajamos";
 
 export function parseProjectDetailTab(raw: string | undefined): ProjectDetailTab {
@@ -36,6 +45,8 @@ export function buildProjectDetailHref(
     pageSize?: number;
     /** Rankinio projekto kandidatų filtras (crm_status). */
     status?: ManualCandidateCrmStatusFilter | string;
+    /** Rankinio projekto kandidatų sąrašo filtras: active / netinkamas. */
+    candidateStatus?: ManualCandidatesListStatus | string;
     /** Paieška (company_name / company_code). */
     q?: string;
   }
@@ -50,6 +61,8 @@ export function buildProjectDetailHref(
   if (opts.pageSize !== undefined && opts.pageSize !== 20) params.set("pageSize", String(opts.pageSize));
   const st = opts.status !== undefined ? String(opts.status).trim() : "";
   if (st !== "") params.set("status", st);
+  const cs = opts.candidateStatus !== undefined ? String(opts.candidateStatus).trim() : "";
+  if (cs !== "" && cs !== "active") params.set("candidateStatus", cs);
   const searchQ = opts.q !== undefined ? String(opts.q).trim() : "";
   if (searchQ !== "") params.set("q", searchQ);
   return `/projektai/${projectId}?${params.toString()}`;
