@@ -75,6 +75,8 @@ import { SimplePagination } from "@/components/crm/SimplePagination";
 import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 import type { CrmNotificationRow } from "@/lib/crm/notificationConstants";
 import { RoutePerfMarker } from "@/components/crm/RoutePerfMarker";
+import { Suspense } from "react";
+import { ProjectRevenueTabCount } from "@/components/crm/ProjectRevenueTabCount";
 
 export const dynamic = "force-dynamic";
 
@@ -856,7 +858,13 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "pajamos"}
             >
               Pajamos
-              <span className="ml-1 tabular-nums text-gray-400">({revenueCount})</span>
+              {tab === "pajamos" ? (
+                <span className="ml-1 tabular-nums text-gray-400">({revenueCount})</span>
+              ) : (
+                <Suspense fallback={<span className="ml-1 tabular-nums text-gray-400">(…)</span>}>
+                  <ProjectRevenueTabCount projectId={id} from={analyticsRange.from} to={analyticsRange.to} />
+                </Suspense>
+              )}
             </Link>
           </>
         )}
