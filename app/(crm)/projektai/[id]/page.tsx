@@ -75,8 +75,6 @@ import { SimplePagination } from "@/components/crm/SimplePagination";
 import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 import type { CrmNotificationRow } from "@/lib/crm/notificationConstants";
 import { RoutePerfMarker } from "@/components/crm/RoutePerfMarker";
-import { Suspense } from "react";
-import { ProjectRevenueTabCount } from "@/components/crm/ProjectRevenueTabCount";
 
 export const dynamic = "force-dynamic";
 
@@ -799,7 +797,6 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "sutartys"}
             >
               Sutartys
-              <span className="ml-1 tabular-nums text-gray-400">({tab === "sutartys" ? procurementContractsTotal : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "darbas", view: darbasView, ...qOpts })}
@@ -808,7 +805,6 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "darbas"}
             >
               Darbas
-              <span className="ml-1 tabular-nums text-gray-400">({tab === "darbas" ? workItems.length : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "kontaktuota", ...qOpts })}
@@ -817,7 +813,6 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "kontaktuota"}
             >
               Užbaigta
-              <span className="ml-1 tabular-nums text-gray-400">({tab === "kontaktuota" ? completedWorkCount : "…"})</span>
             </Link>
           </>
         ) : (
@@ -829,9 +824,6 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "kandidatai"}
             >
               Kandidatai
-              {!candidatesError || isManual ? (
-                <span className="ml-1 tabular-nums text-gray-400">({kandidataiCountForTabLabel})</span>
-              ) : null}
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "darbas", view: darbasView, ...qOpts })}
@@ -840,7 +832,6 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "darbas"}
             >
               Darbas
-              <span className="ml-1 tabular-nums text-gray-400">({tab === "darbas" ? workItems.length : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "kontaktuota", ...qOpts })}
@@ -849,7 +840,6 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "kontaktuota"}
             >
               Užbaigta
-              <span className="ml-1 tabular-nums text-gray-400">({tab === "kontaktuota" ? completedWorkCount : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "pajamos", ...qOpts })}
@@ -858,13 +848,6 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "pajamos"}
             >
               Pajamos
-              {tab === "pajamos" ? (
-                <span className="ml-1 tabular-nums text-gray-400">({revenueCount})</span>
-              ) : (
-                <Suspense fallback={<span className="ml-1 tabular-nums text-gray-400">(…)</span>}>
-                  <ProjectRevenueTabCount projectId={id} from={analyticsRange.from} to={analyticsRange.to} />
-                </Suspense>
-              )}
             </Link>
           </>
         )}
