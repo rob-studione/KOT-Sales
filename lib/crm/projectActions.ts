@@ -615,6 +615,7 @@ export async function markAutoCandidateAsInvalidAction(
     return { ok: false, error: error.message ?? "Nepavyko pažymėti kandidato kaip netinkamo." };
   }
 
+  revalidatePath(`/projektai/${pid}`);
   return { ok: true };
 }
 
@@ -652,6 +653,7 @@ export async function restoreAutoCandidateAction(
     return { ok: false, error: error.message ?? "Nepavyko grąžinti kandidato." };
   }
 
+  revalidatePath(`/projektai/${pid}`);
   return { ok: true };
 }
 
