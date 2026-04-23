@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { formatDate, formatMoney } from "@/lib/crm/format";
 import { clientDetailPath } from "@/lib/crm/clientRouting";
 import type { SnapshotCandidateRow } from "@/lib/crm/projectSnapshot";
@@ -182,6 +182,8 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [bulkPending, startBulkTransition] = useTransition();
+  const invalidDialogRef = useRef<HTMLDialogElement>(null);
+  const [pendingInvalidKey, setPendingInvalidKey] = useState<string | null>(null);
 
   const allSelected = totalCandidates > 0 && selectedIdx.size === totalCandidates;
   const selectedCount = selectedIdx.size;
@@ -272,6 +274,49 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
 
   return (
     <div className="flex flex-col gap-2.5">
+      <dialog ref={invalidDialogRef} className="fixed inset-0 m-auto w-[min(92vw,28rem)] rounded-xl p-0 backdrop:bg-black/30">
+        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.35)]">
+          <div className="text-base font-semibold text-zinc-900">Pažymėti kandidatą kaip netinkamą?</div>
+          <p className="mt-1 text-sm text-zinc-600">Jis dings iš aktyvaus kandidatų sąrašo šiame projekte.</p>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              className="cursor-pointer rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              onClick={() => {
+                invalidDialogRef.current?.close();
+                setPendingInvalidKey(null);
+              }}
+            >
+              Atšaukti
+            </button>
+            <button
+              type="button"
+              className="cursor-pointer rounded-md bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-60"
+              disabled={!pendingInvalidKey}
+              onClick={() => {
+                const ck = pendingInvalidKey;
+                if (!ck) return;
+                invalidDialogRef.current?.close();
+                setPendingInvalidKey(null);
+                setRowError(null);
+                setHiddenClientKeys((prev) => new Set(prev).add(ck));
+                void markAutoCandidateAsInvalidAction(projectId, ck).then((res) => {
+                  if (res.ok) return;
+                  setHiddenClientKeys((prev) => {
+                    const next = new Set(prev);
+                    next.delete(ck);
+                    return next;
+                  });
+                  setRowError(res.error);
+                });
+              }}
+            >
+              Pažymėti kaip netinkamą
+            </button>
+          </div>
+        </div>
+      </dialog>
+
       {rowError ? (
         <div className="rounded-lg border border-red-200 bg-red-50/60 px-3 py-2 text-sm text-red-700">
           {rowError}
@@ -428,16 +473,8 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                         const ck = String(r.client_key ?? "").trim();
                         if (!ck) return;
                         setRowError(null);
-                        setHiddenClientKeys((prev) => new Set(prev).add(ck));
-                        void markAutoCandidateAsInvalidAction(projectId, ck).then((res) => {
-                          if (res.ok) return;
-                          setHiddenClientKeys((prev) => {
-                            const next = new Set(prev);
-                            next.delete(ck);
-                            return next;
-                          });
-                          setRowError(res.error);
-                        });
+                        setPendingInvalidKey(ck);
+                        invalidDialogRef.current?.showModal();
                       }}
                     >
                       Netinkamas
