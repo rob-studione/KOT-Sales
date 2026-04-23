@@ -540,6 +540,58 @@ export async function fetchProjectAnalytics(
   };
 }
 
+export async function fetchProjectOverviewCriticalKpis(
+  supabase: SupabaseClient,
+  projectId: string,
+  range: ProjectAnalyticsRange
+): Promise<Pick<ProjectAnalyticsDto, "kpi">> {
+  const { startIso, endIso } = rangeToUtcBounds(range);
+
+  const { data: workRows, error: wErr } = await supabase
+    .from("project_work_items")
+    .select("id")
+    .eq("project_id", projectId);
+
+  if (wErr || !workRows?.length) {
+    return { kpi: { calls: 0, answered: 0, notAnswered: 0, emails: 0, commercial: 0, answerRatePercent: null } };
+  }
+
+  const workIds = workRows.map((r) => String((r as any).id ?? "")).filter(Boolean);
+
+  const { data: actRows, error: aErr } = await supabase
+    .from("project_work_item_activities")
+    .select("occurred_at,action_type,call_status")
+    .in("work_item_id", workIds)
+    .gte("occurred_at", startIso)
+    .lte("occurred_at", endIso)
+    .order("occurred_at", { ascending: true });
+
+  const activities: Array<{ action_type: string; call_status: string }> = (aErr ? [] : actRows ?? []).map((r) => ({
+    action_type: String((r as any).action_type ?? "").toLowerCase(),
+    call_status: String((r as any).call_status ?? ""),
+  }));
+
+  let calls = 0;
+  let answered = 0;
+  let notAnswered = 0;
+  let emails = 0;
+  let commercial = 0;
+
+  for (const a of activities) {
+    if (a.action_type === "email") emails += 1;
+    if (a.action_type === "commercial") commercial += 1;
+    if (a.action_type === "call") {
+      calls += 1;
+      if (isCallAnsweredByStatus(a.call_status)) answered += 1;
+      else if (isCallNotAnsweredByStatus(a.call_status)) notAnswered += 1;
+    }
+  }
+
+  const answerRatePercent = calls > 0 ? Math.round((answered / calls) * 1000) / 10 : null;
+
+  return { kpi: { calls, answered, notAnswered, emails, commercial, answerRatePercent } };
+}
+
 export function parseProjectAnalyticsPeriod(raw: string | undefined | null): ProjectAnalyticsPeriod {
   if (raw === "today" || raw === "week" || raw === "month" || raw === "custom") return raw;
   return "week";

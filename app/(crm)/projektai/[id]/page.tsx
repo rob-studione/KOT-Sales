@@ -24,13 +24,16 @@ import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { CRM_UNDERLINE_TAB_NAV_CLASS, crmUnderlineTabClass } from "@/components/crm/crmUnderlineTabStyles";
 import { ProjectWorkBoardClientWrapper } from "@/components/crm/ProjectWorkBoardClientWrapper";
 import { ProjectWorkQueueCallList } from "@/components/crm/ProjectWorkQueueCallList";
-import { ProjectAnalyticsView } from "@/components/crm/project-analytics/ProjectAnalyticsView";
 import { ProcurementAnalyticsView } from "@/components/crm/project-analytics/ProcurementAnalyticsView";
+import { ProjectOverviewCritical } from "@/components/crm/project-analytics/ProjectOverviewCritical";
+import { ProjectOverviewDeferred } from "@/components/crm/project-analytics/ProjectOverviewDeferred";
+import { ProjectOverviewSkeleton } from "@/components/crm/project-analytics/ProjectOverviewSkeleton";
 import { EditableProjectName } from "@/components/crm/EditableProjectName";
 import { ProjectOwnerSelect } from "@/components/crm/ProjectOwnerSelect";
 import { ProjectRulesEditButton } from "@/components/crm/ProjectRulesEditButton";
 import { ProjectArchiveConfirmButton } from "@/components/crm/ProjectArchiveConfirmButton";
 import { ProjectDeleteToTrashConfirmButton } from "@/components/crm/ProjectDeleteToTrashConfirmButton";
+import { Suspense } from "react";
 import {
   normalizeActivityRow,
   type ProjectWorkItemActivityDto,
@@ -612,8 +615,6 @@ export default async function ProjektasDetailPage({
   );
   const completedWorkCount = completedWorkItems.length;
 
-  const analyticsData =
-    tab === "apzvalga" && !isProcurement ? await fetchProjectAnalytics(supabase, id, analyticsRange) : null;
   const procurementAnalyticsData =
     tab === "apzvalga" && isProcurement
       ? await fetchProcurementDashboardAnalytics(supabase, id, p.created_at, analyticsRange)
@@ -853,10 +854,17 @@ export default async function ProjektasDetailPage({
         )}
       </div>
 
-      {tab === "apzvalga" && analyticsData ? (
+      {tab === "apzvalga" && !isProcurement ? (
         <div className="mt-6" role="tabpanel">
           <CrmTableContainer>
-            <ProjectAnalyticsView projectId={id} period={period} data={analyticsData} />
+            <Suspense fallback={null}>
+              <ProjectOverviewCritical projectId={id} period={period} range={analyticsRange} />
+            </Suspense>
+            <div className="mt-8">
+              <Suspense fallback={<ProjectOverviewSkeleton />}>
+                <ProjectOverviewDeferred projectId={id} range={analyticsRange} />
+              </Suspense>
+            </div>
           </CrmTableContainer>
         </div>
       ) : null}
