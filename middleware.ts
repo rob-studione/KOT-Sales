@@ -27,6 +27,7 @@ function isProtectedPath(pathname: string): boolean {
 }
 
 export async function middleware(request: NextRequest) {
+  const t0 = Date.now();
   const { pathname } = request.nextUrl;
   if (!isProtectedPath(pathname)) return NextResponse.next();
 
@@ -45,7 +46,9 @@ export async function middleware(request: NextRequest) {
     },
   });
 
+  const authT0 = Date.now();
   const { data } = await supabase.auth.getUser();
+  const authMs = Date.now() - authT0;
   const user = data.user;
 
   if (!user) {
@@ -54,6 +57,15 @@ export async function middleware(request: NextRequest) {
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
+
+  const totalMs = Date.now() - t0;
+  // Expose middleware timings for DevTools Network inspection.
+  response.headers.set(
+    "server-timing",
+    `mw;dur=${totalMs}, mw_auth;dur=${authMs}`
+  );
+  response.headers.set("x-crm-mw-ms", String(totalMs));
+  response.headers.set("x-crm-mw-auth-ms", String(authMs));
 
   return response;
 }

@@ -74,6 +74,7 @@ import {
 import { SimplePagination } from "@/components/crm/SimplePagination";
 import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 import type { CrmNotificationRow } from "@/lib/crm/notificationConstants";
+import { RoutePerfMarker } from "@/components/crm/RoutePerfMarker";
 
 export const dynamic = "force-dynamic";
 
@@ -643,8 +644,23 @@ export default async function ProjektasDetailPage({
     });
   }
 
+  const serverPerfForClient = {
+    totalServerMs: Date.now() - perfT0,
+    projectMs: perf.projectMs ?? 0,
+    crmUsersMs: perf.crmUsersMs ?? 0,
+    candidatesRpcMs: perf.candidatesRpcMs ?? 0,
+    workItemsMs: perf.workItemsMs ?? 0,
+    activitiesMs: perf.activitiesMs ?? 0,
+    revenueFeedMs: perf.revenueFeedMs ?? 0,
+    liveRevenueLookupMs: perf.liveRevenueLookupMs ?? 0,
+    procurementMs: perf.procurementMs ?? 0,
+    roundTripCount,
+    tab,
+  } as const;
+
   return (
     <div className="min-w-0">
+      <RoutePerfMarker routeLabel="/projektai/[id]" serverPerf={serverPerfForClient} />
       <div className="mb-3">
         <Link href="/projektai" className="cursor-pointer text-sm text-zinc-600 hover:text-zinc-900 hover:underline">
           ← Visi projektai

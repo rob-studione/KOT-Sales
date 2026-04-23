@@ -31,7 +31,26 @@ export function ProjectListRowCard({
     <div className="group relative rounded-xl border border-zinc-200/90 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.05),0_2px_12px_-4px_rgba(15,23,42,0.08)] transition-all duration-200 hover:border-zinc-300/90 hover:bg-white hover:shadow-[0_4px_20px_-6px_rgba(15,23,42,0.12)]">
       <div className="flex items-stretch gap-0">
         {leftSlot}
-        <Link href={href} className="block min-w-0 flex-1 p-5">
+        <Link
+          href={href}
+          className="block min-w-0 flex-1 p-5"
+          onClick={() => {
+            if (process.env.NEXT_PUBLIC_CRM_PERF_LOG !== "1") return;
+            if (typeof window === "undefined") return;
+            try {
+              const payload = {
+                href,
+                clickAtMs: performance.now(),
+                clickAtEpochMs: Date.now(),
+              };
+              sessionStorage.setItem("crm_nav_click", JSON.stringify(payload));
+              performance.mark("crm:nav:click");
+              console.info("[CRM perf] click /projektai -> /projektai/[id]", payload);
+            } catch {
+              // ignore
+            }
+          }}
+        >
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-start justify-between gap-3 gap-y-2">
               <h2 className="min-w-0 text-lg font-semibold tracking-tight text-zinc-900 group-hover:text-zinc-800">
