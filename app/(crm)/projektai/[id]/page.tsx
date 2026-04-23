@@ -4,6 +4,7 @@ import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { formatDate, formatMoney } from "@/lib/crm/format";
 import { defaultProjectActor } from "@/lib/crm/projectEnv";
 import { fetchSortedCandidatesForProject } from "@/lib/crm/projectCandidateQuery";
+import { fetchExcludedAutoCandidatesPage } from "@/lib/crm/projectCandidateExclusions";
 import {
   fetchProjectAnalytics,
   parseProjectAnalyticsPeriod,
@@ -120,6 +121,7 @@ export default async function ProjektasDetailPage({
     validFrom?: string | string[];
     validTo?: string | string[];
     status?: string | string[];
+    candidateStatus?: string | string[];
     q?: string | string[];
   }>;
 }) {
@@ -227,12 +229,16 @@ export default async function ProjektasDetailPage({
 
   const tab = tabParsed;
 
+  const autoCandidateStatusRaw = typeof sp.candidateStatus === "string" ? sp.candidateStatus : "";
+  const autoCandidateListStatus: "active" | "netinkamas" =
+    autoCandidateStatusRaw.trim().toLowerCase() === "netinkamas" ? "netinkamas" : "active";
+
   /** Visada tas pats kaip „Kandidatai“ skirtuko sąrašas — skaitiklis neturi būti 0 kituose tab’uose. */
   let candidates: SnapshotCandidateRow[] = [];
   let candidatesError: string | null = null;
   let kandidataiCount: number | null = null;
   const candidatesT0 = Date.now();
-  if (!isManual && !isProcurement && tab === "kandidatai") {
+  if (!isManual && !isProcurement && tab === "kandidatai" && autoCandidateListStatus === "active") {
     const candidatesRes = await fetchSortedCandidatesForProject(supabase, p);
     if (candidatesRes.ok) {
       candidates = candidatesRes.rows;
@@ -249,33 +255,47 @@ export default async function ProjektasDetailPage({
   const autoCandidatesQTrim =
     !isManual && !isProcurement && tab === "kandidatai" ? (typeof sp.q === "string" ? sp.q.trim() : "") : "";
   const autoCandidatesQ = autoCandidatesQTrim.toLowerCase();
-  const autoCandidatesFiltered =
-    autoCandidatesQ.length === 0
-      ? candidates
-      : candidates.filter((c) => {
-          const name = String(c.company_name ?? "").toLowerCase();
-          const code = String(c.company_code ?? "").toLowerCase();
-          const cid = String(c.client_id ?? "").toLowerCase();
-          return name.includes(autoCandidatesQ) || code.includes(autoCandidatesQ) || cid.includes(autoCandidatesQ);
-        });
   const requestedAutoCandidatesPageIndex0 =
     !isManual && !isProcurement && tab === "kandidatai" ? parsePageIndex0(sp.page) : 0;
-  const autoCandidatesTotalCount = !isManual && !isProcurement ? autoCandidatesFiltered.length : 0;
-  const autoCandidatesTotalPages =
+  const autoCandidatesFiltered =
+    autoCandidateListStatus === "active"
+      ? autoCandidatesQ.length === 0
+        ? candidates
+        : candidates.filter((c) => {
+            const name = String(c.company_name ?? "").toLowerCase();
+            const code = String(c.company_code ?? "").toLowerCase();
+            const cid = String(c.client_id ?? "").toLowerCase();
+            return name.includes(autoCandidatesQ) || code.includes(autoCandidatesQ) || cid.includes(autoCandidatesQ);
+          })
+      : [];
+
+  let autoCandidatesTotalCount = !isManual && !isProcurement ? autoCandidatesFiltered.length : 0;
+  let autoCandidatesTotalPages =
     !isManual && !isProcurement ? totalPagesFromCount(autoCandidatesTotalCount, AUTO_CANDIDATES_PAGE_SIZE) : 0;
-  const autoCandidatesPageIndex0 =
+  let autoCandidatesPageIndex0 =
     !isManual && !isProcurement && tab === "kandidatai"
       ? clampPageIndex0(requestedAutoCandidatesPageIndex0, autoCandidatesTotalPages)
       : 0;
-  const autoCandidatesShowing =
+  let autoCandidatesShowing =
     !isManual && !isProcurement && tab === "kandidatai"
       ? showingRange1Based(autoCandidatesPageIndex0, AUTO_CANDIDATES_PAGE_SIZE, autoCandidatesTotalCount)
       : { from: 0, to: 0, total: 0 };
   const autoCandidatesOffset = autoCandidatesPageIndex0 * AUTO_CANDIDATES_PAGE_SIZE;
-  const autoCandidatesPageRows =
+  let autoCandidatesPageRows =
     !isManual && !isProcurement && tab === "kandidatai"
       ? autoCandidatesFiltered.slice(autoCandidatesOffset, autoCandidatesOffset + AUTO_CANDIDATES_PAGE_SIZE)
       : candidates;
+
+  if (!isManual && !isProcurement && tab === "kandidatai" && autoCandidateListStatus === "netinkamas") {
+    const ex = await fetchExcludedAutoCandidatesPage(supabase, id, requestedAutoCandidatesPageIndex0, AUTO_CANDIDATES_PAGE_SIZE, {
+      search: autoCandidatesQTrim || null,
+    });
+    autoCandidatesTotalCount = ex.totalCount;
+    autoCandidatesTotalPages = totalPagesFromCount(autoCandidatesTotalCount, AUTO_CANDIDATES_PAGE_SIZE);
+    autoCandidatesPageIndex0 = clampPageIndex0(requestedAutoCandidatesPageIndex0, autoCandidatesTotalPages);
+    autoCandidatesShowing = showingRange1Based(autoCandidatesPageIndex0, AUTO_CANDIDATES_PAGE_SIZE, autoCandidatesTotalCount);
+    autoCandidatesPageRows = ex.rows;
+  }
 
   const autoCallListPriorityBasis =
     !isManual && !isProcurement
@@ -301,6 +321,7 @@ export default async function ProjektasDetailPage({
         ...qOpts,
         page: autoCandidatesPageIndex0,
         ...(autoCandidatesQTrim ? { q: autoCandidatesQTrim } : {}),
+        ...(autoCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
       })
     );
   }
@@ -937,7 +958,42 @@ export default async function ProjektasDetailPage({
                   description="Sąrašas perskaičiuojamas kiekvieną kartą. Jei klientas užsako prieš būdamas paimtas — dingsta iš kandidatų. Jei klientas jau buvo paimtas į „Darbas“ šiame projekte, jis čia neberodomas (nebent darbo eilutė buvo grąžinta į kandidatus)."
                 />
                 <CrmListPageControls>
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap items-center justify-end gap-3">
+                    <div className="inline-flex rounded-md border border-zinc-200 bg-white p-0.5">
+                      <Link
+                        href={buildProjectDetailHref(id, {
+                          tab: "kandidatai",
+                          ...qOpts,
+                          page: 0,
+                          ...(autoCandidatesQTrim ? { q: autoCandidatesQTrim } : {}),
+                        })}
+                        className={[
+                          "h-8 rounded-[6px] px-3 text-sm font-medium transition-colors",
+                          autoCandidateListStatus === "active"
+                            ? "bg-zinc-900 text-white"
+                            : "text-zinc-700 hover:bg-zinc-50",
+                        ].join(" ")}
+                      >
+                        Aktyvūs
+                      </Link>
+                      <Link
+                        href={buildProjectDetailHref(id, {
+                          tab: "kandidatai",
+                          ...qOpts,
+                          page: 0,
+                          ...(autoCandidatesQTrim ? { q: autoCandidatesQTrim } : {}),
+                          candidateStatus: "netinkamas",
+                        })}
+                        className={[
+                          "h-8 rounded-[6px] px-3 text-sm font-medium transition-colors",
+                          autoCandidateListStatus === "netinkamas"
+                            ? "bg-zinc-900 text-white"
+                            : "text-zinc-700 hover:bg-zinc-50",
+                        ].join(" ")}
+                      >
+                        Netinkami
+                      </Link>
+                    </div>
                     <ListPageSearchForm
                       action={`/projektai/${id}`}
                       defaultQuery={autoCandidatesQTrim}
@@ -948,6 +1004,7 @@ export default async function ProjektasDetailPage({
                         ...(period ? { period: String(period) } : {}),
                         ...(period === "custom" && customFrom ? { from: String(customFrom) } : {}),
                         ...(period === "custom" && customTo ? { to: String(customTo) } : {}),
+                        ...(autoCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
                       }}
                     />
                   </div>
@@ -971,6 +1028,7 @@ export default async function ProjektasDetailPage({
                         defaultAssignee={defaultAssignee}
                         candidates={autoCandidatesPageRows}
                         callListPriorityBasis={autoCallListPriorityBasis}
+                        listStatus={autoCandidateListStatus}
                       />
                       <SimplePagination
                         basePath={`/projektai/${id}`}
@@ -979,6 +1037,7 @@ export default async function ProjektasDetailPage({
                         extraQuery={{
                           tab: "kandidatai",
                           q: autoCandidatesQTrim || undefined,
+                          candidateStatus: autoCandidateListStatus === "netinkamas" ? "netinkamas" : undefined,
                           ...(period ? { period: String(period) } : {}),
                           ...(period === "custom" && customFrom ? { from: String(customFrom) } : {}),
                           ...(period === "custom" && customTo ? { to: String(customTo) } : {}),

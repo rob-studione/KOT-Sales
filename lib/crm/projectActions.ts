@@ -583,6 +583,78 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
   return { ok: true };
 }
 
+export async function markAutoCandidateAsInvalidAction(
+  projectId: string,
+  clientKey: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pid = String(projectId ?? "").trim();
+  const ck = String(clientKey ?? "").trim();
+  if (!pid || !isValidUuid(pid)) return { ok: false, error: "Neteisingas projektas." };
+  if (!ck) return { ok: false, error: "Trūksta kliento rakto." };
+
+  let supabase;
+  try {
+    supabase = await createSupabaseSsrClient();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
+  }
+
+  const { data: proj, error: projErr } = await supabase.from("projects").select("id, project_type").eq("id", pid).maybeSingle();
+  if (projErr || !proj) return { ok: false, error: "Projektas nerastas." };
+  const pt = projectTypeFromDbRow(proj);
+  if (isManualProjectType(pt) || isProcurementProjectType(pt)) {
+    return { ok: false, error: "Netinkamo statusas taikomas tik automatiniams projektams." };
+  }
+
+  const { error } = await supabase
+    .from("project_candidate_exclusions")
+    .upsert({ project_id: pid, client_key: ck, updated_at: new Date().toISOString() }, { onConflict: "project_id,client_key" });
+
+  if (error) {
+    console.error("[projectActions] markAutoCandidateAsInvalidAction failed", error);
+    return { ok: false, error: error.message ?? "Nepavyko pažymėti kandidato kaip netinkamo." };
+  }
+
+  return { ok: true };
+}
+
+export async function restoreAutoCandidateAction(
+  projectId: string,
+  clientKey: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pid = String(projectId ?? "").trim();
+  const ck = String(clientKey ?? "").trim();
+  if (!pid || !isValidUuid(pid)) return { ok: false, error: "Neteisingas projektas." };
+  if (!ck) return { ok: false, error: "Trūksta kliento rakto." };
+
+  let supabase;
+  try {
+    supabase = await createSupabaseSsrClient();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
+  }
+
+  const { data: proj, error: projErr } = await supabase.from("projects").select("id, project_type").eq("id", pid).maybeSingle();
+  if (projErr || !proj) return { ok: false, error: "Projektas nerastas." };
+  const pt = projectTypeFromDbRow(proj);
+  if (isManualProjectType(pt) || isProcurementProjectType(pt)) {
+    return { ok: false, error: "Netinkamo statusas taikomas tik automatiniams projektams." };
+  }
+
+  const { error } = await supabase
+    .from("project_candidate_exclusions")
+    .delete()
+    .eq("project_id", pid)
+    .eq("client_key", ck);
+
+  if (error) {
+    console.error("[projectActions] restoreAutoCandidateAction failed", error);
+    return { ok: false, error: error.message ?? "Nepavyko grąžinti kandidato." };
+  }
+
+  return { ok: true };
+}
+
 export type ManualCsvImportMapping = {
   companyNameColumn: string;
   companyCodeColumn: string;

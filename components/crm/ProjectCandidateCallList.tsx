@@ -12,7 +12,12 @@ import {
   type CallListPriority,
 } from "@/lib/crm/callListPriority";
 import type { CandidateExpandDetails } from "@/lib/crm/candidateExpandTypes";
-import { loadCandidateExpandDetailsAction, pickClientFromProject } from "@/lib/crm/projectActions";
+import {
+  loadCandidateExpandDetailsAction,
+  markAutoCandidateAsInvalidAction,
+  pickClientFromProject,
+  restoreAutoCandidateAction,
+} from "@/lib/crm/projectActions";
 import { ProjectCandidatePickForm } from "@/components/crm/ProjectCandidatePickForm";
 
 function PriorityBadge({ level }: { level: CallListPriority }) {
@@ -136,6 +141,7 @@ export type ProjectCandidateCallListProps =
       projectId: string;
       defaultAssignee: string;
       candidates: SnapshotCandidateRow[];
+      listStatus?: "active" | "netinkamas";
       /**
        * Pilnas filtruotas sąrašas (visi puslapiai): „Aukštas/Vidutinis/Žemas“ pagal vietą
        * visame sąraše. Be šito — ženkliukas skaičiuojamas tik iš `candidates` (pvz. 20 eilučių puslapyje).
@@ -148,6 +154,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
   const projectId = mode === "pick" ? props.projectId : "";
   const defaultAssignee = mode === "pick" ? props.defaultAssignee : "";
   const priorityBasis = mode === "pick" ? props.callListPriorityBasis : undefined;
+  const listStatus = mode === "pick" ? (props.listStatus ?? "active") : "active";
   const router = useRouter();
   const totalCandidates = candidates.length;
   const totalForPriority = priorityBasis?.total ?? totalCandidates;
@@ -173,6 +180,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
   const [fetchingKey, setFetchingKey] = useState<string | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<Set<number>>(() => new Set());
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
   const [bulkPending, startBulkTransition] = useTransition();
 
   const allSelected = totalCandidates > 0 && selectedIdx.size === totalCandidates;
@@ -247,7 +255,9 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
   if (candidates.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 px-6 py-12 text-center text-sm text-zinc-500">
-        Nėra kandidatų pagal taisykles.
+        {mode === "pick" && listStatus === "netinkamas"
+          ? "Nėra netinkamų kandidatų"
+          : "Nėra kandidatų pagal taisykles."}
       </div>
     );
   }
@@ -262,6 +272,11 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
 
   return (
     <div className="flex flex-col gap-2.5">
+      {rowError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50/60 px-3 py-2 text-sm text-red-700">
+          {rowError}
+        </div>
+      ) : null}
       {showBulk ? (
         <div className="flex min-h-10 flex-wrap items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700">
@@ -380,7 +395,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                 <div className="text-right text-base font-semibold tabular-nums text-zinc-900">
                   {formatMoney(r.total_revenue)}
                 </div>
-                {mode === "pick" && projectId ? (
+                {mode === "pick" && projectId && listStatus === "active" ? (
                   <ProjectCandidatePickForm
                     projectId={projectId}
                     candidateType="auto"
@@ -402,6 +417,54 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                       }
                     }}
                   />
+                ) : null}
+
+                {mode === "pick" && projectId ? (
+                  listStatus === "active" ? (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      onClick={() => {
+                        const ck = String(r.client_key ?? "").trim();
+                        if (!ck) return;
+                        setRowError(null);
+                        setHiddenClientKeys((prev) => new Set(prev).add(ck));
+                        void markAutoCandidateAsInvalidAction(projectId, ck).then((res) => {
+                          if (res.ok) return;
+                          setHiddenClientKeys((prev) => {
+                            const next = new Set(prev);
+                            next.delete(ck);
+                            return next;
+                          });
+                          setRowError(res.error);
+                        });
+                      }}
+                    >
+                      Netinkamas
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      onClick={() => {
+                        const ck = String(r.client_key ?? "").trim();
+                        if (!ck) return;
+                        setRowError(null);
+                        setHiddenClientKeys((prev) => new Set(prev).add(ck));
+                        void restoreAutoCandidateAction(projectId, ck).then((res) => {
+                          if (res.ok) return;
+                          setHiddenClientKeys((prev) => {
+                            const next = new Set(prev);
+                            next.delete(ck);
+                            return next;
+                          });
+                          setRowError(res.error);
+                        });
+                      }}
+                    >
+                      Grąžinti
+                    </button>
+                  )
                 ) : null}
               </div>
             </div>
