@@ -77,9 +77,6 @@ import type { CrmNotificationRow } from "@/lib/crm/notificationConstants";
 import { RoutePerfMarker } from "@/components/crm/RoutePerfMarker";
 import { Suspense } from "react";
 import { ProjectRevenueTabCount } from "@/components/crm/ProjectRevenueTabCount";
-import { ProjectAutoCandidatesTabCount, ProjectManualCandidatesTabCount } from "@/components/crm/ProjectCandidatesTabCount";
-import { ProjectWorkCompletedTabCount, ProjectWorkOpenTabCount } from "@/components/crm/ProjectWorkTabCounts";
-import { ProjectProcurementContractsTabCount } from "@/components/crm/ProjectProcurementTabCount";
 
 export const dynamic = "force-dynamic";
 
@@ -350,6 +347,8 @@ export default async function ProjektasDetailPage({
       const sr = showingRange1Based(manualPageIndex0, manualCandidatesPageSize, manualCandidatesTotal);
       manualShowingFrom = sr.from;
       manualShowingTo = sr.to;
+    } else {
+      manualCandidatesTotal = await fetchManualProjectCandidatesTotalCount(supabase, id, manualRpcFilters);
     }
   }
 
@@ -483,8 +482,8 @@ export default async function ProjektasDetailPage({
     markMs("procurementMs", Date.now() - procurementT0);
   }
 
-  const kandidataiCountForActiveTab: number =
-    isManual ? manualCandidatesTotal : isProcurement ? procurementContractsTotal : autoCandidatesTotalCount;
+  const kandidataiCountForTabLabel: number | string =
+    isManual ? manualCandidatesTotal : isProcurement ? (tab === "sutartys" ? procurementContractsTotal : "…") : tab === "kandidatai" ? autoCandidatesTotalCount : "…";
 
   let workRaw: Record<string, unknown>[] = [];
   let wErr: { message?: string } | null = null;
@@ -800,13 +799,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "sutartys"}
             >
               Sutartys
-              {tab === "sutartys" ? (
-                <span className="ml-1 tabular-nums text-gray-400">({procurementContractsTotal})</span>
-              ) : (
-                <Suspense fallback={<span className="ml-1 tabular-nums text-gray-400">(…)</span>}>
-                  <ProjectProcurementContractsTabCount projectId={id} />
-                </Suspense>
-              )}
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "sutartys" ? procurementContractsTotal : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "darbas", view: darbasView, ...qOpts })}
@@ -815,13 +808,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "darbas"}
             >
               Darbas
-              {tab === "darbas" ? (
-                <span className="ml-1 tabular-nums text-gray-400">({workItems.length})</span>
-              ) : (
-                <Suspense fallback={<span className="ml-1 tabular-nums text-gray-400">(…)</span>}>
-                  <ProjectWorkOpenTabCount projectId={id} />
-                </Suspense>
-              )}
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "darbas" ? workItems.length : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "kontaktuota", ...qOpts })}
@@ -830,13 +817,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "kontaktuota"}
             >
               Užbaigta
-              {tab === "kontaktuota" ? (
-                <span className="ml-1 tabular-nums text-gray-400">({completedWorkCount})</span>
-              ) : (
-                <Suspense fallback={<span className="ml-1 tabular-nums text-gray-400">(…)</span>}>
-                  <ProjectWorkCompletedTabCount projectId={id} />
-                </Suspense>
-              )}
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "kontaktuota" ? completedWorkCount : "…"})</span>
             </Link>
           </>
         ) : (
@@ -849,23 +830,7 @@ export default async function ProjektasDetailPage({
             >
               Kandidatai
               {!candidatesError || isManual ? (
-                tab === "kandidatai" ? (
-                  <span className="ml-1 tabular-nums text-gray-400">({kandidataiCountForActiveTab})</span>
-                ) : isManual ? (
-                  <Suspense fallback={<span className="ml-1 tabular-nums text-gray-400">(…)</span>}>
-                    <ProjectManualCandidatesTabCount projectId={id} />
-                  </Suspense>
-                ) : (
-                  <Suspense fallback={<span className="ml-1 tabular-nums text-gray-400">(…)</span>}>
-                    <ProjectAutoCandidatesTabCount
-                      projectId={id}
-                      dateFrom={String(p.filter_date_from).slice(0, 10)}
-                      dateTo={String(p.filter_date_to).slice(0, 10)}
-                      minOrders={Number(p.min_order_count ?? 1)}
-                      inactivityDays={Number(p.inactivity_days ?? 90)}
-                    />
-                  </Suspense>
-                )
+                <span className="ml-1 tabular-nums text-gray-400">({kandidataiCountForTabLabel})</span>
               ) : null}
             </Link>
             <Link
@@ -875,13 +840,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "darbas"}
             >
               Darbas
-              {tab === "darbas" ? (
-                <span className="ml-1 tabular-nums text-gray-400">({workItems.length})</span>
-              ) : (
-                <Suspense fallback={<span className="ml-1 tabular-nums text-gray-400">(…)</span>}>
-                  <ProjectWorkOpenTabCount projectId={id} />
-                </Suspense>
-              )}
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "darbas" ? workItems.length : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "kontaktuota", ...qOpts })}
@@ -890,13 +849,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "kontaktuota"}
             >
               Užbaigta
-              {tab === "kontaktuota" ? (
-                <span className="ml-1 tabular-nums text-gray-400">({completedWorkCount})</span>
-              ) : (
-                <Suspense fallback={<span className="ml-1 tabular-nums text-gray-400">(…)</span>}>
-                  <ProjectWorkCompletedTabCount projectId={id} />
-                </Suspense>
-              )}
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "kontaktuota" ? completedWorkCount : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "pajamos", ...qOpts })}
