@@ -958,8 +958,8 @@ export default async function ProjektasDetailPage({
                   description="Sąrašas perskaičiuojamas kiekvieną kartą. Jei klientas užsako prieš būdamas paimtas — dingsta iš kandidatų. Jei klientas jau buvo paimtas į „Darbas“ šiame projekte, jis čia neberodomas (nebent darbo eilutė buvo grąžinta į kandidatus)."
                 />
                 <CrmListPageControls>
-                  <div className="flex flex-wrap items-center justify-end gap-3">
-                    <div className="inline-flex rounded-md border border-zinc-200 bg-white p-0.5">
+                  <div className="flex flex-wrap items-center justify-end gap-4">
+                    <div className="inline-flex h-10 items-center overflow-hidden rounded-md border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                       <Link
                         prefetch={false}
                         href={buildProjectDetailHref(id, {
@@ -969,7 +969,7 @@ export default async function ProjektasDetailPage({
                           ...(autoCandidatesQTrim ? { q: autoCandidatesQTrim } : {}),
                         })}
                         className={[
-                          "h-8 rounded-[6px] px-3 text-sm font-medium transition-colors",
+                          "inline-flex h-full min-w-[6.5rem] items-center justify-center px-4 text-sm font-medium transition-colors",
                           autoCandidateListStatus === "active"
                             ? "bg-zinc-900 text-white"
                             : "text-zinc-700 hover:bg-zinc-50",
@@ -987,7 +987,7 @@ export default async function ProjektasDetailPage({
                           candidateStatus: "netinkamas",
                         })}
                         className={[
-                          "h-8 rounded-[6px] px-3 text-sm font-medium transition-colors",
+                          "inline-flex h-full min-w-[6.5rem] items-center justify-center border-l border-zinc-200 px-4 text-sm font-medium transition-colors",
                           autoCandidateListStatus === "netinkamas"
                             ? "bg-zinc-900 text-white"
                             : "text-zinc-700 hover:bg-zinc-50",
@@ -1001,6 +1001,7 @@ export default async function ProjektasDetailPage({
                       defaultQuery={autoCandidatesQTrim}
                       placeholder="Paieška (pavadinimas, kodas, klientas ID)"
                       inputId="crm-project-candidates-search"
+                      size="regular"
                       hiddenFields={{
                         tab: "kandidatai",
                         ...(period ? { period: String(period) } : {}),
