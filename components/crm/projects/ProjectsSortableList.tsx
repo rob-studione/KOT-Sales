@@ -1,148 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatDate } from "@/lib/crm/format";
-import { projectWorkItemCount, type ProjectListRow } from "@/lib/crm/projectListHelpers";
-import { updateProjectsSortOrderAction } from "@/lib/crm/projectActions";
-import { ProjectOwnerCell } from "@/components/crm/ProjectOwnerCell";
+import type { ProjectListRow } from "@/lib/crm/projectListHelpers";
 import type { CrmUser } from "@/lib/crm/crmUsers";
+import { ProjectListRowCard } from "@/components/crm/projects/ProjectListRowCard";
 
-function SortableProjectRow({
-  row,
-  wc,
-  desc,
-  href,
-  ownerColumnAvailable,
-  userById,
-  deletedAtAvailable,
-  isDeleted,
-  renderDeletedAt,
-}: {
-  row: ProjectListRow;
-  wc: number;
-  desc: string | null;
-  href: string;
-  ownerColumnAvailable: boolean;
-  userById: Map<string, CrmUser>;
-  deletedAtAvailable: boolean;
-  isDeleted: boolean;
-  renderDeletedAt: (p: ProjectListRow) => string | null;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging, setActivatorNodeRef } = useSortable({
-    id: row.id,
-  });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <li ref={setNodeRef} style={style} className={isDragging ? "opacity-80" : undefined}>
-      <div className="group relative rounded-xl border border-zinc-200/90 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.05),0_2px_12px_-4px_rgba(15,23,42,0.08)] transition-all duration-200 hover:border-zinc-300/90 hover:bg-white hover:shadow-[0_4px_20px_-6px_rgba(15,23,42,0.12)]">
-        <div className="flex items-stretch gap-0">
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            {...attributes}
-            {...listeners}
-            aria-label="Keisti projekto poziciją"
-            className="flex w-10 shrink-0 cursor-grab items-center justify-center rounded-l-xl border-r border-zinc-100 text-zinc-400 hover:text-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/15 active:cursor-grabbing"
-          >
-            <GripVertical size={16} strokeWidth={1.75} aria-hidden />
-          </button>
-
-          <Link href={href} className="block min-w-0 flex-1 p-5">
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-start justify-between gap-3 gap-y-2">
-                <h2 className="min-w-0 text-lg font-semibold tracking-tight text-zinc-900 group-hover:text-zinc-800">
-                  {row.name}
-                </h2>
-                <span className="inline-flex shrink-0 items-center gap-2 text-sm text-zinc-600">
-                  <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      row.status === "deleted" ? "bg-red-500/70" : row.status === "archived" ? "bg-zinc-400" : "bg-emerald-600/55"
-                    }`}
-                    aria-hidden
-                  />
-                  <span className="font-medium text-zinc-700">
-                    {row.status === "deleted" ? "Ištrintas" : row.status === "archived" ? "Archyvuotas" : "Aktyvus"}
-                  </span>
-                </span>
-              </div>
-
-              <p
-                className={`text-sm leading-relaxed ${desc ? "text-zinc-600" : "text-zinc-400 italic"}`}
-                title={desc || undefined}
-              >
-                {desc || "Be aprašymo"}
-              </p>
-
-              <div className="mt-1 flex flex-col gap-6 border-t border-zinc-100 pt-5 lg:flex-row lg:items-end lg:justify-between">
-                <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:flex-wrap sm:gap-x-10 sm:gap-y-3">
-                  <div className="min-w-[7.5rem]">
-                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Sukurta</span>
-                    <p className="mt-1.5 tabular-nums text-base font-medium leading-snug text-zinc-900">
-                      {formatDate(String(row.created_at ?? "").slice(0, 10))}
-                    </p>
-                  </div>
-
-                  {isDeleted && deletedAtAvailable ? (
-                    <div className="min-w-[10rem]">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-red-700">Bus pašalintas</span>
-                      <p className="mt-1.5 tabular-nums text-base font-semibold leading-snug text-red-800">
-                        {renderDeletedAt(row) ?? "—"}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  {ownerColumnAvailable ? (
-                    <div className="min-w-0 sm:max-w-[17rem]">
-                      <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Atsakingas</span>
-                      <div className="mt-1.5 text-base font-medium leading-snug text-zinc-900">
-                        {!row.owner_user_id ? (
-                          <span className="font-normal text-zinc-500">Nepriskirta</span>
-                        ) : (
-                          <ProjectOwnerCell user={userById.get(row.owner_user_id)} />
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="flex flex-col items-stretch gap-5 sm:flex-row sm:items-end sm:gap-7 lg:shrink-0">
-                  <div className="text-left sm:text-right">
-                    <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Aktyvūs kontaktai</p>
-                    <p className="mt-1.5 text-3xl font-semibold tabular-nums leading-none tracking-tight text-zinc-900">{wc}</p>
-                  </div>
-                  <span className="pointer-events-none inline-flex items-center justify-center gap-1.5 self-start rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-zinc-900/10 transition-all duration-200 group-hover:bg-zinc-800 group-hover:shadow-md sm:self-auto">
-                    Atidaryti projektą
-                    <svg
-                      className="h-4 w-4 opacity-90 transition-transform duration-200 group-hover:translate-x-0.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2.25}
-                      aria-hidden
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </Link>
-        </div>
-      </div>
-    </li>
-  );
-}
+const ProjectsReorderableList = lazy(() =>
+  import("@/components/crm/projects/ProjectsReorderableList").then((m) => ({ default: m.ProjectsReorderableList })),
+);
 
 export function ProjectsSortableList({
   initialRows,
@@ -157,24 +23,37 @@ export function ProjectsSortableList({
   deletedAtAvailable: boolean;
   statusFilter: "active" | "archived" | "deleted";
 }) {
-  const router = useRouter();
   const [rows, setRows] = useState<ProjectListRow[]>(() => initialRows);
-  const [sortError, setSortError] = useState<string | null>(null);
+  const [reorderMode, setReorderMode] = useState(false);
+  const mountMark = useRef<number | null>(null);
 
-  /** Sync client order with SSR after `router.refresh()` without clobbering mid-drag optimistic state. */
+  if (mountMark.current == null && typeof performance !== "undefined") {
+    mountMark.current = performance.now();
+  }
+
   const initialRowsSignature = useMemo(
     () => initialRows.map((r) => `${r.id}:${r.sort_order ?? ""}`).join("|"),
     [initialRows],
   );
   useEffect(() => {
     setRows(initialRows);
-    // Intentionally only when SSR-ordered payload changes (after refresh), not on every `initialRows` ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialRowsSignature]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_CRM_PERF_LOG !== "1") return;
+    const t0 = mountMark.current ?? 0;
+    let raf = 0;
+    raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        console.info("[CRM perf] /projektai list client interactive-ish", {
+          approxHydrationToPaintMs: Math.round(performance.now() - t0),
+        });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
-  const ids = useMemo(() => rows.map((r) => r.id), [rows]);
   const isDeleted = statusFilter === "deleted";
 
   const plusDaysIso = useCallback((iso: string, days: number): string | null => {
@@ -191,67 +70,53 @@ export function ProjectsSortableList({
       const d = plusDaysIso(raw, 7);
       return d ? formatDate(d) : null;
     },
-    [plusDaysIso]
+    [plusDaysIso],
   );
 
-  const onDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over) return;
-      if (active.id === over.id) return;
-
-      setSortError(null);
-
-      const oldIndex = rows.findIndex((r) => r.id === active.id);
-      const newIndex = rows.findIndex((r) => r.id === over.id);
-      if (oldIndex < 0 || newIndex < 0) return;
-
-      const previousRows = rows;
-      const next = arrayMove(rows, oldIndex, newIndex);
-      setRows(next);
-
-      const res = await updateProjectsSortOrderAction(
-        next.map((r) => r.id),
-        statusFilter,
-      );
-      if (!res.ok) {
-        setRows(previousRows);
-        setSortError(res.error);
-        return;
-      }
-
-      window.dispatchEvent(new Event("projects:order-changed"));
-      router.refresh();
-    },
-    [rows, router, statusFilter],
-  );
+  if (reorderMode) {
+    return (
+      <Suspense
+        fallback={<p className="text-sm text-zinc-500">Įkeliamas rikiavimo režimas…</p>}
+      >
+        <ProjectsReorderableList
+          initialRows={rows}
+          userById={userById}
+          ownerColumnAvailable={ownerColumnAvailable}
+          deletedAtAvailable={deletedAtAvailable}
+          statusFilter={statusFilter}
+          onExit={() => setReorderMode(false)}
+        />
+      </Suspense>
+    );
+  }
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        {sortError ? <p className="mb-3 text-sm text-red-600">{sortError}</p> : null}
-        <ul className="flex flex-col gap-4">
-          {rows.map((p) => {
-            const wc = projectWorkItemCount(p);
-            const desc = p.description?.trim() || null;
-            return (
-              <SortableProjectRow
-                key={p.id}
-                row={p}
-                wc={wc}
-                desc={desc}
-                href={`/projektai/${p.id}`}
-                ownerColumnAvailable={ownerColumnAvailable}
-                userById={userById}
-                deletedAtAvailable={deletedAtAvailable}
-                isDeleted={isDeleted}
-                renderDeletedAt={renderDeletedAt}
-              />
-            );
-          })}
-        </ul>
-      </SortableContext>
-    </DndContext>
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setReorderMode(true)}
+          className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50"
+        >
+          Keisti projektų eiliškumą
+        </button>
+      </div>
+      <ul className="flex flex-col gap-4">
+        {rows.map((p) => (
+          <li key={p.id}>
+            <ProjectListRowCard
+              row={p}
+              href={`/projektai/${p.id}`}
+              ownerColumnAvailable={ownerColumnAvailable}
+              userById={userById}
+              deletedAtAvailable={deletedAtAvailable}
+              isDeleted={isDeleted}
+              renderDeletedAt={renderDeletedAt}
+              leftSlot={null}
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
-

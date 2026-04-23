@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { formatDate, formatMoney } from "@/lib/crm/format";
 import { clientDetailPath } from "@/lib/crm/clientRouting";
 import type { SnapshotCandidateRow } from "@/lib/crm/projectSnapshot";
@@ -143,9 +143,23 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
   const projectId = mode === "pick" ? props.projectId : "";
   const defaultAssignee = mode === "pick" ? props.defaultAssignee : "";
   const router = useRouter();
-  const total = candidates.length;
+  const totalCandidates = candidates.length;
   const showBulk = mode === "pick" && projectId.length > 0;
   const expandPanelIndent = showBulk ? "pl-[5.75rem]" : "pl-[3.25rem]";
+
+  const [hiddenClientKeys, setHiddenClientKeys] = useState<Set<string>>(() => new Set());
+  const rankByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    candidates.forEach((c, i) => {
+      if (c.client_key) m.set(c.client_key, i + 1);
+    });
+    return m;
+  }, [candidates]);
+
+  const displayCandidates = useMemo(() => {
+    if (mode !== "pick") return candidates;
+    return candidates.filter((c) => !hiddenClientKeys.has(c.client_key));
+  }, [mode, candidates, hiddenClientKeys]);
 
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [detailsCache, setDetailsCache] = useState<Map<string, CandidateExpandDetails>>(() => new Map());
@@ -154,7 +168,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkPending, startBulkTransition] = useTransition();
 
-  const allSelected = total > 0 && selectedIdx.size === total;
+  const allSelected = totalCandidates > 0 && selectedIdx.size === totalCandidates;
   const selectedCount = selectedIdx.size;
 
   const toggleSelect = (index: number) => {
@@ -189,15 +203,16 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
         fd.set("candidate_type", "auto");
         fd.set("client_key", row.client_key);
         fd.set("assigned_to", assignee);
+        fd.set("snapshot_priority", String(i + 1));
         const r = await pickClientFromProject(fd);
         if (!r.ok) {
           setBulkError(r.error);
           router.refresh();
           return;
         }
+        setHiddenClientKeys((prev) => new Set(prev).add(row.client_key));
       }
       setSelectedIdx(new Set());
-      router.refresh();
     });
   };
 
@@ -229,6 +244,14 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
     );
   }
 
+  if (mode === "pick" && displayCandidates.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50/50 px-6 py-10 text-center text-sm text-emerald-900">
+        Visi kandidatai šiame rodinyje jau pažymėti kaip priskirti šioje sesijoje. Pilną būseną atnaujinsite perkrovę puslapį.
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2.5">
       {showBulk ? (
@@ -238,7 +261,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
               type="checkbox"
               className="h-4 w-4 shrink-0 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400"
               checked={allSelected}
-              disabled={bulkPending || total === 0}
+              disabled={bulkPending || totalCandidates === 0}
               onChange={toggleSelectAll}
               aria-label="Pažymėti visus kandidatus"
             />
@@ -265,11 +288,14 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
         </div>
       ) : null}
 
-      {candidates.map((r, i) => {
+      {displayCandidates.map((r) => {
+        const origIdx = candidates.findIndex((c) => c.client_key === r.client_key);
+        const i = origIdx >= 0 ? origIdx : 0;
         const rowUiKey = `${i}:${r.client_key || "none"}`;
         const expandKey = r.client_key || `row-${i}`;
         const open = openKey === rowUiKey;
-        const level = priorityFromRankInList(i, total);
+        const rank1 = rankByKey.get(r.client_key) ?? i + 1;
+        const level = priorityFromRankInList(rank1 - 1, totalCandidates);
         const href = clientDetailPath(r.client_key === "" ? null : r.client_key);
         const lastInv = formatDate(r.last_invoice_anywhere);
         const meta = `Paskutinė sąskaita: ${lastInv}`;
@@ -291,9 +317,9 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                   <input
                     type="checkbox"
                     className="h-4 w-4 shrink-0 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400"
-                    checked={selectedIdx.has(i)}
+                    checked={origIdx >= 0 && selectedIdx.has(origIdx)}
                     disabled={bulkPending}
-                    onChange={() => toggleSelect(i)}
+                    onChange={() => origIdx >= 0 && toggleSelect(origIdx)}
                     aria-label={`Pažymėti: ${r.company_name?.trim() || "—"}`}
                   />
                 </div>
@@ -351,6 +377,21 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                     candidateType="auto"
                     clientKey={r.client_key}
                     defaultAssignee={defaultAssignee}
+                    snapshotPriority={rank1}
+                    onOptimisticPick={(t) => {
+                      if (t.kind === "auto") {
+                        setHiddenClientKeys((prev) => new Set(prev).add(t.clientKey));
+                      }
+                    }}
+                    onOptimisticRevert={(t) => {
+                      if (t.kind === "auto") {
+                        setHiddenClientKeys((prev) => {
+                          const next = new Set(prev);
+                          next.delete(t.clientKey);
+                          return next;
+                        });
+                      }
+                    }}
                   />
                 ) : null}
               </div>

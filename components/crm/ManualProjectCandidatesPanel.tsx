@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { clientDetailPath } from "@/lib/crm/clientRouting";
 import {
   createManualProjectLeadAction,
@@ -114,6 +114,8 @@ export function ManualProjectCandidatesPanel({
   defaultAssignee: string;
 }) {
   const router = useRouter();
+  const [hiddenLeadIds, setHiddenLeadIds] = useState<Set<string>>(() => new Set());
+  const [hiddenLinkIds, setHiddenLinkIds] = useState<Set<string>>(() => new Set());
   const formRef = useRef<HTMLFormElement | null>(null);
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -144,7 +146,12 @@ export function ManualProjectCandidatesPanel({
 
   const importJustSucceeded = importResult?.ok === true;
   const importLocked = importPending || importJustSucceeded;
-  const rows = pageRows;
+  const rows = useMemo(() => {
+    return pageRows.filter((row) => {
+      if (row.kind === "lead") return !hiddenLeadIds.has(row.lead.id);
+      return !hiddenLinkIds.has(row.linked.id);
+    });
+  }, [pageRows, hiddenLeadIds, hiddenLinkIds]);
   const empty = totalCount === 0;
 
   useEffect(() => {
@@ -425,6 +432,18 @@ export function ManualProjectCandidatesPanel({
                     defaultAssignee={defaultAssignee}
                     candidateType="manual_lead"
                     candidateId={row.lead.id}
+                    onOptimisticPick={(t) => {
+                      if (t.kind === "manual_lead") setHiddenLeadIds((s) => new Set(s).add(t.leadId));
+                    }}
+                    onOptimisticRevert={(t) => {
+                      if (t.kind === "manual_lead") {
+                        setHiddenLeadIds((s) => {
+                          const n = new Set(s);
+                          n.delete(t.leadId);
+                          return n;
+                        });
+                      }
+                    }}
                   />
                 </div>
               </li>
@@ -467,6 +486,18 @@ export function ManualProjectCandidatesPanel({
                     defaultAssignee={defaultAssignee}
                     candidateType="linked_client"
                     candidateId={row.linked.id}
+                    onOptimisticPick={(t) => {
+                      if (t.kind === "linked_client") setHiddenLinkIds((s) => new Set(s).add(t.linkId));
+                    }}
+                    onOptimisticRevert={(t) => {
+                      if (t.kind === "linked_client") {
+                        setHiddenLinkIds((s) => {
+                          const n = new Set(s);
+                          n.delete(t.linkId);
+                          return n;
+                        });
+                      }
+                    }}
                   />
                 </div>
               </li>

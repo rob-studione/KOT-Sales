@@ -187,13 +187,17 @@ export function ProcurementContractsPanel({
   const sortValue = `${sortBy || "valid_until"}:${sortDir || "asc"}`;
 
   const pickedSet = useMemo(() => new Set(openPickedContractIds.map((x) => String(x).trim()).filter(Boolean)), [openPickedContractIds]);
+  const [optimisticPickedContractIds, setOptimisticPickedContractIds] = useState<Set<string>>(() => new Set());
 
   const listContracts = useMemo(
     () => contracts.filter((c) => !pickedSet.has(String(c.id))),
     [contracts, pickedSet]
   );
 
-  const visibleContracts = useMemo(() => listContracts, [listContracts]);
+  const visibleContracts = useMemo(
+    () => listContracts.filter((c) => !optimisticPickedContractIds.has(String(c.id))),
+    [listContracts, optimisticPickedContractIds],
+  );
 
   const buildHref = useMemo(() => {
     return (pageIndex0: number, opts?: { all?: boolean }) => {
@@ -1138,6 +1142,20 @@ export function ProcurementContractsPanel({
                           defaultAssignee={defaultAssignee}
                           candidateType="procurement_contract"
                           candidateId={c.id}
+                          onOptimisticPick={(t) => {
+                            if (t.kind === "procurement_contract") {
+                              setOptimisticPickedContractIds((s) => new Set(s).add(t.contractId));
+                            }
+                          }}
+                          onOptimisticRevert={(t) => {
+                            if (t.kind === "procurement_contract") {
+                              setOptimisticPickedContractIds((s) => {
+                                const n = new Set(s);
+                                n.delete(t.contractId);
+                                return n;
+                              });
+                            }
+                          }}
                         />
                       </div>
                     </td>

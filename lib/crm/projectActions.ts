@@ -7,6 +7,7 @@ import { defaultProjectActor } from "@/lib/crm/projectEnv";
 import { parseManualImportCsvForImport } from "@/lib/crm/manualImportCsv";
 import {
   rpcMatchProjectCandidates,
+  rpcMatchProjectCandidateForPick,
   fetchSortedCandidatesForProject,
   type ProjectRulesRow,
 } from "@/lib/crm/projectCandidateQuery";
@@ -44,6 +45,22 @@ import {
   type ProjectSortOption,
   type SnapshotCandidateRow,
 } from "@/lib/crm/projectSnapshot";
+
+/** Server-side pick veiksmo segmentai (ms) — naudojama diagnostikai ir UX optimizacijai. */
+export type PickClientFromProjectTimings = {
+  projectLoadMs: number;
+  /** Auto: vieno kliento RPC arba pilnas sąrašas (fallback). */
+  rpcMatchMs?: number;
+  sortFindMs?: number;
+  insertWorkItemMs?: number;
+  insertActivityMs?: number;
+  revalidateDetailMs?: number;
+  totalServerMs: number;
+};
+
+export type PickClientFromProjectResult =
+  | { ok: true; timings: PickClientFromProjectTimings }
+  | { ok: false; error: string; timings: PickClientFromProjectTimings };
 
 type UpdateProjectsSortOrderResult = { ok: true } | { ok: false; error: string };
 
@@ -996,8 +1013,11 @@ async function insertPickedWorkItemRow(
     snapshot_priority: number;
     source_type: "auto" | "manual_lead" | "linked_client" | "procurement_contract";
     source_id: string | null;
-  }
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  },
+): Promise<
+  | { ok: true; insertWorkItemMs: number; insertActivityMs: number; revalidateDetailMs: number }
+  | { ok: false; error: string }
+> {
   const baseRow = {
     project_id: projectId,
     client_key: pick.client_key,
@@ -1016,6 +1036,7 @@ async function insertPickedWorkItemRow(
     result_status: "",
   };
 
+  const tIns0 = Date.now();
   // Retry without source columns if DB has no migration 0036.
   const first = await supabase
     .from("project_work_items")
@@ -1037,6 +1058,7 @@ async function insertPickedWorkItemRow(
 
   const inserted = data as { id: string } | null;
   const insErrFinal = err;
+  const insertWorkItemMs = Date.now() - tIns0;
 
   if (insErrFinal || !inserted?.id) {
     if (insErrFinal?.code === "23505") {
@@ -1046,6 +1068,7 @@ async function insertPickedWorkItemRow(
   }
 
   const wid = inserted.id;
+  const tAct0 = Date.now();
   const { error: actErr } = await supabase.from("project_work_item_activities").insert({
     work_item_id: wid,
     occurred_at: new Date().toISOString(),
@@ -1055,6 +1078,7 @@ async function insertPickedWorkItemRow(
     next_action_date: null,
     comment: "",
   });
+  const insertActivityMs = Date.now() - tAct0;
   if (actErr) {
     await supabase.from("project_work_items").delete().eq("id", wid);
     return {
@@ -1063,14 +1087,21 @@ async function insertPickedWorkItemRow(
     };
   }
 
+  const tRev0 = Date.now();
   revalidatePath(`/projektai/${projectId}`);
-  revalidatePath("/projektai");
-  return { ok: true };
+  const revalidateDetailMs = Date.now() - tRev0;
+  return { ok: true, insertWorkItemMs, insertActivityMs, revalidateDetailMs };
 }
 
-export async function pickClientFromProject(
-  formData: FormData
-): Promise<{ ok: true } | { ok: false; error: string }> {
+function finishPickTimings(
+  startedAt: number,
+  partial: Omit<PickClientFromProjectTimings, "totalServerMs">,
+): PickClientFromProjectTimings {
+  return { ...partial, totalServerMs: Date.now() - startedAt };
+}
+
+export async function pickClientFromProject(formData: FormData): Promise<PickClientFromProjectResult> {
+  const tServer0 = Date.now();
   const projectId = String(formData.get("project_id") ?? "").trim();
   const candidateType = parseCandidateType(formData);
   const candidateId = String(formData.get("candidate_id") ?? "").trim();
@@ -1078,29 +1109,71 @@ export async function pickClientFromProject(
   const assignedTo = String(formData.get("assigned_to") ?? "").trim() || defaultProjectActor();
 
   if (!projectId || !/^[0-9a-f-]{36}$/i.test(projectId)) {
-    return { ok: false, error: "Neteisingas projektas." };
+    return { ok: false, error: "Neteisingas projektas.", timings: finishPickTimings(tServer0, { projectLoadMs: 0 }) };
   }
 
   let supabase;
   try {
     supabase = await createSupabaseSsrClient();
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Supabase klaida",
+      timings: finishPickTimings(tServer0, { projectLoadMs: 0 }),
+    };
   }
 
-  const { data: proj, error: projErr } = await supabase.from("projects").select("*").eq("id", projectId).single();
+  const tProj = Date.now();
+  const { data: proj, error: projErr } = await supabase
+    .from("projects")
+    .select("id,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option,project_type")
+    .eq("id", projectId)
+    .single();
+  const projectLoadMs = Date.now() - tProj;
+
   if (projErr || !proj) {
-    return { ok: false, error: "Projektas nerastas." };
+    return {
+      ok: false,
+      error: "Projektas nerastas.",
+      timings: finishPickTimings(tServer0, { projectLoadMs }),
+    };
   }
 
   const isManual = isManualProjectType(projectTypeFromDbRow(proj));
 
+  async function wrapInsert(
+    partial: Omit<PickClientFromProjectTimings, "totalServerMs" | "insertWorkItemMs" | "insertActivityMs" | "revalidateDetailMs">,
+    insertPromise: ReturnType<typeof insertPickedWorkItemRow>,
+  ): Promise<PickClientFromProjectResult> {
+    const ins = await insertPromise;
+    if (!ins.ok) {
+      return { ok: false, error: ins.error, timings: finishPickTimings(tServer0, { ...partial }) };
+    }
+    return {
+      ok: true,
+      timings: finishPickTimings(tServer0, {
+        ...partial,
+        insertWorkItemMs: ins.insertWorkItemMs,
+        insertActivityMs: ins.insertActivityMs,
+        revalidateDetailMs: ins.revalidateDetailMs,
+      }),
+    };
+  }
+
   if (candidateType === "manual_lead") {
     if (!isManual) {
-      return { ok: false, error: "Rankinio leado priskyrimas galimas tik rankiniame projekte." };
+      return {
+        ok: false,
+        error: "Rankinio leado priskyrimas galimas tik rankiniame projekte.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
     if (!candidateId || !isValidUuid(candidateId)) {
-      return { ok: false, error: "Neteisingas rankinio kandidato identifikatorius." };
+      return {
+        ok: false,
+        error: "Neteisingas rankinio kandidato identifikatorius.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
 
     const { data: lead, error: leadErr } = await supabase
@@ -1112,32 +1185,51 @@ export async function pickClientFromProject(
 
     if (leadErr) {
       console.error("[pickClientFromProject] manual_lead", leadErr);
-      return { ok: false, error: leadErr.message ?? "Nepavyko patikrinti kandidato." };
+      return {
+        ok: false,
+        error: leadErr.message ?? "Nepavyko patikrinti kandidato.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
     if (!lead) {
-      return { ok: false, error: "Rankinis kandidatas nerastas arba nepriklauso šiam projektui." };
+      return {
+        ok: false,
+        error: "Rankinis kandidatas nerastas arba nepriklauso šiam projektui.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
 
     const ck = manualLeadClientKey(String(lead.id));
-    return insertPickedWorkItemRow(supabase, projectId, assignedTo, {
-      client_key: ck,
-      client_identifier_display: formatProjectClientIdentifier(lead.company_code, null),
-      client_name_snapshot: snapshotClientDisplayName(String(lead.company_name ?? ""), lead.company_code),
-      snapshot_order_count: 0,
-      snapshot_revenue: 0,
-      snapshot_last_invoice_date: MANUAL_LEAD_PLACEHOLDER_INVOICE_DATE,
-      snapshot_priority: 1,
-      source_type: "manual_lead",
-      source_id: String(lead.id),
-    });
+    return wrapInsert(
+      { projectLoadMs },
+      insertPickedWorkItemRow(supabase, projectId, assignedTo, {
+        client_key: ck,
+        client_identifier_display: formatProjectClientIdentifier(lead.company_code, null),
+        client_name_snapshot: snapshotClientDisplayName(String(lead.company_name ?? ""), lead.company_code),
+        snapshot_order_count: 0,
+        snapshot_revenue: 0,
+        snapshot_last_invoice_date: MANUAL_LEAD_PLACEHOLDER_INVOICE_DATE,
+        snapshot_priority: 1,
+        source_type: "manual_lead",
+        source_id: String(lead.id),
+      }),
+    );
   }
 
   if (candidateType === "linked_client") {
     if (!isManual) {
-      return { ok: false, error: "Susieto kliento priskyrimas galimas tik rankiniame projekte." };
+      return {
+        ok: false,
+        error: "Susieto kliento priskyrimas galimas tik rankiniame projekte.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
     if (!candidateId || !isValidUuid(candidateId)) {
-      return { ok: false, error: "Neteisingas susiejimo įrašo identifikatorius." };
+      return {
+        ok: false,
+        error: "Neteisingas susiejimo įrašo identifikatorius.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
 
     const { data: linkRow, error: linkErr } = await supabase
@@ -1149,15 +1241,23 @@ export async function pickClientFromProject(
 
     if (linkErr) {
       console.error("[pickClientFromProject] linked_client", linkErr);
-      return { ok: false, error: linkErr.message ?? "Nepavyko patikrinti kandidato." };
+      return {
+        ok: false,
+        error: linkErr.message ?? "Nepavyko patikrinti kandidato.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
     if (!linkRow) {
-      return { ok: false, error: "Šis klientas nėra šio projekto kandidatų sąraše." };
+      return {
+        ok: false,
+        error: "Šis klientas nėra šio projekto kandidatų sąraše.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
 
     const ck = String(linkRow.client_key ?? "").trim();
     if (!ck) {
-      return { ok: false, error: "Trūksta kliento rakto." };
+      return { ok: false, error: "Trūksta kliento rakto.", timings: finishPickTimings(tServer0, { projectLoadMs }) };
     }
 
     const { data: viewRow, error: vErr } = await supabase
@@ -1167,7 +1267,11 @@ export async function pickClientFromProject(
       .maybeSingle();
 
     if (vErr || !viewRow) {
-      return { ok: false, error: "Klientas nerastas CRM sąraše." };
+      return {
+        ok: false,
+        error: "Klientas nerastas CRM sąraše.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
 
     const vr = viewRow as {
@@ -1185,25 +1289,36 @@ export async function pickClientFromProject(
         ? vr.last_invoice_date.slice(0, 10)
         : String(vr.last_invoice_date ?? "").slice(0, 10) || MANUAL_LEAD_PLACEHOLDER_INVOICE_DATE;
 
-    return insertPickedWorkItemRow(supabase, projectId, assignedTo, {
-      client_key: vr.client_key,
-      client_identifier_display: formatProjectClientIdentifier(vr.company_code, vr.client_id),
-      client_name_snapshot: snapshotClientDisplayName(String(vr.company_name ?? ""), vr.company_code),
-      snapshot_order_count: Math.max(0, Number(vr.invoice_count ?? 0)),
-      snapshot_revenue: Number(vr.total_revenue ?? 0),
-      snapshot_last_invoice_date: lastD,
-      snapshot_priority: 1,
-      source_type: "linked_client",
-      source_id: String(linkRow.id),
-    });
+    return wrapInsert(
+      { projectLoadMs },
+      insertPickedWorkItemRow(supabase, projectId, assignedTo, {
+        client_key: vr.client_key,
+        client_identifier_display: formatProjectClientIdentifier(vr.company_code, vr.client_id),
+        client_name_snapshot: snapshotClientDisplayName(String(vr.company_name ?? ""), vr.company_code),
+        snapshot_order_count: Math.max(0, Number(vr.invoice_count ?? 0)),
+        snapshot_revenue: Number(vr.total_revenue ?? 0),
+        snapshot_last_invoice_date: lastD,
+        snapshot_priority: 1,
+        source_type: "linked_client",
+        source_id: String(linkRow.id),
+      }),
+    );
   }
 
   if (candidateType === "procurement_contract") {
     if (!isProcurementProjectType(projectTypeFromDbRow(proj))) {
-      return { ok: false, error: "Sutarties priskyrimas galimas tik viešųjų pirkimų projekte." };
+      return {
+        ok: false,
+        error: "Sutarties priskyrimas galimas tik viešųjų pirkimų projekte.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
     if (!candidateId || !isValidUuid(candidateId)) {
-      return { ok: false, error: "Neteisingas sutarties identifikatorius." };
+      return {
+        ok: false,
+        error: "Neteisingas sutarties identifikatorius.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
 
     const { data: cRow, error: cErr } = await supabase
@@ -1215,10 +1330,18 @@ export async function pickClientFromProject(
 
     if (cErr) {
       console.error("[pickClientFromProject] procurement_contract", cErr);
-      return { ok: false, error: cErr.message ?? "Nepavyko įkelti sutarties." };
+      return {
+        ok: false,
+        error: cErr.message ?? "Nepavyko įkelti sutarties.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
     if (!cRow) {
-      return { ok: false, error: "Sutartis nerasta arba nepriklauso šiam projektui." };
+      return {
+        ok: false,
+        error: "Sutartis nerasta arba nepriklauso šiam projektui.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
     }
 
     const c = cRow as {
@@ -1237,20 +1360,22 @@ export async function pickClientFromProject(
     const rev = c.value != null && Number.isFinite(Number(c.value)) ? Number(c.value) : 0;
     const orgName = String(c.organization_name ?? "").trim();
     const obj = String(c.contract_object ?? "").trim();
-    const title =
-      orgName && obj ? `${orgName} — ${obj}` : orgName || obj || "Sutartis";
+    const title = orgName && obj ? `${orgName} — ${obj}` : orgName || obj || "Sutartis";
 
-    return insertPickedWorkItemRow(supabase, projectId, assignedTo, {
-      client_key: procurementContractClientKey(String(c.id)),
-      client_identifier_display: formatProjectClientIdentifier(c.organization_code, null),
-      client_name_snapshot: title,
-      snapshot_order_count: 0,
-      snapshot_revenue: rev,
-      snapshot_last_invoice_date: validUntil,
-      snapshot_priority: 1,
-      source_type: "procurement_contract",
-      source_id: String(c.id),
-    });
+    return wrapInsert(
+      { projectLoadMs },
+      insertPickedWorkItemRow(supabase, projectId, assignedTo, {
+        client_key: procurementContractClientKey(String(c.id)),
+        client_identifier_display: formatProjectClientIdentifier(c.organization_code, null),
+        client_name_snapshot: title,
+        snapshot_order_count: 0,
+        snapshot_revenue: rev,
+        snapshot_last_invoice_date: validUntil,
+        snapshot_priority: 1,
+        source_type: "procurement_contract",
+        source_id: String(c.id),
+      }),
+    );
   }
 
   if (isManual) {
@@ -1258,11 +1383,16 @@ export async function pickClientFromProject(
       ok: false,
       error:
         "Pasirinkite kandidatą iš sąrašo. Jei klaida kartojasi, atnaujinkite puslapį (pasenęs priskyrimo tipas).",
+      timings: finishPickTimings(tServer0, { projectLoadMs }),
     };
   }
 
   if (!clientKey) {
-    return { ok: false, error: "Trūksta kliento identifikatoriaus." };
+    return {
+      ok: false,
+      error: "Trūksta kliento identifikatoriaus.",
+      timings: finishPickTimings(tServer0, { projectLoadMs }),
+    };
   }
 
   const pr = proj as Record<string, unknown>;
@@ -1276,31 +1406,100 @@ export async function pickClientFromProject(
     project_type: projectTypeFromDbRow(proj),
   };
 
-  const sortedRes = await fetchSortedCandidatesForProject(supabase, rules);
-  if (!sortedRes.ok) return { ok: false, error: sortedRes.error };
+  const snapshotPriorityRaw = formData.get("snapshot_priority");
+  let snapshotPriority = parseInt(String(snapshotPriorityRaw ?? ""), 10);
+  if (!Number.isFinite(snapshotPriority) || snapshotPriority < 1) {
+    snapshotPriority = 1;
+  }
 
-  const sorted = sortedRes.rows;
-  const idx = sorted.findIndex((r) => r.client_key === clientKey);
-  if (idx < 0) {
+  let rpcMatchMs = 0;
+  let sortFindMs = 0;
+  let row: SnapshotCandidateRow | null = null;
+
+  const tRpc = Date.now();
+  const singleRes = await rpcMatchProjectCandidateForPick(
+    supabase,
+    projectId,
+    String(pr.filter_date_from).slice(0, 10),
+    String(pr.filter_date_to).slice(0, 10),
+    Number(pr.min_order_count ?? 1),
+    Number(pr.inactivity_days ?? 90),
+    clientKey,
+  );
+  rpcMatchMs += Date.now() - tRpc;
+
+  const rpcMissingMigration =
+    !singleRes.ok && String(singleRes.error).includes("0082_match_project_candidate_for_pick");
+
+  if (singleRes.ok && singleRes.row) {
+    const tSort = Date.now();
+    const sort = parseProjectSortOption(String(pr.sort_option ?? ""));
+    const sortedOne = sortSnapshotCandidates([singleRes.row], sort);
+    row = sortedOne[0] ?? null;
+    sortFindMs = Date.now() - tSort;
+  } else if (rpcMissingMigration) {
+    const tLegacy = Date.now();
+    const sortedRes = await fetchSortedCandidatesForProject(supabase, rules);
+    rpcMatchMs += Date.now() - tLegacy;
+    if (!sortedRes.ok) {
+      return {
+        ok: false,
+        error: sortedRes.error,
+        timings: finishPickTimings(tServer0, { projectLoadMs, rpcMatchMs }),
+      };
+    }
+    const tSort = Date.now();
+    const sorted = sortedRes.rows;
+    const idx = sorted.findIndex((r) => r.client_key === clientKey);
+    sortFindMs = Date.now() - tSort;
+    if (idx < 0) {
+      return {
+        ok: false,
+        error:
+          "Klientas šiuo metu nėra kandidatų sąraše (gali būti jau priskirtas, užsakė arba nebetenkina taisyklių).",
+        timings: finishPickTimings(tServer0, { projectLoadMs, rpcMatchMs, sortFindMs }),
+      };
+    }
+    row = sorted[idx]!;
+    snapshotPriority = idx + 1;
+  } else if (!singleRes.ok) {
+    return {
+      ok: false,
+      error: singleRes.error,
+      timings: finishPickTimings(tServer0, { projectLoadMs, rpcMatchMs }),
+    };
+  } else {
     return {
       ok: false,
       error:
         "Klientas šiuo metu nėra kandidatų sąraše (gali būti jau priskirtas, užsakė arba nebetenkina taisyklių).",
+      timings: finishPickTimings(tServer0, { projectLoadMs, rpcMatchMs, sortFindMs }),
     };
   }
 
-  const row = sorted[idx]!;
-  return insertPickedWorkItemRow(supabase, projectId, assignedTo, {
-    client_key: row.client_key,
-    client_identifier_display: formatProjectClientIdentifier(row.company_code, row.client_id),
-    client_name_snapshot: snapshotClientDisplayName(row.company_name, row.company_code),
-    snapshot_order_count: row.order_count,
-    snapshot_revenue: row.total_revenue,
-    snapshot_last_invoice_date: row.last_invoice_date,
-    snapshot_priority: idx + 1,
-    source_type: "auto",
-    source_id: null,
-  });
+  if (!row) {
+    return {
+      ok: false,
+      error:
+        "Klientas šiuo metu nėra kandidatų sąraše (gali būti jau priskirtas, užsakė arba nebetenkina taisyklių).",
+      timings: finishPickTimings(tServer0, { projectLoadMs, rpcMatchMs, sortFindMs }),
+    };
+  }
+
+  return wrapInsert(
+    { projectLoadMs, rpcMatchMs, sortFindMs },
+    insertPickedWorkItemRow(supabase, projectId, assignedTo, {
+      client_key: row.client_key,
+      client_identifier_display: formatProjectClientIdentifier(row.company_code, row.client_id),
+      client_name_snapshot: snapshotClientDisplayName(row.company_name, row.company_code),
+      snapshot_order_count: row.order_count,
+      snapshot_revenue: row.total_revenue,
+      snapshot_last_invoice_date: row.last_invoice_date,
+      snapshot_priority: snapshotPriority,
+      source_type: "auto",
+      source_id: null,
+    }),
+  );
 }
 
 /** Naujas veiksmas istorijoje + dabartinė būsena ant darbo eilutės (kaip Sheets eilutės papildymas). */
