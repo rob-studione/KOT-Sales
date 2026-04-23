@@ -6,7 +6,6 @@ import { defaultProjectActor } from "@/lib/crm/projectEnv";
 import { fetchSortedCandidatesForProject } from "@/lib/crm/projectCandidateQuery";
 import {
   fetchProjectAnalytics,
-  fetchProjectRevenueFeed,
   parseProjectAnalyticsPeriod,
   resolveAnalyticsRange,
 } from "@/lib/crm/projectAnalytics";
@@ -36,7 +35,7 @@ import {
   normalizeActivityRow,
   type ProjectWorkItemActivityDto,
 } from "@/lib/crm/projectWorkItemActivityDto";
-import { fetchCrmUsers } from "@/lib/crm/crmUsers";
+import type { CrmUser } from "@/lib/crm/crmUsers";
 import {
   fetchManualProjectCandidatesPage,
   fetchManualProjectCandidatesTotalCount,
@@ -120,6 +119,13 @@ export default async function ProjektasDetailPage({
     q?: string | string[];
   }>;
 }) {
+  const perfT0 = Date.now();
+  const perf: Record<string, number> = {};
+  let roundTripCount = 0;
+  const markMs = (k: string, ms: number) => {
+    perf[k] = (perf[k] ?? 0) + ms;
+  };
+
   const { id } = await params;
   const sp = await searchParams;
   const tabRaw = typeof sp.tab === "string" ? sp.tab : undefined;
@@ -145,10 +151,35 @@ export default async function ProjektasDetailPage({
     return <p className="text-sm text-red-600">Supabase nekonfigūruotas. {message}</p>;
   }
 
-  const [{ data: project, error: pErr }, crmUsers] = await Promise.all([
-    supabase.from("projects").select("*").eq("id", id).maybeSingle(),
-    fetchCrmUsers(supabase),
-  ]);
+  const projectSelect =
+    "id,name,description,project_type,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option,status,created_at,created_by,owner_user_id,procurement_notify_days_before";
+  const projectT0 = Date.now();
+  roundTripCount += 1;
+  const { data: project, error: pErr } = await supabase
+    .from("projects")
+    .select(projectSelect)
+    .eq("id", id)
+    .maybeSingle();
+  markMs("projectMs", Date.now() - projectT0);
+
+  // Owner dropdown needs user list, but keep payload minimal (no email/role).
+  const crmUsersT0 = Date.now();
+  roundTripCount += 1;
+  const { data: crmUsersRaw, error: crmUsersErr } = await supabase
+    .from("crm_users")
+    .select("id,name,avatar_url")
+    .order("name", { ascending: true });
+  markMs("crmUsersMs", Date.now() - crmUsersT0);
+  const crmUsers: CrmUser[] = (crmUsersRaw ?? []).map((u: any) => ({
+    id: String(u.id ?? ""),
+    name: String(u.name ?? ""),
+    email: "",
+    role: "",
+    avatar_url: u.avatar_url ?? null,
+  }));
+  if (crmUsersErr && process.env.NODE_ENV === "development") {
+    console.warn("[projektai/[id]] crm_users load failed:", crmUsersErr);
+  }
 
   if (pErr || !project) {
     if (pErr) {
@@ -195,13 +226,19 @@ export default async function ProjektasDetailPage({
   /** Visada tas pats kaip „Kandidatai“ skirtuko sąrašas — skaitiklis neturi būti 0 kituose tab’uose. */
   let candidates: SnapshotCandidateRow[] = [];
   let candidatesError: string | null = null;
-  if (!isManual && !isProcurement) {
+  let kandidataiCount: number | null = null;
+  const candidatesT0 = Date.now();
+  if (!isManual && !isProcurement && tab === "kandidatai") {
     const candidatesRes = await fetchSortedCandidatesForProject(supabase, p);
     if (candidatesRes.ok) {
       candidates = candidatesRes.rows;
+      kandidataiCount = candidates.length;
     } else {
       candidatesError = candidatesRes.error;
     }
+  }
+  if (!isManual && !isProcurement && tab === "kandidatai") {
+    markMs("candidatesRpcMs", Date.now() - candidatesT0);
   }
 
   const AUTO_CANDIDATES_PAGE_SIZE = 20;
@@ -235,6 +272,18 @@ export default async function ProjektasDetailPage({
     !isManual && !isProcurement && tab === "kandidatai"
       ? autoCandidatesFiltered.slice(autoCandidatesOffset, autoCandidatesOffset + AUTO_CANDIDATES_PAGE_SIZE)
       : candidates;
+
+  const autoCallListPriorityBasis =
+    !isManual && !isProcurement
+      ? (() => {
+          const rankByClientKey: Record<string, number> = {};
+          for (let i = 0; i < autoCandidatesFiltered.length; i++) {
+            const ck = autoCandidatesFiltered[i]?.client_key;
+            if (ck) rankByClientKey[ck] = i + 1;
+          }
+          return { total: autoCandidatesFiltered.length, rankByClientKey };
+        })()
+      : undefined;
 
   if (
     !isManual &&
@@ -308,7 +357,9 @@ export default async function ProjektasDetailPage({
     suppliers: [],
     types: [],
   };
-  if (isProcurement) {
+  const procurementT0 = Date.now();
+  let procurementOpenPickedContractIds: string[] = [];
+  if (isProcurement && tab === "sutartys") {
     function parseCsvList(raw: unknown): string[] {
       const s = typeof raw === "string" ? raw : "";
       return s
@@ -337,6 +388,7 @@ export default async function ProjektasDetailPage({
     const searchQ = typeof sp.q === "string" ? sp.q.trim() : "";
 
     // Exclude already-picked procurement contracts (open work items).
+    roundTripCount += 1;
     const { data: pickedRows } = await supabase
       .from("project_work_items")
       .select("source_id,result_status,source_type")
@@ -393,6 +445,7 @@ export default async function ProjektasDetailPage({
     }
 
     // Filter options (distinct-ish) for UI panel. Use all contracts excluding picked, no other filters.
+    roundTripCount += 1;
     let optsQ = supabase
       .from("project_procurement_contracts")
       .select("organization_name,supplier,type")
@@ -419,41 +472,51 @@ export default async function ProjektasDetailPage({
       suppliers: [...supSet].sort((a, b) => a.localeCompare(b, "lt")),
       types: [...typeSet].sort((a, b) => a.localeCompare(b, "lt")),
     };
+
+    procurementOpenPickedContractIds = excludeIds;
+  }
+  if (isProcurement && tab === "sutartys") {
+    markMs("procurementMs", Date.now() - procurementT0);
   }
 
-  const kandidataiCount = isManual
-    ? manualCandidatesTotal
-    : isProcurement
-      ? procurementContractsTotal
-      : autoCandidatesTotalCount;
+  const kandidataiCountForTabLabel: number | string =
+    isManual ? manualCandidatesTotal : isProcurement ? (tab === "sutartys" ? procurementContractsTotal : "…") : tab === "kandidatai" ? autoCandidatesTotalCount : "…";
 
   let workRaw: Record<string, unknown>[] = [];
-  let wErr;
-  const full = await supabase
-    .from("project_work_items")
-    .select(PROJECT_WORK_ITEMS_SELECT_WITH_SOURCE)
-    .eq("project_id", id)
-    .order("picked_at", { ascending: false });
-  if (full.error && isMissingWorkItemSourceColumnsError(full.error)) {
-    const leg = await supabase
+  let wErr: { message?: string } | null = null;
+  const workItemsT0 = Date.now();
+  if (tab === "darbas" || tab === "kontaktuota") {
+    roundTripCount += 1;
+    const full = await supabase
       .from("project_work_items")
-      .select(PROJECT_WORK_ITEMS_SELECT_LEGACY)
+      .select(PROJECT_WORK_ITEMS_SELECT_WITH_SOURCE)
       .eq("project_id", id)
       .order("picked_at", { ascending: false });
-    workRaw = (leg.data ?? []) as Record<string, unknown>[];
-    wErr = leg.error;
-  } else {
-    workRaw = (full.data ?? []) as Record<string, unknown>[];
-    wErr = full.error;
+    if (full.error && isMissingWorkItemSourceColumnsError(full.error)) {
+      roundTripCount += 1;
+      const leg = await supabase
+        .from("project_work_items")
+        .select(PROJECT_WORK_ITEMS_SELECT_LEGACY)
+        .eq("project_id", id)
+        .order("picked_at", { ascending: false });
+      workRaw = (leg.data ?? []) as Record<string, unknown>[];
+      wErr = leg.error ? { message: leg.error.message } : null;
+    } else {
+      workRaw = (full.data ?? []) as Record<string, unknown>[];
+      wErr = full.error ? { message: full.error.message } : null;
+    }
+    markMs("workItemsMs", Date.now() - workItemsT0);
   }
 
   if (wErr) {
-    return <p className="text-sm text-red-600">Nepavyko įkelti darbo eilučių: {wErr.message}</p>;
+    return <p className="text-sm text-red-600">Nepavyko įkelti darbo eilučių: {String(wErr.message ?? "Klaida")}</p>;
   }
 
   const workIds = workRaw.map((r) => String(r.id));
   const activitiesByWorkItemId: Record<string, ProjectWorkItemActivityDto[]> = {};
+  const activitiesT0 = Date.now();
   if ((tab === "darbas" || tab === "kontaktuota") && workIds.length > 0) {
+    roundTripCount += 1;
     const { data: actRows, error: actErr } = await supabase
       .from("project_work_item_activities")
       .select("*")
@@ -466,6 +529,9 @@ export default async function ProjektasDetailPage({
         activitiesByWorkItemId[a.work_item_id]!.push(a);
       }
     }
+  }
+  if (tab === "darbas" || tab === "kontaktuota") {
+    markMs("activitiesMs", Date.now() - activitiesT0);
   }
 
   let workItemsAll: ProjectWorkItemDto[] = workRaw.map((row) => {
@@ -503,32 +569,37 @@ export default async function ProjektasDetailPage({
 
   // Display fix: show live (all-time) revenue in Kanban/list even for older picked items.
   // Snapshot rows in DB are immutable by design, so we only override for rendering.
-  const liveRevenueByClientKey = new Map<string, number>();
-  const revenueKeys = Array.from(
-    new Set(
-      workItemsAll
-        .filter((w) => (w.source_type === "auto" || w.source_type === "linked_client") && w.client_key.trim() !== "")
-        .map((w) => w.client_key)
-    )
-  );
-  for (let i = 0; i < revenueKeys.length; i += 200) {
-    const part = revenueKeys.slice(i, i + 200);
-    const { data } = await supabase
-      .from("v_client_list_from_invoices")
-      .select("client_key,total_revenue")
-      .in("client_key", part);
-    for (const r of (data ?? []) as Array<{ client_key?: unknown; total_revenue?: unknown }>) {
-      const ck = String(r.client_key ?? "").trim();
-      if (!ck) continue;
-      const n = Number(r.total_revenue ?? 0);
-      if (Number.isFinite(n)) liveRevenueByClientKey.set(ck, n);
+  if (tab === "pajamos") {
+    const liveRevenueLookupT0 = Date.now();
+    const liveRevenueByClientKey = new Map<string, number>();
+    const revenueKeys = Array.from(
+      new Set(
+        workItemsAll
+          .filter((w) => (w.source_type === "auto" || w.source_type === "linked_client") && w.client_key.trim() !== "")
+          .map((w) => w.client_key)
+      )
+    );
+    for (let i = 0; i < revenueKeys.length; i += 200) {
+      const part = revenueKeys.slice(i, i + 200);
+      roundTripCount += 1;
+      const { data } = await supabase
+        .from("v_client_list_from_invoices")
+        .select("client_key,total_revenue")
+        .in("client_key", part);
+      for (const r of (data ?? []) as Array<{ client_key?: unknown; total_revenue?: unknown }>) {
+        const ck = String(r.client_key ?? "").trim();
+        if (!ck) continue;
+        const n = Number(r.total_revenue ?? 0);
+        if (Number.isFinite(n)) liveRevenueByClientKey.set(ck, n);
+      }
     }
-  }
-  if (liveRevenueByClientKey.size > 0) {
-    workItemsAll = workItemsAll.map((w) => {
-      const v = liveRevenueByClientKey.get(w.client_key);
-      return v === undefined ? w : { ...w, snapshot_revenue: v };
-    });
+    if (liveRevenueByClientKey.size > 0) {
+      workItemsAll = workItemsAll.map((w) => {
+        const v = liveRevenueByClientKey.get(w.client_key);
+        return v === undefined ? w : { ...w, snapshot_revenue: v };
+      });
+    }
+    markMs("liveRevenueLookupMs", Date.now() - liveRevenueLookupT0);
   }
 
   /** „Darbas“: tik neuždarytos eilutės (`result_status` ne „completed“ / completion_* ir pan.). */
@@ -540,22 +611,37 @@ export default async function ProjektasDetailPage({
   );
   const completedWorkCount = completedWorkItems.length;
 
-  const procurementOpenPickedContractIds = workItemsAll
-    .filter(
-      (w) =>
-        w.source_type === "procurement_contract" &&
-        w.source_id &&
-        !isProjectWorkItemClosed(w.result_status)
-    )
-    .map((w) => String(w.source_id));
-
-  const analyticsData = tab === "apzvalga" && !isProcurement ? await fetchProjectAnalytics(supabase, id, analyticsRange) : null;
+  const analyticsData =
+    tab === "apzvalga" && !isProcurement ? await fetchProjectAnalytics(supabase, id, analyticsRange) : null;
   const procurementAnalyticsData =
     tab === "apzvalga" && isProcurement
       ? await fetchProcurementDashboardAnalytics(supabase, id, p.created_at, analyticsRange)
       : null;
-  const revenueFeed = await fetchProjectRevenueFeed(supabase, id, analyticsRange);
-  const revenueCount = revenueFeed.count;
+  let revenueFeed: Awaited<ReturnType<typeof import("@/lib/crm/projectAnalytics").fetchProjectRevenueFeed>> | null = null;
+  let revenueCount: number | string = "…";
+  if (tab === "pajamos") {
+    const { fetchProjectRevenueFeed } = await import("@/lib/crm/projectAnalytics");
+    const revenueFeedT0 = Date.now();
+    revenueFeed = await fetchProjectRevenueFeed(supabase, id, analyticsRange);
+    markMs("revenueFeedMs", Date.now() - revenueFeedT0);
+    revenueCount = revenueFeed.count;
+  }
+
+  if (process.env.CRM_PERF_LOG === "1") {
+    console.info("[CRM perf] /projektai/[id] SSR", {
+      totalServerMs: Date.now() - perfT0,
+      projectMs: perf.projectMs ?? 0,
+      crmUsersMs: perf.crmUsersMs ?? 0,
+      candidatesRpcMs: perf.candidatesRpcMs ?? 0,
+      workItemsMs: perf.workItemsMs ?? 0,
+      activitiesMs: perf.activitiesMs ?? 0,
+      revenueFeedMs: perf.revenueFeedMs ?? 0,
+      liveRevenueLookupMs: perf.liveRevenueLookupMs ?? 0,
+      procurementMs: perf.procurementMs ?? 0,
+      roundTripCount,
+      tab,
+    });
+  }
 
   return (
     <div className="min-w-0">
@@ -695,7 +781,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "sutartys"}
             >
               Sutartys
-              <span className="ml-1 tabular-nums text-gray-400">({procurementContractsTotal})</span>
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "sutartys" ? procurementContractsTotal : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "darbas", view: darbasView, ...qOpts })}
@@ -704,7 +790,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "darbas"}
             >
               Darbas
-              <span className="ml-1 tabular-nums text-gray-400">({workItems.length})</span>
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "darbas" ? workItems.length : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "kontaktuota", ...qOpts })}
@@ -713,7 +799,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "kontaktuota"}
             >
               Užbaigta
-              <span className="ml-1 tabular-nums text-gray-400">({completedWorkCount})</span>
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "kontaktuota" ? completedWorkCount : "…"})</span>
             </Link>
           </>
         ) : (
@@ -726,7 +812,7 @@ export default async function ProjektasDetailPage({
             >
               Kandidatai
               {!candidatesError || isManual ? (
-                <span className="ml-1 tabular-nums text-gray-400">({kandidataiCount})</span>
+                <span className="ml-1 tabular-nums text-gray-400">({kandidataiCountForTabLabel})</span>
               ) : null}
             </Link>
             <Link
@@ -736,7 +822,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "darbas"}
             >
               Darbas
-              <span className="ml-1 tabular-nums text-gray-400">({workItems.length})</span>
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "darbas" ? workItems.length : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "kontaktuota", ...qOpts })}
@@ -745,7 +831,7 @@ export default async function ProjektasDetailPage({
               aria-selected={tab === "kontaktuota"}
             >
               Užbaigta
-              <span className="ml-1 tabular-nums text-gray-400">({completedWorkCount})</span>
+              <span className="ml-1 tabular-nums text-gray-400">({tab === "kontaktuota" ? completedWorkCount : "…"})</span>
             </Link>
             <Link
               href={buildProjectDetailHref(id, { tab: "pajamos", ...qOpts })}
@@ -857,12 +943,19 @@ export default async function ProjektasDetailPage({
                   </CrmListPageMain>
                 ) : (
                   <CrmListPageMain>
+                    <p className="mb-2 text-sm text-zinc-600">
+                      Rodoma {autoCandidatesShowing.from}–{autoCandidatesShowing.to} iš {autoCandidatesShowing.total}
+                      {autoCandidatesTotalPages > 1
+                        ? " — likę įrašai kituose puslapiuose (puslapiavimas sąrašo apačioje)."
+                        : null}
+                    </p>
                     <div className="w-full min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white">
                       <ProjectCandidateCallList
                         mode="pick"
                         projectId={String(p.id ?? id).trim() || id}
                         defaultAssignee={defaultAssignee}
                         candidates={autoCandidatesPageRows}
+                        callListPriorityBasis={autoCallListPriorityBasis}
                       />
                       <SimplePagination
                         basePath={`/projektai/${id}`}

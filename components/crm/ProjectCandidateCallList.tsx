@@ -136,14 +136,21 @@ export type ProjectCandidateCallListProps =
       projectId: string;
       defaultAssignee: string;
       candidates: SnapshotCandidateRow[];
+      /**
+       * Pilnas filtruotas sąrašas (visi puslapiai): „Aukštas/Vidutinis/Žemas“ pagal vietą
+       * visame sąraše. Be šito — ženkliukas skaičiuojamas tik iš `candidates` (pvz. 20 eilučių puslapyje).
+       */
+      callListPriorityBasis?: { total: number; rankByClientKey: Record<string, number> };
     };
 
 export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
   const { mode, candidates } = props;
   const projectId = mode === "pick" ? props.projectId : "";
   const defaultAssignee = mode === "pick" ? props.defaultAssignee : "";
+  const priorityBasis = mode === "pick" ? props.callListPriorityBasis : undefined;
   const router = useRouter();
   const totalCandidates = candidates.length;
+  const totalForPriority = priorityBasis?.total ?? totalCandidates;
   const showBulk = mode === "pick" && projectId.length > 0;
   const expandPanelIndent = showBulk ? "pl-[5.75rem]" : "pl-[3.25rem]";
 
@@ -203,7 +210,8 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
         fd.set("candidate_type", "auto");
         fd.set("client_key", row.client_key);
         fd.set("assigned_to", assignee);
-        fd.set("snapshot_priority", String(i + 1));
+        const globalPri = priorityBasis?.rankByClientKey[row.client_key] ?? i + 1;
+        fd.set("snapshot_priority", String(globalPri));
         const r = await pickClientFromProject(fd);
         if (!r.ok) {
           setBulkError(r.error);
@@ -294,8 +302,9 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
         const rowUiKey = `${i}:${r.client_key || "none"}`;
         const expandKey = r.client_key || `row-${i}`;
         const open = openKey === rowUiKey;
-        const rank1 = rankByKey.get(r.client_key) ?? i + 1;
-        const level = priorityFromRankInList(rank1 - 1, totalCandidates);
+        const rank1 =
+          priorityBasis?.rankByClientKey[r.client_key] ?? rankByKey.get(r.client_key) ?? i + 1;
+        const level = priorityFromRankInList(rank1 - 1, totalForPriority);
         const href = clientDetailPath(r.client_key === "" ? null : r.client_key);
         const lastInv = formatDate(r.last_invoice_anywhere);
         const meta = `Paskutinė sąskaita: ${lastInv}`;
