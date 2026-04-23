@@ -182,6 +182,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [bulkPending, startBulkTransition] = useTransition();
+  const [rowActionPending, startRowActionTransition] = useTransition();
   const invalidDialogRef = useRef<HTMLDialogElement>(null);
   const [pendingInvalidKey, setPendingInvalidKey] = useState<string | null>(null);
 
@@ -292,7 +293,7 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
             <button
               type="button"
               className="cursor-pointer rounded-md bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-60"
-              disabled={!pendingInvalidKey}
+              disabled={!pendingInvalidKey || rowActionPending}
               onClick={() => {
                 const ck = pendingInvalidKey;
                 if (!ck) return;
@@ -300,16 +301,19 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                 setPendingInvalidKey(null);
                 setRowError(null);
                 setHiddenClientKeys((prev) => new Set(prev).add(ck));
-                void markAutoCandidateAsInvalidAction(projectId, ck).then((res) => {
-                  if (res.ok) return;
-                  setHiddenClientKeys((prev) => {
-                    const next = new Set(prev);
-                    next.delete(ck);
-                    return next;
-                  });
-                  setRowError(res.error);
+                startRowActionTransition(async () => {
+                  const res = await markAutoCandidateAsInvalidAction(projectId, ck);
+                  if (!res.ok) {
+                    setHiddenClientKeys((prev) => {
+                      const next = new Set(prev);
+                      next.delete(ck);
+                      return next;
+                    });
+                    setRowError(res.error);
+                    return;
+                  }
+                  router.refresh();
                 });
-                router.refresh();
               }}
             >
               Pažymėti kaip netinkamą
@@ -469,7 +473,8 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                   listStatus === "active" ? (
                     <button
                       type="button"
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      disabled={rowActionPending}
                       onClick={() => {
                         const ck = String(r.client_key ?? "").trim();
                         if (!ck) return;
@@ -483,22 +488,26 @@ export function ProjectCandidateCallList(props: ProjectCandidateCallListProps) {
                   ) : (
                     <button
                       type="button"
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                      disabled={rowActionPending}
                       onClick={() => {
                         const ck = String(r.client_key ?? "").trim();
                         if (!ck) return;
                         setRowError(null);
                         setHiddenClientKeys((prev) => new Set(prev).add(ck));
-                        void restoreAutoCandidateAction(projectId, ck).then((res) => {
-                          if (res.ok) return;
-                          setHiddenClientKeys((prev) => {
-                            const next = new Set(prev);
-                            next.delete(ck);
-                            return next;
-                          });
-                          setRowError(res.error);
+                        startRowActionTransition(async () => {
+                          const res = await restoreAutoCandidateAction(projectId, ck);
+                          if (!res.ok) {
+                            setHiddenClientKeys((prev) => {
+                              const next = new Set(prev);
+                              next.delete(ck);
+                              return next;
+                            });
+                            setRowError(res.error);
+                            return;
+                          }
+                          router.refresh();
                         });
-                        router.refresh();
                       }}
                     >
                       Grąžinti
