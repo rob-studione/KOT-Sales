@@ -9,6 +9,7 @@ export const WORK_ITEM_COMPLETION_RESULT_VALUES = [
   "completion_relevant_as_needed",
   "completion_translations_not_relevant",
   "completion_other_provider",
+  "completion_company_liquidated",
 ] as const;
 
 /** Viešųjų pirkimų darbo eilutės užbaigimas (stulpelis „Užbaigta“). */
@@ -50,6 +51,8 @@ export function completionResultLabel(value: string): string {
       return "Vertimai neaktualūs";
     case "completion_other_provider":
       return "Turi kitą teikėją";
+    case "completion_company_liquidated":
+      return "Įmonė likviduota";
     case "completion_procurement_invite_participate":
       return "Pakvies dalyvauti";
     case "completion_procurement_include_purchase":

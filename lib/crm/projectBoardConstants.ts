@@ -110,6 +110,7 @@ export function isProjectWorkItemClosed(resultStatus: string | null | undefined)
     "completion_relevant_as_needed",
     "completion_translations_not_relevant",
     "completion_other_provider",
+    "completion_company_liquidated",
     "completion_procurement_invite_participate",
     "completion_procurement_include_purchase",
     "completion_procurement_contact_failed",
