@@ -14,7 +14,9 @@ import {
 import { fetchProcurementDashboardAnalytics } from "@/lib/crm/procurementAnalytics";
 import {
   buildProjectDetailHref,
+  buildProjectPageQueryPreserve,
   parseManualCandidatesStatus,
+  parseProjectCompletedPage1Based,
   parseProjectDetailTab,
   type ProjectDetailTab,
 } from "@/lib/crm/projectPageSearchParams";
@@ -84,6 +86,12 @@ import { RoutePerfMarker } from "@/components/crm/RoutePerfMarker";
 
 export const dynamic = "force-dynamic";
 
+function projectDetailHrefToQueryRecord(href: string): Record<string, string> {
+  const i = href.indexOf("?");
+  if (i < 0) return {};
+  return Object.fromEntries(new URLSearchParams(href.slice(i + 1)).entries());
+}
+
 type ProjectRow = {
   id: string;
   name: string;
@@ -125,6 +133,8 @@ export default async function ProjektasDetailPage({
     status?: string | string[];
     candidateStatus?: string | string[];
     q?: string | string[];
+    /** Skirtukas „Užbaigta“ (1-based). */
+    completedPage?: string | string[];
   }>;
 }) {
   const perfT0 = Date.now();
@@ -150,6 +160,8 @@ export default async function ProjektasDetailPage({
     period,
     ...(period === "custom" && customFrom && customTo ? { from: customFrom, to: customTo } : {}),
   };
+  const projectQueryPreserve = buildProjectPageQueryPreserve(sp);
+  const projectLinkOpts = { ...qOpts, ...projectQueryPreserve };
 
   let supabase;
   try {
@@ -225,7 +237,7 @@ export default async function ProjektasDetailPage({
     redirect(
       buildProjectDetailHref(id, {
         tab: "sutartys",
-        ...qOpts,
+        ...projectLinkOpts,
       })
     );
   }
@@ -321,7 +333,7 @@ export default async function ProjektasDetailPage({
     redirect(
       buildProjectDetailHref(id, {
         tab: "kandidatai",
-        ...qOpts,
+        ...projectLinkOpts,
         page: autoCandidatesPageIndex0,
         ...(autoCandidatesQTrim ? { q: autoCandidatesQTrim } : {}),
         ...(autoCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
@@ -362,7 +374,7 @@ export default async function ProjektasDetailPage({
         redirect(
           buildProjectDetailHref(id, {
             tab: "kandidatai",
-            ...qOpts,
+            ...projectLinkOpts,
             page: manualPageIndex0,
             pageSize: manualCandidatesPageSize,
             ...(manualCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
@@ -460,7 +472,7 @@ export default async function ProjektasDetailPage({
           redirect(
             buildProjectDetailHref(id, {
               tab: "sutartys",
-              ...qOpts,
+              ...projectLinkOpts,
               page: procPageIndex0,
               pageSize: procPageSize,
             })
@@ -594,8 +606,63 @@ export default async function ProjektasDetailPage({
         : null,
     comment: String(row.comment ?? ""),
     result_status: String(row.result_status ?? ""),
+    client_live_all_time_revenue: null,
+    client_live_last_invoice_date: null,
   };
   });
+
+  if (tab === "darbas") {
+    const kanbanLiveLookupT0 = Date.now();
+    const liveByKey = new Map<string, { total_revenue: number; last_invoice_date: string | null }>();
+    const revenueKeys = Array.from(
+      new Set(
+        workItemsAll
+          .filter((w) => (w.source_type === "auto" || w.source_type === "linked_client") && w.client_key.trim() !== "")
+          .map((w) => w.client_key)
+      )
+    );
+    for (let i = 0; i < revenueKeys.length; i += 200) {
+      const part = revenueKeys.slice(i, i + 200);
+      roundTripCount += 1;
+      const { data } = await supabase
+        .from("v_client_list_from_invoices")
+        .select("client_key,total_revenue,last_invoice_date")
+        .in("client_key", part);
+      for (const r of (data ?? []) as Array<{
+        client_key?: unknown;
+        total_revenue?: unknown;
+        last_invoice_date?: unknown;
+      }>) {
+        const ck = String(r.client_key ?? "").trim();
+        if (!ck) continue;
+        const total = Number(r.total_revenue ?? 0);
+        const lastRaw = r.last_invoice_date;
+        const last =
+          lastRaw == null || lastRaw === ""
+            ? null
+            : typeof lastRaw === "string"
+              ? lastRaw.slice(0, 10)
+              : String(lastRaw).slice(0, 10);
+        liveByKey.set(ck, {
+          total_revenue: Number.isFinite(total) ? total : 0,
+          last_invoice_date: last,
+        });
+      }
+    }
+    if (liveByKey.size > 0) {
+      workItemsAll = workItemsAll.map((w) => {
+        if (w.source_type !== "auto" && w.source_type !== "linked_client") return w;
+        const row = liveByKey.get(w.client_key);
+        if (!row) return w;
+        return {
+          ...w,
+          client_live_all_time_revenue: row.total_revenue,
+          client_live_last_invoice_date: row.last_invoice_date,
+        };
+      });
+    }
+    markMs("kanbanClientLiveLookupMs", Date.now() - kanbanLiveLookupT0);
+  }
 
   // Display fix: show live (all-time) revenue in Kanban/list even for older picked items.
   // Snapshot rows in DB are immutable by design, so we only override for rendering.
@@ -647,7 +714,53 @@ export default async function ProjektasDetailPage({
       !isReturnedToCandidates(w.result_status) &&
       !isUžbaigtaSameDayCompletionOnDarbas(w, activitiesByWorkItemId[w.id], todayVilnius)
   );
-  const completedWorkCount = completedWorkItems.length;
+
+  const UŽBAIGTA_PAGE_SIZE = 20;
+  const completedTotal = completedWorkItems.length;
+  const completedTotalPages = totalPagesFromCount(completedTotal, UŽBAIGTA_PAGE_SIZE);
+  const requestedCompleted1 = parseProjectCompletedPage1Based(
+    typeof sp.completedPage === "string" ? sp.completedPage : undefined
+  );
+  const safeCompleted1 =
+    completedTotal === 0
+      ? 1
+      : Math.min(Math.max(1, requestedCompleted1), Math.max(1, completedTotalPages));
+
+  if (tab === "kontaktuota" && completedTotal === 0 && requestedCompleted1 > 1) {
+    const { completedPage: _drop, ...pl } = projectLinkOpts;
+    if (_drop != null) {
+      redirect(
+        buildProjectDetailHref(id, {
+          ...pl,
+          tab: "kontaktuota",
+        })
+      );
+    }
+  }
+
+  if (tab === "kontaktuota" && completedTotal > 0 && safeCompleted1 !== requestedCompleted1) {
+    redirect(
+      buildProjectDetailHref(id, {
+        ...projectLinkOpts,
+        tab: "kontaktuota",
+        completedPage: safeCompleted1,
+      })
+    );
+  }
+
+  const completedPageIndex0 = safeCompleted1 - 1;
+  const pagedCompletedWorkItems = completedWorkItems.slice(
+    completedPageIndex0 * UŽBAIGTA_PAGE_SIZE,
+    completedPageIndex0 * UŽBAIGTA_PAGE_SIZE + UŽBAIGTA_PAGE_SIZE
+  );
+  const completedRange = showingRange1Based(completedPageIndex0, UŽBAIGTA_PAGE_SIZE, completedTotal);
+
+  const { completedPage: _omitKontatsuota, ...projectLinkForKontaktuotaList } = projectLinkOpts;
+  const kontaktuotaPaginationExtra: Record<string, string | undefined> = {
+    ...projectDetailHrefToQueryRecord(
+      buildProjectDetailHref(id, { ...projectLinkForKontaktuotaList, tab: "kontaktuota" })
+    ),
+  };
 
   const procurementAnalyticsData =
     tab === "apzvalga" && isProcurement
@@ -673,6 +786,7 @@ export default async function ProjektasDetailPage({
       activitiesMs: perf.activitiesMs ?? 0,
       revenueFeedMs: perf.revenueFeedMs ?? 0,
       liveRevenueLookupMs: perf.liveRevenueLookupMs ?? 0,
+      kanbanClientLiveLookupMs: perf.kanbanClientLiveLookupMs ?? 0,
       procurementMs: perf.procurementMs ?? 0,
       roundTripCount,
       tab,
@@ -688,6 +802,7 @@ export default async function ProjektasDetailPage({
     activitiesMs: perf.activitiesMs ?? 0,
     revenueFeedMs: perf.revenueFeedMs ?? 0,
     liveRevenueLookupMs: perf.liveRevenueLookupMs ?? 0,
+    kanbanClientLiveLookupMs: perf.kanbanClientLiveLookupMs ?? 0,
     procurementMs: perf.procurementMs ?? 0,
     roundTripCount,
     tab,
@@ -816,7 +931,7 @@ export default async function ProjektasDetailPage({
 
       <div className={`mt-4 ${CRM_UNDERLINE_TAB_NAV_CLASS}`} role="tablist" aria-label="Projekto skydeliai">
         <Link
-          href={buildProjectDetailHref(id, { tab: "apzvalga", ...qOpts })}
+          href={buildProjectDetailHref(id, { tab: "apzvalga", ...projectLinkOpts })}
           className={crmUnderlineTabClass(tab === "apzvalga")}
           role="tab"
           aria-selected={tab === "apzvalga"}
@@ -826,7 +941,7 @@ export default async function ProjektasDetailPage({
         {isProcurement ? (
           <>
             <Link
-              href={buildProjectDetailHref(id, { tab: "sutartys", ...qOpts })}
+              href={buildProjectDetailHref(id, { tab: "sutartys", ...projectLinkOpts })}
               className={crmUnderlineTabClass(tab === "sutartys")}
               role="tab"
               aria-selected={tab === "sutartys"}
@@ -834,7 +949,7 @@ export default async function ProjektasDetailPage({
               Sutartys
             </Link>
             <Link
-              href={buildProjectDetailHref(id, { tab: "darbas", view: darbasView, ...qOpts })}
+              href={buildProjectDetailHref(id, { tab: "darbas", view: darbasView, ...projectLinkOpts })}
               className={crmUnderlineTabClass(tab === "darbas")}
               role="tab"
               aria-selected={tab === "darbas"}
@@ -842,7 +957,7 @@ export default async function ProjektasDetailPage({
               Darbas
             </Link>
             <Link
-              href={buildProjectDetailHref(id, { tab: "kontaktuota", ...qOpts })}
+              href={buildProjectDetailHref(id, { tab: "kontaktuota", ...projectLinkOpts })}
               className={crmUnderlineTabClass(tab === "kontaktuota")}
               role="tab"
               aria-selected={tab === "kontaktuota"}
@@ -853,7 +968,7 @@ export default async function ProjektasDetailPage({
         ) : (
           <>
             <Link
-              href={buildProjectDetailHref(id, { tab: "kandidatai", ...qOpts })}
+              href={buildProjectDetailHref(id, { tab: "kandidatai", ...projectLinkOpts })}
               className={crmUnderlineTabClass(tab === "kandidatai")}
               role="tab"
               aria-selected={tab === "kandidatai"}
@@ -861,7 +976,7 @@ export default async function ProjektasDetailPage({
               Kandidatai
             </Link>
             <Link
-              href={buildProjectDetailHref(id, { tab: "darbas", view: darbasView, ...qOpts })}
+              href={buildProjectDetailHref(id, { tab: "darbas", view: darbasView, ...projectLinkOpts })}
               className={crmUnderlineTabClass(tab === "darbas")}
               role="tab"
               aria-selected={tab === "darbas"}
@@ -869,7 +984,7 @@ export default async function ProjektasDetailPage({
               Darbas
             </Link>
             <Link
-              href={buildProjectDetailHref(id, { tab: "kontaktuota", ...qOpts })}
+              href={buildProjectDetailHref(id, { tab: "kontaktuota", ...projectLinkOpts })}
               className={crmUnderlineTabClass(tab === "kontaktuota")}
               role="tab"
               aria-selected={tab === "kontaktuota"}
@@ -877,7 +992,7 @@ export default async function ProjektasDetailPage({
               Užbaigta
             </Link>
             <Link
-              href={buildProjectDetailHref(id, { tab: "pajamos", ...qOpts })}
+              href={buildProjectDetailHref(id, { tab: "pajamos", ...projectLinkOpts })}
               className={crmUnderlineTabClass(tab === "pajamos")}
               role="tab"
               aria-selected={tab === "pajamos"}
@@ -975,7 +1090,7 @@ export default async function ProjektasDetailPage({
                         prefetch={false}
                         href={buildProjectDetailHref(id, {
                           tab: "kandidatai",
-                          ...qOpts,
+                          ...projectLinkOpts,
                           page: 0,
                           ...(autoCandidatesQTrim ? { q: autoCandidatesQTrim } : {}),
                         })}
@@ -992,7 +1107,7 @@ export default async function ProjektasDetailPage({
                         prefetch={false}
                         href={buildProjectDetailHref(id, {
                           tab: "kandidatai",
-                          ...qOpts,
+                          ...projectLinkOpts,
                           page: 0,
                           ...(autoCandidatesQTrim ? { q: autoCandidatesQTrim } : {}),
                           candidateStatus: "netinkamas",
@@ -1019,6 +1134,9 @@ export default async function ProjektasDetailPage({
                         ...(period === "custom" && customFrom ? { from: String(customFrom) } : {}),
                         ...(period === "custom" && customTo ? { to: String(customTo) } : {}),
                         ...(autoCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
+                        ...(projectQueryPreserve.completedPage != null && projectQueryPreserve.completedPage > 1
+                          ? { completedPage: String(projectQueryPreserve.completedPage) }
+                          : {}),
                       }}
                     />
                   </div>
@@ -1056,6 +1174,9 @@ export default async function ProjektasDetailPage({
                           ...(period ? { period: String(period) } : {}),
                           ...(period === "custom" && customFrom ? { from: String(customFrom) } : {}),
                           ...(period === "custom" && customTo ? { to: String(customTo) } : {}),
+                          ...(projectQueryPreserve.completedPage != null && projectQueryPreserve.completedPage > 1
+                            ? { completedPage: String(projectQueryPreserve.completedPage) }
+                            : {}),
                         }}
                         ariaLabel={`Kandidatų sąrašo puslapiai (${autoCandidatesShowing.from}–${autoCandidatesShowing.to} iš ${autoCandidatesShowing.total})`}
                       />
@@ -1159,7 +1280,7 @@ export default async function ProjektasDetailPage({
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
-              href={buildProjectDetailHref(id, { tab: "darbas", view: "board", ...qOpts })}
+              href={buildProjectDetailHref(id, { tab: "darbas", view: "board", ...projectLinkOpts })}
               className={
                 darbasView === "board"
                   ? "cursor-pointer rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
@@ -1169,7 +1290,7 @@ export default async function ProjektasDetailPage({
               Lenta
             </Link>
             <Link
-              href={buildProjectDetailHref(id, { tab: "darbas", view: "list", ...qOpts })}
+              href={buildProjectDetailHref(id, { tab: "darbas", view: "list", ...projectLinkOpts })}
               className={
                 darbasView === "list"
                   ? "cursor-pointer rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
@@ -1228,11 +1349,27 @@ export default async function ProjektasDetailPage({
                 Nėra užbaigtų įrašų šiame projekte.
               </div>
             ) : (
-              <ProjectWorkQueueCallList
-                variant="contacted"
-                items={completedWorkItems}
-                activitiesByWorkItemId={activitiesByWorkItemId}
-              />
+              <div className="w-full min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+                <ProjectWorkQueueCallList
+                  variant="contacted"
+                  items={pagedCompletedWorkItems}
+                  activitiesByWorkItemId={activitiesByWorkItemId}
+                />
+                <SimplePagination
+                  basePath={`/projektai/${id}`}
+                  pageIndex0={completedPageIndex0}
+                  totalPages={completedTotalPages}
+                  pageQueryParam="completedPage"
+                  extraQuery={kontaktuotaPaginationExtra}
+                  rangeSummary={
+                    completedTotal > 0 && completedTotalPages > 1
+                      ? { from: completedRange.from, to: completedRange.to, total: completedRange.total }
+                      : undefined
+                  }
+                  prevNextStyle="wordsLt"
+                  ariaLabel="Užbaigtų darbo eilučių puslapiai"
+                />
+              </div>
             )}
           </div>
         </div>

@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { useActionState, useCallback, useEffect, useState } from "react";
+import { formatDate, formatMoney } from "@/lib/crm/format";
 import {
-  CRM_DATE_INPUT_PLACEHOLDER,
-  crmDateInputDefaultToday,
-  formatDate,
-  formatMoney,
-} from "@/lib/crm/format";
+  defaultNextActionDateYmdForKanbanColumn,
+  kanbanColumnHidesDateFieldInModal,
+  kanbanColumnShowsDateFieldInModal,
+} from "@/lib/crm/kanbanNextActionDate";
+import { CrmIsoDatePicker } from "@/components/crm/CrmIsoDatePicker";
 import { workItemClientDetailHref } from "@/lib/crm/clientRouting";
 import {
   callStatusOptionLabel,
@@ -93,8 +94,6 @@ export function WorkItemDetailSheet({
   const detailHref = workItemClientDetailHref(item.client_key);
   const level: CallListPriority = priorityFromSnapshotScore(item.snapshot_priority, allWorkPriorities);
 
-  const dateDefault = crmDateInputDefaultToday();
-
   const [callStatus, setCallStatus] = useState(() =>
     isProcurementItem
       ? mapCallStatusToProcurementBoardColumn(item.call_status)
@@ -104,6 +103,10 @@ export function WorkItemDetailSheet({
     const d = defaultWorkItemActionTypeForKanbanColumn(item.call_status);
     return isProcurementItem && d === "commercial" ? "call" : d;
   });
+
+  const hideDateField = kanbanColumnHidesDateFieldInModal(callStatus);
+  const showEditableDate = kanbanColumnShowsDateFieldInModal(callStatus);
+  const dateDefault = defaultNextActionDateYmdForKanbanColumn(callStatus) ?? "";
 
   const completionPreset =
     callStatus === "Užbaigta" && normalizeKanbanCallStatus(item.call_status) === "Užbaigta"
@@ -209,22 +212,18 @@ export function WorkItemDetailSheet({
                 {callStatus === "Užbaigta" && isProcurementItem ? (
                   <p className="text-xs text-zinc-500">Pasirinkus „Kita“, komentaras privalomas.</p>
                 ) : null}
-                <label className="flex flex-col gap-1 text-xs text-zinc-500">
-                  Data
-                  <input
-                    name="next_action_date"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    placeholder={CRM_DATE_INPUT_PLACEHOLDER}
-                    defaultValue={dateDefault}
-                    className="rounded-lg border border-zinc-200 px-2.5 py-2 text-sm text-zinc-900 placeholder:text-zinc-400"
-                  />
-                  <span className="text-xs text-zinc-400">
-                    Formatas: {CRM_DATE_INPUT_PLACEHOLDER}. Numatyta — šiandien. Privaloma, jei „Sekantis veiksmas“ =
-                    Laukti (laukimo pabaiga).
-                  </span>
-                </label>
+                {hideDateField ? null : showEditableDate ? (
+                  <label className="flex flex-col gap-1 text-xs text-zinc-500">
+                    <span>
+                      Planuojamas veiksmas (data)
+                      <span className="text-red-600"> *</span>
+                    </span>
+                    <CrmIsoDatePicker name="next_action_date" defaultValue={dateDefault} required />
+                    <span className="text-xs text-zinc-400">
+                      Pasirinkite planuojamo veiksmo datą.
+                    </span>
+                  </label>
+                ) : null}
                 <label className="flex flex-col gap-1 text-xs text-zinc-500">
                   Komentaras
                   <textarea

@@ -3,7 +3,13 @@
  * Datos civilinės YYYY-MM-DD prasmėje sutampa su `vilniusTime` / KPI intervalais.
  */
 
-import { eachDayInclusive, vilniusStartUtc, VILNIUS_TZ } from "@/lib/crm/vilniusTime";
+import {
+  addOneCivilDayVilnius,
+  eachDayInclusive,
+  vilniusStartUtc,
+  vilniusTodayDateString,
+  VILNIUS_TZ,
+} from "@/lib/crm/vilniusTime";
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -138,4 +144,21 @@ export function countWorkingDaysLt(from: Date, to: Date): number {
   const a = new Intl.DateTimeFormat("en-CA", { timeZone: VILNIUS_TZ }).format(from);
   const b = new Intl.DateTimeFormat("en-CA", { timeZone: VILNIUS_TZ }).format(to);
   return countWorkingDaysLtIso(a, b);
+}
+
+/**
+ * Pirmoji Lietuvos darbo diena griežtai PO civilinės `fromYmd` (neįskaitant pačios `fromYmd`).
+ */
+export function nextWorkingDayLtYmdAfter(fromYmd: string): string {
+  let cur = fromYmd;
+  for (let guard = 0; guard < 400; guard++) {
+    cur = addOneCivilDayVilnius(cur);
+    if (isWorkingDayLtYmd(cur)) return cur;
+  }
+  throw new Error(`nextWorkingDayLtYmdAfter: no working day after ${fromYmd}`);
+}
+
+/** Kita darbo diena po šiandien (kalendorinė diena pagal Vilnių). */
+export function nextWorkingDayAfterTodayVilnius(todayYmd: string = vilniusTodayDateString()): string {
+  return nextWorkingDayLtYmdAfter(todayYmd);
 }

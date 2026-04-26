@@ -2,8 +2,13 @@
 
 import { useActionState, useCallback, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { CRM_DATE_INPUT_PLACEHOLDER, crmDateInputDefaultToday } from "@/lib/crm/format";
+import {
+  defaultNextActionDateYmdForKanbanColumn,
+  kanbanColumnHidesDateFieldInModal,
+  kanbanColumnShowsDateFieldInModal,
+} from "@/lib/crm/kanbanNextActionDate";
 import { confirmKanbanMove } from "@/lib/crm/projectActions";
+import { CrmIsoDatePicker } from "@/components/crm/CrmIsoDatePicker";
 import {
   callStatusOptionLabel,
   callStatusSelectOptions,
@@ -76,8 +81,9 @@ export function KanbanMoveConfirmModal({
     defaultKanbanCompletedAction(pending.fromColumn, pending.toColumn)
   );
 
-  const toIsLaukti = callStatus === "Laukti";
-  const dateDefault = crmDateInputDefaultToday();
+  const hideDateField = kanbanColumnHidesDateFieldInModal(callStatus);
+  const showEditableDate = kanbanColumnShowsDateFieldInModal(callStatus);
+  const dateDefault = defaultNextActionDateYmdForKanbanColumn(callStatus) ?? "";
   const completionPreset =
     callStatus === "Užbaigta" && normalizeKanbanCallStatus(pending.item.call_status) === "Užbaigta"
       ? pending.item.result_status
@@ -173,30 +179,18 @@ export function KanbanMoveConfirmModal({
             </p>
           ) : null}
 
-          <label className="flex flex-col gap-1 text-xs text-zinc-500">
-            Data
-            {toIsLaukti ? <span className="text-red-600">*</span> : null}
-            <input
-              name="next_action_date"
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder={CRM_DATE_INPUT_PLACEHOLDER}
-              defaultValue={dateDefault}
-              required={toIsLaukti}
-              className="rounded-lg border border-zinc-200 px-2.5 py-2 text-sm text-zinc-900 placeholder:text-zinc-400"
-            />
-            {toIsLaukti ? (
-              <span className="text-xs text-zinc-400">
-                Stulpeliui „Laukti“ data privaloma. Formatas: {CRM_DATE_INPUT_PLACEHOLDER}.
+          {hideDateField ? null : showEditableDate ? (
+            <label className="flex flex-col gap-1 text-xs text-zinc-500">
+              <span>
+                Planuojamas veiksmas (data)
+                <span className="text-red-600"> *</span>
               </span>
-            ) : (
+              <CrmIsoDatePicker name="next_action_date" defaultValue={dateDefault} required />
               <span className="text-xs text-zinc-400">
-                Formatas: {CRM_DATE_INPUT_PLACEHOLDER}. Numatyta — šiandien. Privaloma, jei „Sekantis veiksmas“ =
-                Laukti (laukimo pabaiga).
+                Pasirinkite planuojamo veiksmo datą.
               </span>
-            )}
-          </label>
+            </label>
+          ) : null}
 
           <label className="flex flex-col gap-1 text-xs text-zinc-500">
             Komentaras

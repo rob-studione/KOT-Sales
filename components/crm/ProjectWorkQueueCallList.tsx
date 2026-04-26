@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useFormStatus } from "react-dom";
-import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
+import { useActionState, useCallback, useMemo, useState } from "react";
+import { formatDate, formatDateTimeLt, formatMoney } from "@/lib/crm/format";
 import {
-  CRM_DATE_INPUT_PLACEHOLDER,
-  crmDateInputDefaultToday,
-  formatDate,
-  formatDateTimeLt,
-  formatMoney,
-} from "@/lib/crm/format";
+  defaultNextActionDateYmdForKanbanColumn,
+  kanbanColumnHidesDateFieldInModal,
+  kanbanColumnShowsDateFieldInModal,
+} from "@/lib/crm/kanbanNextActionDate";
+import { CrmIsoDatePicker } from "@/components/crm/CrmIsoDatePicker";
 import { workItemClientDetailHref } from "@/lib/crm/clientRouting";
 import {
   callListPriorityLabel,
@@ -118,19 +118,15 @@ function WorkExpandPanel({
     const d = defaultWorkItemActionTypeForKanbanColumn(item.call_status);
     return isProcurementItem && d === "commercial" ? "call" : d;
   });
-  useEffect(() => {
-    const col = isProcurementItem
-      ? mapCallStatusToProcurementBoardColumn(item.call_status)
-      : normalizeKanbanCallStatus(item.call_status);
-    setCallStatus(col);
-    const d = defaultWorkItemActionTypeForKanbanColumn(col);
-    setActionType(isProcurementItem && d === "commercial" ? "call" : d);
-  }, [item.id, item.call_status, isProcurementItem]);
 
   const completionPreset =
     callStatus === "Užbaigta" && normalizeKanbanCallStatus(item.call_status) === "Užbaigta"
       ? item.result_status
       : "";
+
+  const hideDateField = kanbanColumnHidesDateFieldInModal(callStatus);
+  const showEditableDate = kanbanColumnShowsDateFieldInModal(callStatus);
+  const dateDefault = defaultNextActionDateYmdForKanbanColumn(callStatus) ?? "";
 
   return (
     <div className="space-y-4 border-t border-zinc-100 bg-zinc-50/40 px-4 py-4 pl-[3.25rem]">
@@ -265,25 +261,16 @@ function WorkExpandPanel({
                 Pasirinkus „Kita“, komentaras privalomas.
               </p>
             ) : null}
-            <label className="flex flex-col gap-1 text-xs text-zinc-500">
-              Data
-              <input
-                name="next_action_date"
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder={CRM_DATE_INPUT_PLACEHOLDER}
-                defaultValue={
-                  item.next_action_date && /^\d{4}-\d{2}-\d{2}$/.test(item.next_action_date)
-                    ? formatDate(item.next_action_date)
-                    : crmDateInputDefaultToday()
-                }
-                className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400"
-              />
-              <span className="text-xs text-zinc-400">
-                Formatas: {CRM_DATE_INPUT_PLACEHOLDER}. Numatyta — šiandien, jei data nebuvo nustatyta.
-              </span>
-            </label>
+            {hideDateField ? null : showEditableDate ? (
+              <label className="flex flex-col gap-1 text-xs text-zinc-500">
+                <span>
+                  Planuojamas veiksmas (data)
+                  <span className="text-red-600"> *</span>
+                </span>
+                <CrmIsoDatePicker name="next_action_date" defaultValue={dateDefault} required />
+                <span className="text-xs text-zinc-400">Pasirinkite planuojamo veiksmo datą.</span>
+              </label>
+            ) : null}
             <label className="flex flex-col gap-1 text-xs text-zinc-500 sm:col-span-2 lg:col-span-3">
               Komentaras
               <textarea
@@ -497,6 +484,7 @@ function WorkItemCard({
 
       {open ? (
         <WorkExpandPanel
+          key={`${item.id}-${item.call_status}`}
           item={item}
           loading={showLoading}
           detail={detail}

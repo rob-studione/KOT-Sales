@@ -11,6 +11,13 @@ export type ProjectWorkItemDto = {
   snapshot_order_count: number;
   snapshot_revenue: number;
   snapshot_last_invoice_date: string;
+  /**
+   * Viso kliento apyvarta (`v_client_list_from_invoices.total_revenue`), užpildoma SSR skirtuke „Darbas“.
+   * Kanban apačiai; DB snapshot laukai nekeičiami.
+   */
+  client_live_all_time_revenue: number | null;
+  /** `last_invoice_date` iš to paties šaltinio, YYYY-MM-DD. */
+  client_live_last_invoice_date: string | null;
   snapshot_priority: number;
   call_status: string;
   next_action: string;

@@ -1,3 +1,5 @@
+import { vilniusTodayDateString } from "@/lib/crm/vilniusTime";
+
 /**
  * CALL_WORK (Kanban): fiksuoti „kitas veiksmas“ stulpeliai — ne bendras funnel.
  * Kandidatai = dinaminis sąrašas; čia tik priskirti darbo įrašai.
@@ -335,18 +337,10 @@ export function waitColumnHighlightState(
   if (normalizeKanbanCallStatus(callStatus) !== "Laukti") return "none";
   const d = typeof nextActionDate === "string" ? nextActionDate.trim() : "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "none";
-  const today = todayIsoDateLocal();
+  const today = vilniusTodayDateString();
   if (d < today) return "overdue";
   if (d === today) return "today";
   return "none";
-}
-
-function todayIsoDateLocal(): string {
-  const t = new Date();
-  const y = t.getFullYear();
-  const m = String(t.getMonth() + 1).padStart(2, "0");
-  const day = String(t.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 /** Ar kortelė rodoma Kanban lentoje (įskaitant „Užbaigta“ stulpelį su uždarytu rezultatu). */

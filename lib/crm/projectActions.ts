@@ -39,6 +39,7 @@ import { procurementContractClientKey } from "@/lib/crm/procurementContractClien
 import { isMissingWorkItemSourceColumnsError } from "@/lib/crm/projectWorkItemColumns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseDateInputToIso } from "@/lib/crm/format";
+import { resolveNextActionDateForKanbanStatus } from "@/lib/crm/kanbanNextActionDate";
 import { ACTIVE_WINDOW_MONTHS, calendarDateMonthsAgo } from "@/lib/crm/analyticsDates";
 import {
   aggregateSnapshotTotals,
@@ -1676,20 +1677,19 @@ export async function saveWorkItemTouchpoint(
   const next_action_date_raw = String(formData.get("next_action_date") ?? "").trim();
   const comment = String(formData.get("comment") ?? "").trim();
 
-  const next_action_date = next_action_date_raw ? parseDateInputToIso(next_action_date_raw) : null;
-  if (next_action_date_raw && !next_action_date) {
-    return { error: "Neteisinga data. Naudokite formatą YYYY-MM-DD (pvz. 2026-04-15)." };
-  }
-
   if (call_status === "Skambinti") {
     return {
       error:
         "Po įrašyto veiksmo negalite likti stulpelyje „Skambinti“. Pasirinkite kitą stulpelį (kitą veiksmą).",
     };
   }
-  if (call_status === "Laukti" && !next_action_date) {
-    return { error: "Stulpeliui „Laukti“ nurodykite datą (laukimo pabaiga)." };
-  }
+
+  const resolvedTouch = resolveNextActionDateForKanbanStatus({
+    callStatus: call_status,
+    rawTrimmed: next_action_date_raw,
+  });
+  if (resolvedTouch.error) return { error: resolvedTouch.error };
+  const next_action_date = resolvedTouch.iso;
 
   let supabase;
   try {
@@ -1787,17 +1787,17 @@ export async function confirmKanbanMove(formData: FormData): Promise<{ error: st
   const comment = String(formData.get("comment") ?? "").trim();
   const next_action = "";
   const next_action_date_raw = String(formData.get("next_action_date") ?? "").trim();
-  const next_action_date = next_action_date_raw ? parseDateInputToIso(next_action_date_raw) : null;
-  if (next_action_date_raw && !next_action_date) {
-    return { error: "Neteisinga data. Naudokite formatą YYYY-MM-DD." };
-  }
 
   if (!workItemId || !/^[0-9a-f-]{36}$/i.test(workItemId)) {
     return { error: "Neteisingas darbo įrašas." };
   }
-  if (newCallStatus === "Laukti" && !next_action_date) {
-    return { error: "Stulpeliui „Laukti“ nurodykite datą (YYYY-MM-DD)." };
-  }
+
+  const resolvedKanban = resolveNextActionDateForKanbanStatus({
+    callStatus: newCallStatus,
+    rawTrimmed: next_action_date_raw,
+  });
+  if (resolvedKanban.error) return { error: resolvedKanban.error };
+  const next_action_date = resolvedKanban.iso;
 
   const completionForDone =
     newCallStatus === "Užbaigta" ? parseCompletionResult(formData.get("completion_result")) : null;

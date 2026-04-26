@@ -11,6 +11,7 @@ export type RoutePerfMarkerServerPerf = {
   activitiesMs?: number;
   revenueFeedMs?: number;
   liveRevenueLookupMs?: number;
+  kanbanClientLiveLookupMs?: number;
   procurementMs?: number;
   roundTripCount?: number;
   tab?: string;

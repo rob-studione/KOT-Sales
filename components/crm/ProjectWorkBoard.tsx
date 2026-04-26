@@ -15,6 +15,11 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { formatDate, formatMoney } from "@/lib/crm/format";
+import { kanbanCardClientTotalEuros, kanbanCardSecondMeta } from "@/lib/crm/kanbanCardClientFooter";
+import {
+  followUpDateVsTodayVilnius,
+  kanbanColumnShowsFollowUpOnCard,
+} from "@/lib/crm/kanbanNextActionDate";
 import {
   boardColumnIdFromCallStatus,
   buildBoardColumnOrder,
@@ -81,11 +86,13 @@ function KanbanCard({
   item,
   priority,
   columnKey,
+  boardVariant,
   onOpen,
 }: {
   item: ProjectWorkItemDto;
   priority: CallListPriority;
   columnKey: string;
+  boardVariant: "default" | "procurement";
   onOpen: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id });
@@ -104,16 +111,25 @@ function KanbanCard({
 
   const waitRing =
     isLauktiColumn && waitHint === "overdue"
-      ? "border-amber-500 ring-2 ring-amber-400/90"
+      ? "border-amber-400/90 ring-1 ring-amber-300/60"
       : isLauktiColumn && waitHint === "today"
-        ? "border-amber-400 ring-2 ring-amber-300/90"
+        ? "border-amber-300/80 ring-1 ring-amber-200/50"
         : "";
 
   const cardSurface = isUrgentColumn
-    ? "border-red-300/90 bg-red-50/40 shadow-sm"
+    ? "border-zinc-200 bg-white shadow-sm border-l-[3px] border-l-rose-400/85"
     : isDoneColumn
       ? "border-zinc-200/80 bg-zinc-50/90 opacity-95 shadow-none"
       : "border-zinc-200 bg-white shadow-sm";
+
+  const followColLabel =
+    boardVariant === "procurement" ? procurementKanbanColumnTitle(col) : callStatusOptionLabel(col);
+  const showFollowUp =
+    kanbanColumnShowsFollowUpOnCard(col) &&
+    item.next_action_date &&
+    /^\d{4}-\d{2}-\d{2}$/.test(String(item.next_action_date).trim());
+  const followVs = followUpDateVsTodayVilnius(item.next_action_date);
+  const secondMeta = kanbanCardSecondMeta(item);
 
   return (
     <div
@@ -155,26 +171,30 @@ function KanbanCard({
           <div className="mt-1 line-clamp-2 break-words text-sm font-bold leading-snug text-zinc-900">
             {item.client_name_snapshot}
           </div>
-          <div className="mt-1 text-xs tabular-nums text-zinc-500">{formatMoney(item.snapshot_revenue)}</div>
-          {item.source_type === "procurement_contract" ? (
-            <div className="mt-0.5 text-xs text-zinc-400">
-              Galioja iki {formatDate(item.snapshot_last_invoice_date)}
-            </div>
-          ) : (
-            <div className="mt-0.5 text-xs text-zinc-400">
-              {item.snapshot_order_count} sąsk. · {formatDate(item.snapshot_last_invoice_date)}
-            </div>
-          )}
-          {isLauktiColumn && item.next_action_date ? (
-            <div
-              className={`mt-1 text-xs tabular-nums font-semibold ${
-                waitHint === "overdue" ? "text-red-600" : waitHint === "today" ? "text-amber-600" : "text-zinc-400"
-              }`}
-            >
-              {formatDate(item.next_action_date)}
-              {(waitHint === "overdue" || waitHint === "today") && " ⚠️"}
+          {showFollowUp ? (
+            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                {followColLabel}
+              </span>
+              <span
+                className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums ${
+                  followVs === "past"
+                    ? "border-red-200/90 bg-red-50/90 text-red-800"
+                    : followVs === "today"
+                      ? "border-amber-200/90 bg-amber-50/90 text-amber-950"
+                      : "border-zinc-200/80 bg-white text-zinc-800"
+                }`}
+              >
+                {formatDate(item.next_action_date)}
+              </span>
             </div>
           ) : null}
+          <div className="mt-1 space-y-0.5 text-xs text-zinc-500">
+            <div className="tabular-nums">Visa vertė: {formatMoney(kanbanCardClientTotalEuros(item))}</div>
+            <div className="tabular-nums">
+              {secondMeta.label}: {secondMeta.dateDisplay}
+            </div>
+          </div>
         </button>
       </div>
     </div>
@@ -182,16 +202,17 @@ function KanbanCard({
 }
 
 function CardDragPreview({ item, priority }: { item: ProjectWorkItemDto; priority: CallListPriority }) {
+  const m = kanbanCardSecondMeta(item);
   return (
     <div className="max-w-[min(260px,85vw)] min-w-0 rounded-lg border border-zinc-300 bg-white p-2 shadow-lg">
       <div className="text-xs font-medium text-zinc-600">{callListPriorityLabel(priority)}</div>
       <div className="mt-0.5 text-sm font-semibold text-zinc-900">{item.client_name_snapshot}</div>
-      <div className="text-xs text-zinc-600">{formatMoney(item.snapshot_revenue)}</div>
-      {item.source_type === "procurement_contract" ? (
-        <div className="mt-0.5 text-xs text-zinc-500">
-          Galioja iki {formatDate(item.snapshot_last_invoice_date)}
+      <div className="space-y-0.5 text-xs text-zinc-600">
+        <div className="tabular-nums">Visa vertė: {formatMoney(kanbanCardClientTotalEuros(item))}</div>
+        <div className="tabular-nums text-zinc-500">
+          {m.label}: {m.dateDisplay}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -342,6 +363,7 @@ export function ProjectWorkBoard({
                   <KanbanCard
                     key={it.id}
                     columnKey={colKey}
+                    boardVariant={boardVariant}
                     item={it}
                     priority={priorityFromSnapshotScore(it.snapshot_priority, prios)}
                     onOpen={() => setDetailItemId(it.id)}

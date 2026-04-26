@@ -1,3 +1,5 @@
+import { parsePageIndex0, parsePageSize, type PageSize } from "@/lib/crm/pagination";
+
 /** Bendri projekto puslapio query parametrai (skirtukai + apžvalgos periodas). */
 
 export type ManualCandidateListStatus = "active" | "netinkamas";
@@ -25,6 +27,56 @@ export function parseProjectDetailTab(raw: string | undefined): ProjectDetailTab
   return "apzvalga";
 }
 
+/**
+ * 1-based puslapiavimas „Užbaigta“ (kontaktuota) skirtuke; pirmas puslapis = 1, ne `completedPage` neįdedamas.
+ */
+export function parseProjectCompletedPage1Based(raw: string | undefined): number {
+  if (raw == null || raw === "") return 1;
+  const n = parseInt(String(raw).trim(), 10);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, 1_000_000);
+}
+
+/**
+ * Išlaikyti kandidatų / užbaigtų / paieškos parametrus keičiant tab’us (sujungiama su apžvalgos `period`).
+ */
+export function buildProjectPageQueryPreserve(sp: {
+  page?: string | string[];
+  pageSize?: string | string[];
+  q?: string | string[];
+  candidateStatus?: string | string[];
+  completedPage?: string | string[];
+}): {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  candidateStatus?: ProjectAutoCandidatesListStatus;
+  completedPage?: number;
+} {
+  const pageRaw = Array.isArray(sp.page) ? sp.page[0] : sp.page;
+  const page0 = parsePageIndex0(pageRaw);
+  const pSize: PageSize = parsePageSize(Array.isArray(sp.pageSize) ? sp.pageSize[0] : sp.pageSize);
+  const out: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    candidateStatus?: ProjectAutoCandidatesListStatus;
+    completedPage?: number;
+  } = {};
+  if (page0 > 0) out.page = page0;
+  if (pSize !== 20) out.pageSize = pSize;
+  const q = typeof sp.q === "string" ? sp.q.trim() : "";
+  if (q) out.q = q;
+  if (typeof sp.candidateStatus === "string" && sp.candidateStatus === "netinkamas") {
+    out.candidateStatus = "netinkamas";
+  }
+  const c1 = parseProjectCompletedPage1Based(
+    Array.isArray(sp.completedPage) ? sp.completedPage[0] : sp.completedPage
+  );
+  if (c1 > 1) out.completedPage = c1;
+  return out;
+}
+
 export function buildProjectDetailHref(
   projectId: string,
   opts: {
@@ -42,6 +94,11 @@ export function buildProjectDetailHref(
     candidateStatus?: ProjectAutoCandidatesListStatus;
     /** Paieška (company_name / company_code). */
     q?: string;
+    /**
+     * 1-based, skirtukas „Užbaigta“ (kontaktuota) sąrašui. Jei 1, query ne įdedamas.
+     * Kiti tab’ai perduoda `...buildProjectPageQueryPreserve` kad išsaugotų reikšmę.
+     */
+    completedPage?: number;
   }
 ): string {
   const params = new URLSearchParams();
@@ -58,5 +115,8 @@ export function buildProjectDetailHref(
   if (candSt !== "" && candSt !== "active") params.set("candidateStatus", candSt);
   const searchQ = opts.q !== undefined ? String(opts.q).trim() : "";
   if (searchQ !== "") params.set("q", searchQ);
+  if (opts.completedPage !== undefined && opts.completedPage > 1) {
+    params.set("completedPage", String(Math.floor(opts.completedPage)));
+  }
   return `/projektai/${projectId}?${params.toString()}`;
 }
