@@ -7,9 +7,12 @@ export type ProjectWorkItemActivityDto = {
   next_action: string;
   next_action_date: string | null;
   comment: string;
+  /** Kas įrašė veiksmą; seni įrašai gali būti be reikšmės. */
+  performed_by: string | null;
 };
 
 export function normalizeActivityRow(r: Record<string, unknown>): ProjectWorkItemActivityDto {
+  const pb = r.performed_by;
   return {
     id: String(r.id),
     work_item_id: String(r.work_item_id),
@@ -22,5 +25,11 @@ export function normalizeActivityRow(r: Record<string, unknown>): ProjectWorkIte
         ? r.next_action_date.slice(0, 10)
         : null,
     comment: String(r.comment ?? ""),
+    performed_by:
+      pb == null || pb === ""
+        ? null
+        : typeof pb === "string"
+          ? pb
+          : String(pb),
   };
 }

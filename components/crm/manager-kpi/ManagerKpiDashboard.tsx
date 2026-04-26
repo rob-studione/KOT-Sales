@@ -359,7 +359,8 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
           />
         </div>
         <p className="mt-2 text-xs text-zinc-500">
-          Skaičiuojama iš veiklos įrašų, susietų su darbo eilutės <span className="font-medium">assigned_to</span>; tik naudotojai su{" "}
+          Skaičiuojama iš veiklos įrašų pagal <span className="font-medium">performed_by</span> (kas atliko veiksmą), o jei jo nėra — pagal darbo eilutės{" "}
+          <span className="font-medium">assigned_to</span>; tik naudotojai su{" "}
           <span className="font-medium">is_kpi_tracked</span>. „Atsiliepė“ / „neatsiliepė“ pagal{" "}
           <span className="font-medium">ANSWERED_STATUSES</span> / <span className="font-medium">NOT_ANSWERED_STATUSES</span> (
           <code className="text-xs">lib/crm/projectBoardConstants.ts</code>).

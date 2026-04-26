@@ -26,6 +26,8 @@ type ActivityRow = {
   occurred_at: string;
   action_type: string;
   call_status: string;
+  /** Kai null — fallback į darbo eilutės `assigned_to` (įskaitant senus įrašus). */
+  performed_by: string | null;
 };
 
 type UserAgg = {
@@ -53,7 +55,7 @@ async function fetchActivitiesWindow(
   for (;;) {
     const { data, error } = await supabase
       .from("project_work_item_activities")
-      .select("work_item_id,occurred_at,action_type,call_status")
+      .select("work_item_id,occurred_at,action_type,call_status,performed_by")
       .gte("occurred_at", startIso)
       .lte("occurred_at", endIso)
       .order("occurred_at", { ascending: true })
@@ -65,11 +67,13 @@ async function fetchActivitiesWindow(
     const chunk = data ?? [];
     if (chunk.length === 0) break;
     for (const r of chunk) {
+      const pb = (r as { performed_by?: string | null }).performed_by;
       out.push({
         work_item_id: String((r as { work_item_id?: string }).work_item_id ?? ""),
         occurred_at: String((r as { occurred_at?: string }).occurred_at ?? ""),
         action_type: String((r as { action_type?: string }).action_type ?? "").toLowerCase(),
         call_status: String((r as { call_status?: string }).call_status ?? ""),
+        performed_by: pb == null || pb === "" ? null : String(pb),
       });
     }
     if (chunk.length < ACTIVITY_PAGE) break;
@@ -122,7 +126,9 @@ function aggregateAssigned(
   }
 
   for (const a of activities) {
-    const uid = assignedTo.get(a.work_item_id);
+    const fromActivity = (a.performed_by ?? "").trim();
+    const fromWorkItem = (assignedTo.get(a.work_item_id) ?? "").trim();
+    const uid = fromActivity || fromWorkItem;
     if (!uid || !kpiTrackedUserIds.has(uid)) continue;
 
     const day = isoDateInVilnius(a.occurred_at);
@@ -301,7 +307,7 @@ export async function buildManagerKpiViewModel(
 
   const prevByUser = prevAgg?.byUser ?? new Map<string, UserAgg>();
 
-  /** Komandos suvestinė – veikla tik KPI sekamiems naudotojams (`is_kpi_tracked`, žr. užklausą). */
+  /** Komandos suvestinė – veikla tik KPI sekamiems naudotojams; atributas: `coalesce(performed_by, assigned_to)`. */
   const teamAgg = emptyAgg();
   for (const a of curAgg.byUser.values()) {
     teamAgg.calls += a.calls;

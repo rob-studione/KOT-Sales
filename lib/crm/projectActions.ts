@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
+import { getCurrentCrmUser } from "@/lib/crm/currentUser";
 import { defaultProjectActor } from "@/lib/crm/projectEnv";
 import { parseManualImportCsvForImport } from "@/lib/crm/manualImportCsv";
 import {
@@ -1139,6 +1140,11 @@ export async function linkExistingClientToManualProjectAction(
 
 const MANUAL_LEAD_PLACEHOLDER_INVOICE_DATE = "2000-01-01";
 
+async function activityPerformedById(): Promise<string | null> {
+  const u = await getCurrentCrmUser();
+  return u?.id ?? null;
+}
+
 function parseCandidateType(
   formData: FormData
 ): "auto" | "manual_lead" | "linked_client" | "procurement_contract" {
@@ -1217,6 +1223,7 @@ async function insertPickedWorkItemRow(
 
   const wid = inserted.id;
   const tAct0 = Date.now();
+  const performedBy = await activityPerformedById();
   const { error: actErr } = await supabase.from("project_work_item_activities").insert({
     work_item_id: wid,
     occurred_at: new Date().toISOString(),
@@ -1225,6 +1232,7 @@ async function insertPickedWorkItemRow(
     next_action: "",
     next_action_date: null,
     comment: "",
+    performed_by: performedBy,
   });
   const insertActivityMs = Date.now() - tAct0;
   if (actErr) {
@@ -1712,6 +1720,7 @@ export async function saveWorkItemTouchpoint(
     nextResultStatus = "in_progress";
   }
 
+  const performedByTouch = await activityPerformedById();
   const { error: insErr } = await supabase.from("project_work_item_activities").insert({
     work_item_id: workItemId,
     occurred_at: new Date().toISOString(),
@@ -1720,6 +1729,7 @@ export async function saveWorkItemTouchpoint(
     next_action,
     next_action_date,
     comment,
+    performed_by: performedByTouch,
   });
   if (insErr) return { error: insErr.message };
 
@@ -1855,6 +1865,7 @@ export async function confirmKanbanMove(formData: FormData): Promise<{ error: st
   const { error: uErr } = await supabase.from("project_work_items").update(updateRow).eq("id", workItemId);
   if (uErr) return { error: uErr.message };
 
+  const performedByKanban = await activityPerformedById();
   const { error: aErr } = await supabase.from("project_work_item_activities").insert({
     work_item_id: workItemId,
     occurred_at: new Date().toISOString(),
@@ -1863,6 +1874,7 @@ export async function confirmKanbanMove(formData: FormData): Promise<{ error: st
     next_action,
     next_action_date: activityDateForDb(next_action_date),
     comment,
+    performed_by: performedByKanban,
   });
 
   if (aErr) {
@@ -1933,6 +1945,7 @@ export async function returnWorkItemToCandidates(workItemId: string): Promise<{ 
 
   if (uErr) return { error: uErr.message };
 
+  const performedByReturn = await activityPerformedById();
   const { error: aErr } = await supabase.from("project_work_item_activities").insert({
     work_item_id: workItemId,
     occurred_at: new Date().toISOString(),
@@ -1941,6 +1954,7 @@ export async function returnWorkItemToCandidates(workItemId: string): Promise<{ 
     next_action: String(row.next_action ?? ""),
     next_action_date: activityDateForDb(row.next_action_date),
     comment: "Grąžinta į kandidatus (darbo eilutė pašalinta iš lentos).",
+    performed_by: performedByReturn,
   });
 
   if (aErr) {

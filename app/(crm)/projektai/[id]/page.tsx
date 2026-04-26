@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { formatDate, formatMoney } from "@/lib/crm/format";
+import { getCurrentCrmUser } from "@/lib/crm/currentUser";
 import { defaultProjectActor } from "@/lib/crm/projectEnv";
 import { fetchSortedCandidatesForProject } from "@/lib/crm/projectCandidateQuery";
 import { fetchExcludedAutoCandidatesPage } from "@/lib/crm/projectCandidateExclusions";
@@ -197,7 +198,8 @@ export default async function ProjektasDetailPage({
   const p = project as ProjectRow;
   const sort = parseProjectSortOption(p.sort_option);
   const inactivityDays = Number(p.inactivity_days ?? 90);
-  const defaultAssignee = defaultProjectActor();
+  const currentCrm = await getCurrentCrmUser();
+  const defaultAssignee = currentCrm?.id ?? defaultProjectActor();
   const pt = projectTypeFromDbRow(p) ?? p.project_type;
   const isManual = isManualProjectType(pt);
   const isProcurement = isProcurementProjectType(pt);
