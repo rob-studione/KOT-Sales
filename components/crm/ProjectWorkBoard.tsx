@@ -13,9 +13,10 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { FileText, Mail, Phone } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/crm/format";
-import { kanbanCardClientTotalEuros, kanbanCardSecondMeta } from "@/lib/crm/kanbanCardClientFooter";
+import { kanbanCardClientTotalEuros, kanbanCardInvoiceBlockText } from "@/lib/crm/kanbanCardClientFooter";
 import {
   followUpDateVsTodayVilnius,
   kanbanColumnShowsFollowUpOnCard,
@@ -43,6 +44,19 @@ import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
 import { vilniusDateWhenEnteredUžbaigtaColumn, vilniusTodayDateString } from "@/lib/crm/projectWorkBoardDoneDate";
 import { KanbanMoveConfirmModal, type PendingKanbanMove } from "@/components/crm/KanbanMoveConfirmModal";
 import { WorkItemDetailSheet } from "@/components/crm/WorkItemDetailSheet";
+
+function KanbanCopyFeedbackBadge({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <span
+      className="pointer-events-none absolute right-0 top-[-14px] z-20 select-none text-[10px] font-medium whitespace-nowrap text-emerald-600/90"
+      role="status"
+      aria-live="polite"
+    >
+      Copied
+    </span>
+  );
+}
 
 function KanbanColumn({
   columnKey,
@@ -129,7 +143,13 @@ function KanbanCard({
     item.next_action_date &&
     /^\d{4}-\d{2}-\d{2}$/.test(String(item.next_action_date).trim());
   const followVs = followUpDateVsTodayVilnius(item.next_action_date);
-  const secondMeta = kanbanCardSecondMeta(item);
+  const invBlock = kanbanCardInvoiceBlockText(item);
+  const [copyHint, setCopyHint] = useState<"invoice" | "phone" | "email" | null>(null);
+  useEffect(() => {
+    if (!copyHint) return;
+    const t = window.setTimeout(() => setCopyHint(null), 1500);
+    return () => clearTimeout(t);
+  }, [copyHint]);
 
   return (
     <div
@@ -189,11 +209,97 @@ function KanbanCard({
               </span>
             </div>
           ) : null}
-          <div className="mt-1 space-y-0.5 text-xs text-zinc-500">
+          <div className="mt-1 space-y-0.5 overflow-visible text-xs text-zinc-500">
             <div className="tabular-nums">Visa vertė: {formatMoney(kanbanCardClientTotalEuros(item))}</div>
-            <div className="tabular-nums">
-              {secondMeta.label}: {secondMeta.dateDisplay}
-            </div>
+            {invBlock.mode === "procurement" ? (
+              <div className="tabular-nums">{invBlock.mainText}</div>
+            ) : (
+              <>
+                {invBlock.invoiceNumberCopy ? (
+                  <div
+                    className="relative w-full min-w-0 cursor-pointer overflow-visible text-zinc-500 hover:text-zinc-600"
+                    title="Kopijuoti"
+                    role="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      if (invBlock.mode !== "invoice" || !invBlock.invoiceNumberCopy) return;
+                      const { invoiceNumberCopy } = invBlock;
+                      void navigator.clipboard
+                        .writeText(invoiceNumberCopy)
+                        .then(() => setCopyHint("invoice"));
+                    }}
+                  >
+                    <div className="flex min-w-0 items-start gap-1 tabular-nums">
+                      <FileText
+                        className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400"
+                        strokeWidth={1.5}
+                        aria-hidden
+                      />
+                      <span className="min-w-0">{invBlock.mainText}</span>
+                    </div>
+                    <KanbanCopyFeedbackBadge show={copyHint === "invoice"} />
+                  </div>
+                ) : (
+                  <div className="flex min-w-0 items-start gap-1 tabular-nums">
+                    <FileText
+                      className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400"
+                      strokeWidth={1.5}
+                      aria-hidden
+                    />
+                    <span className="min-w-0">{invBlock.mainText}</span>
+                  </div>
+                )}
+                {invBlock.phone != null ? (
+                  <div
+                    className="relative w-full min-w-0 cursor-pointer overflow-visible text-zinc-500 hover:text-zinc-600"
+                    title="Kopijuoti"
+                    role="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      if (invBlock.mode !== "invoice" || !invBlock.phone) return;
+                      const { copy } = invBlock.phone;
+                      void navigator.clipboard.writeText(copy).then(() => setCopyHint("phone"));
+                    }}
+                  >
+                    <div className="flex min-w-0 items-start gap-1 tabular-nums break-all">
+                      <Phone
+                        className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400"
+                        strokeWidth={1.5}
+                        aria-hidden
+                      />
+                      <span className="min-w-0">{invBlock.phone.display}</span>
+                    </div>
+                    <KanbanCopyFeedbackBadge show={copyHint === "phone"} />
+                  </div>
+                ) : null}
+                {invBlock.email != null ? (
+                  <div
+                    className="relative w-full min-w-0 cursor-pointer overflow-visible break-all text-zinc-500 hover:text-zinc-600"
+                    title="Kopijuoti"
+                    role="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      if (invBlock.mode !== "invoice" || !invBlock.email) return;
+                      const { copy } = invBlock.email;
+                      void navigator.clipboard.writeText(copy).then(() => setCopyHint("email"));
+                    }}
+                  >
+                    <div className="flex min-w-0 items-start gap-1">
+                      <Mail
+                        className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400"
+                        strokeWidth={1.5}
+                        aria-hidden
+                      />
+                      <span className="min-w-0 break-all">{invBlock.email.display}</span>
+                    </div>
+                    <KanbanCopyFeedbackBadge show={copyHint === "email"} />
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         </button>
       </div>
@@ -202,16 +308,35 @@ function KanbanCard({
 }
 
 function CardDragPreview({ item, priority }: { item: ProjectWorkItemDto; priority: CallListPriority }) {
-  const m = kanbanCardSecondMeta(item);
+  const b = kanbanCardInvoiceBlockText(item);
   return (
     <div className="max-w-[min(260px,85vw)] min-w-0 rounded-lg border border-zinc-300 bg-white p-2 shadow-lg">
       <div className="text-xs font-medium text-zinc-600">{callListPriorityLabel(priority)}</div>
       <div className="mt-0.5 text-sm font-semibold text-zinc-900">{item.client_name_snapshot}</div>
       <div className="space-y-0.5 text-xs text-zinc-600">
         <div className="tabular-nums">Visa vertė: {formatMoney(kanbanCardClientTotalEuros(item))}</div>
-        <div className="tabular-nums text-zinc-500">
-          {m.label}: {m.dateDisplay}
-        </div>
+        {b.mode === "procurement" ? (
+          <div className="tabular-nums text-zinc-500">{b.mainText}</div>
+        ) : (
+          <>
+            <div className="flex min-w-0 items-start gap-1 tabular-nums text-zinc-500">
+              <FileText className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400" strokeWidth={1.5} aria-hidden />
+              <span className="min-w-0">{b.mainText}</span>
+            </div>
+            {b.phone != null ? (
+              <div className="flex min-w-0 items-start gap-1 tabular-nums break-all text-zinc-500">
+                <Phone className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400" strokeWidth={1.5} aria-hidden />
+                <span className="min-w-0">{b.phone.display}</span>
+              </div>
+            ) : null}
+            {b.email != null ? (
+              <div className="flex min-w-0 items-start gap-1 break-all text-zinc-500">
+                <Mail className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400" strokeWidth={1.5} aria-hidden />
+                <span className="min-w-0 break-all">{b.email.display}</span>
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );

@@ -18,6 +18,13 @@ export type ProjectWorkItemDto = {
   client_live_all_time_revenue: number | null;
   /** `last_invoice_date` iš to paties šaltinio, YYYY-MM-DD. */
   client_live_last_invoice_date: string | null;
+  /**
+   * Paskutinės sąskaitos numeris (`invoices.invoice_number`) + kontaktai iš
+   * `v_client_list_from_invoices` / `recent_invoices_for_clients` — Kanban, tik „Darbas“.
+   */
+  client_last_invoice_number: string | null;
+  client_invoice_email: string | null;
+  client_invoice_phone: string | null;
   snapshot_priority: number;
   call_status: string;
   next_action: string;

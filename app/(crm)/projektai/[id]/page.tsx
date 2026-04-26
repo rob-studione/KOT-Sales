@@ -608,12 +608,24 @@ export default async function ProjektasDetailPage({
     result_status: String(row.result_status ?? ""),
     client_live_all_time_revenue: null,
     client_live_last_invoice_date: null,
+    client_last_invoice_number: null,
+    client_invoice_email: null,
+    client_invoice_phone: null,
   };
   });
 
   if (tab === "darbas") {
     const kanbanLiveLookupT0 = Date.now();
-    const liveByKey = new Map<string, { total_revenue: number; last_invoice_date: string | null }>();
+    const liveByKey = new Map<
+      string,
+      {
+        total_revenue: number;
+        last_invoice_date: string | null;
+        email: string | null;
+        phone: string | null;
+        invoice_number: string | null;
+      }
+    >();
     const revenueKeys = Array.from(
       new Set(
         workItemsAll
@@ -626,12 +638,14 @@ export default async function ProjektasDetailPage({
       roundTripCount += 1;
       const { data } = await supabase
         .from("v_client_list_from_invoices")
-        .select("client_key,total_revenue,last_invoice_date")
+        .select("client_key,total_revenue,last_invoice_date,email,phone")
         .in("client_key", part);
       for (const r of (data ?? []) as Array<{
         client_key?: unknown;
         total_revenue?: unknown;
         last_invoice_date?: unknown;
+        email?: unknown;
+        phone?: unknown;
       }>) {
         const ck = String(r.client_key ?? "").trim();
         if (!ck) continue;
@@ -643,10 +657,33 @@ export default async function ProjektasDetailPage({
             : typeof lastRaw === "string"
               ? lastRaw.slice(0, 10)
               : String(lastRaw).slice(0, 10);
+        const em = r.email != null && String(r.email).trim() !== "" ? String(r.email).trim() : null;
+        const ph = r.phone != null && String(r.phone).trim() !== "" ? String(r.phone).trim() : null;
         liveByKey.set(ck, {
           total_revenue: Number.isFinite(total) ? total : 0,
           last_invoice_date: last,
+          email: em,
+          phone: ph,
+          invoice_number: null,
         });
+      }
+      roundTripCount += 1;
+      const { data: recentInv } = await supabase.rpc("recent_invoices_for_clients", { p_codes: part });
+      const firstLatestNumForKey = new Set<string>();
+      for (const row of (recentInv ?? []) as Array<{
+        client_key?: unknown;
+        invoice_number?: unknown;
+      }>) {
+        const ck = String(row.client_key ?? "").trim();
+        if (!ck || firstLatestNumForKey.has(ck)) continue;
+        firstLatestNumForKey.add(ck);
+        const entry = liveByKey.get(ck);
+        if (!entry) continue;
+        const num =
+          row.invoice_number != null && String(row.invoice_number).trim() !== ""
+            ? String(row.invoice_number).trim()
+            : null;
+        entry.invoice_number = num;
       }
     }
     if (liveByKey.size > 0) {
@@ -658,6 +695,9 @@ export default async function ProjektasDetailPage({
           ...w,
           client_live_all_time_revenue: row.total_revenue,
           client_live_last_invoice_date: row.last_invoice_date,
+          client_last_invoice_number: row.invoice_number,
+          client_invoice_email: row.email,
+          client_invoice_phone: row.phone,
         };
       });
     }
