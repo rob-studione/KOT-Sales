@@ -10,6 +10,7 @@ import {
   resolveManagerKpiRange,
 } from "@/lib/crm/managerKpiPeriods";
 import { initialsFromDisplayName } from "@/lib/crm/crmUsers";
+import { countWorkingDaysLtIso } from "@/lib/crm/workingDaysLt";
 import { eachDayInclusive, isoDateInVilnius, vilniusEndUtc, vilniusStartUtc } from "@/lib/crm/vilniusTime";
 
 const ACTIVITY_PAGE = 5000;
@@ -128,12 +129,11 @@ function aggregateAssigned(
   for (const a of activities) {
     const fromActivity = (a.performed_by ?? "").trim();
     const fromWorkItem = (assignedTo.get(a.work_item_id) ?? "").trim();
-    const uid = fromActivity || fromWorkItem;
-    if (!uid || !kpiTrackedUserIds.has(uid)) continue;
-
     const day = isoDateInVilnius(a.occurred_at);
 
     if (a.action_type === "commercial") {
+      const uid = fromActivity || fromWorkItem;
+      if (!uid || !kpiTrackedUserIds.has(uid)) continue;
       bumpUser(uid, (x) => {
         x.commercial += 1;
       });
@@ -144,8 +144,9 @@ function aggregateAssigned(
     }
 
     if (a.action_type !== "call") continue;
+    if (!fromActivity || !kpiTrackedUserIds.has(fromActivity)) continue;
 
-    bumpUser(uid, (x) => {
+    bumpUser(fromActivity, (x) => {
       x.calls += 1;
       if (isCallAnsweredByStatus(a.call_status)) x.answered += 1;
       else if (isCallNotAnsweredByStatus(a.call_status)) x.notAnswered += 1;
@@ -207,7 +208,10 @@ export type ManagerKpiViewModel = {
   range: ManagerKpiDateRange;
   compareRange: ManagerKpiDateRange | null;
   compareEnabled: boolean;
+  /** Kalendorinės dienos intervale (grafikas ir antraštė). */
   dayCount: number;
+  /** Darbo dienos Lietuvoje (šventės + savaitgaliai išimti) — KPI target daugiklis. */
+  workingDayCount: number;
   truncated: boolean;
   team: ManagerKpiTeamSummary;
   rows: ManagerKpiTableRow[];
@@ -248,6 +252,7 @@ export async function buildManagerKpiViewModel(
 ): Promise<ManagerKpiViewModel> {
   const range = resolveManagerKpiRange(opts.preset, opts.customFrom, opts.customTo);
   const dayCount = calendarDaysInRange(range);
+  const workingDayCount = Math.max(0, countWorkingDaysLtIso(range.from, range.to));
   const compareRange = opts.compare ? comparisonRangeForPreset(opts.preset, range, opts.customFrom, opts.customTo) : null;
 
   const warnings: string[] = [];
@@ -307,7 +312,7 @@ export async function buildManagerKpiViewModel(
 
   const prevByUser = prevAgg?.byUser ?? new Map<string, UserAgg>();
 
-  /** Komandos suvestinė – veikla tik KPI sekamiems naudotojams; atributas: `coalesce(performed_by, assigned_to)`. */
+  /** Komandos suvestinė: skambučiai tik `action_type=call` su ne null `performed_by`; komerciniai – coalesce(performed_by, assigned_to). */
   const teamAgg = emptyAgg();
   for (const a of curAgg.byUser.values()) {
     teamAgg.calls += a.calls;
@@ -326,8 +331,8 @@ export async function buildManagerKpiViewModel(
       daily_answered_target: MANAGER_KPI_DEFAULTS.daily_answered_target,
       daily_commercial_target: MANAGER_KPI_DEFAULTS.daily_commercial_target,
     };
-    teamCallsTarget += t.daily_call_target * dayCount;
-    teamAnsweredTarget += t.daily_answered_target * dayCount;
+    teamCallsTarget += t.daily_call_target * workingDayCount;
+    teamAnsweredTarget += t.daily_answered_target * workingDayCount;
   }
 
   const teamPrev = emptyAgg();
@@ -370,9 +375,9 @@ export async function buildManagerKpiViewModel(
       daily_answered_target: MANAGER_KPI_DEFAULTS.daily_answered_target,
       daily_commercial_target: MANAGER_KPI_DEFAULTS.daily_commercial_target,
     };
-    const callsTarget = t.daily_call_target * dayCount;
-    const answeredTarget = t.daily_answered_target * dayCount;
-    const commercialTarget = t.daily_commercial_target * dayCount;
+    const callsTarget = t.daily_call_target * workingDayCount;
+    const answeredTarget = t.daily_answered_target * workingDayCount;
+    const commercialTarget = t.daily_commercial_target * workingDayCount;
     const answerRate = a.calls > 0 ? Math.round((a.answered / a.calls) * 1000) / 10 : null;
     const cPct = pct(a.calls, callsTarget);
     const aPct = pct(a.answered, answeredTarget);
@@ -420,6 +425,7 @@ export async function buildManagerKpiViewModel(
     compareRange,
     compareEnabled: opts.compare,
     dayCount,
+    workingDayCount,
     truncated,
     team,
     rows,

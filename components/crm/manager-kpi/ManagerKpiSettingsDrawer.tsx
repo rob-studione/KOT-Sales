@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { saveManagerKpiTargetsAction } from "@/lib/crm/managerKpiActions";
 import type { ManagerKpiTableRow } from "@/lib/crm/managerKpiDashboard";
 
@@ -12,8 +12,8 @@ type DraftRow = {
   daily_commercial_target: number;
 };
 
-function buildDraft(rows: ManagerKpiTableRow[], dayCount: number): DraftRow[] {
-  const d = Math.max(1, dayCount);
+function buildDraft(rows: ManagerKpiTableRow[], workingDayCount: number): DraftRow[] {
+  const d = Math.max(1, workingDayCount);
   return rows.map((r) => ({
     userId: r.userId,
     name: r.name,
@@ -24,28 +24,17 @@ function buildDraft(rows: ManagerKpiTableRow[], dayCount: number): DraftRow[] {
 }
 
 export function ManagerKpiSettingsDrawer({
-  open,
   onClose,
   rows,
-  dayCount,
+  workingDayCount,
 }: {
-  open: boolean;
   onClose: () => void;
   rows: ManagerKpiTableRow[];
-  dayCount: number;
+  workingDayCount: number;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<DraftRow[]>(() => buildDraft(rows, dayCount));
-
-  useEffect(() => {
-    if (open) {
-      setDraft(buildDraft(rows, dayCount));
-      setError(null);
-    }
-  }, [open, rows, dayCount]);
-
-  if (!open) return null;
+  const [draft, setDraft] = useState<DraftRow[]>(() => buildDraft(rows, workingDayCount));
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -58,7 +47,7 @@ export function ManagerKpiSettingsDrawer({
           </button>
         </div>
         <p className="px-4 py-2 text-xs text-zinc-500">
-          Dienos tikslai aktyviems vartotojams. Periodo tikslas = dienos tikslas × dienų skaičius pasirinktame intervale.
+          Dienos tikslai aktyviems vartotojams. Periodo tikslas = dienos tikslas × darbo dienų skaičius (LT, be savaitgalių ir švenčių) pasirinktame intervale.
         </p>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="space-y-4">

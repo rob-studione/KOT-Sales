@@ -380,6 +380,7 @@ export function ProjectWorkBoard({
 
       {detailItem ? (
         <WorkItemDetailSheet
+          key={`${detailItem.id}-${detailItem.call_status}`}
           item={detailItem}
           activities={activitiesByWorkItemId[detailItem.id] ?? []}
           allWorkPriorities={items.map((i) => i.snapshot_priority)}
@@ -389,6 +390,7 @@ export function ProjectWorkBoard({
 
       {pendingMove ? (
         <KanbanMoveConfirmModal
+          key={`${pendingMove.workItemId}-${pendingMove.toColumn}`}
           pending={pendingMove}
           onCancel={() => setPendingMove(null)}
           onSuccess={onMoveSuccess}

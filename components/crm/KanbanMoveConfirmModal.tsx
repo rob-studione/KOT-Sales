@@ -7,13 +7,9 @@ import { confirmKanbanMove } from "@/lib/crm/projectActions";
 import {
   callStatusOptionLabel,
   callStatusSelectOptions,
-  defaultWorkItemActionTypeForKanbanColumn,
   normalizeKanbanCallStatus,
   PROCUREMENT_KANBAN_COLUMNS,
   procurementKanbanColumnTitle,
-  WORK_ITEM_ACTION_TYPES,
-  workItemActionTypeLabel,
-  type WorkItemTouchActionType,
 } from "@/lib/crm/projectBoardConstants";
 import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
 import { WorkItemCompletionSelect } from "@/components/crm/WorkItemCompletionSelect";
@@ -51,10 +47,6 @@ export function KanbanMoveConfirmModal({
   const statusOptions = isProcurementWorkItem
     ? [...PROCUREMENT_KANBAN_COLUMNS]
     : callStatusSelectOptions();
-  const actionTypeOptions = isProcurementWorkItem
-    ? (WORK_ITEM_ACTION_TYPES.filter((t) => t !== "commercial") as WorkItemTouchActionType[])
-    : [...WORK_ITEM_ACTION_TYPES];
-
   const formAction = useCallback(
     async (_prev: { error: string | null }, fd: FormData) => {
       const r = await confirmKanbanMove(fd);
@@ -75,16 +67,6 @@ export function KanbanMoveConfirmModal({
   }, [onCancel]);
 
   const [callStatus, setCallStatus] = useState(() => normalizeKanbanCallStatus(pending.toColumn));
-  const [actionType, setActionType] = useState<WorkItemTouchActionType>(() => {
-    const d = defaultWorkItemActionTypeForKanbanColumn(pending.toColumn);
-    return isProcurementWorkItem && d === "commercial" ? "call" : d;
-  });
-  useEffect(() => {
-    const col = normalizeKanbanCallStatus(pending.toColumn);
-    setCallStatus(col);
-    const d = defaultWorkItemActionTypeForKanbanColumn(col);
-    setActionType(isProcurementWorkItem && d === "commercial" ? "call" : d);
-  }, [pending.workItemId, pending.toColumn, isProcurementWorkItem]);
 
   const toIsLaukti = callStatus === "Laukti";
   const dateDefault = crmDateInputDefaultToday();
@@ -127,23 +109,6 @@ export function KanbanMoveConfirmModal({
           <input type="hidden" name="work_item_id" value={pending.workItemId} />
 
           <label className="flex flex-col gap-1 text-xs text-zinc-500">
-            Veiksmo tipas
-            <select
-              name="action_type"
-              required
-              value={actionType}
-              onChange={(e) => setActionType(e.target.value as WorkItemTouchActionType)}
-              className="rounded-lg border border-zinc-200 px-2.5 py-2 text-sm text-zinc-900"
-            >
-              {actionTypeOptions.map((t) => (
-                <option key={t} value={t}>
-                  {workItemActionTypeLabel(t)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 text-xs text-zinc-500">
             Sekantis veiksmas (Kanban)
             <select
               name="call_status"
@@ -151,7 +116,6 @@ export function KanbanMoveConfirmModal({
               onChange={(e) => {
                 const next = normalizeKanbanCallStatus(e.target.value);
                 setCallStatus(next);
-                setActionType(defaultWorkItemActionTypeForKanbanColumn(next));
               }}
               className="rounded-lg border border-zinc-200 px-2.5 py-2 text-sm text-zinc-900"
             >

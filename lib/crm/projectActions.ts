@@ -1781,10 +1781,6 @@ export async function confirmKanbanMove(formData: FormData): Promise<{ error: st
   const newCallStatus = normalizeKanbanCallStatus(
     String(formData.get("call_status") ?? formData.get("new_call_status") ?? "")
   );
-  let action_type = String(formData.get("action_type") ?? "call").trim();
-  if (!["call", "email", "commercial"].includes(action_type)) {
-    action_type = "call";
-  }
   const comment = String(formData.get("comment") ?? "").trim();
   const next_action = "";
   const next_action_date_raw = String(formData.get("next_action_date") ?? "").trim();
@@ -1869,7 +1865,7 @@ export async function confirmKanbanMove(formData: FormData): Promise<{ error: st
   const { error: aErr } = await supabase.from("project_work_item_activities").insert({
     work_item_id: workItemId,
     occurred_at: new Date().toISOString(),
-    action_type,
+    action_type: "status_change",
     call_status: newCallStatus,
     next_action,
     next_action_date: activityDateForDb(next_action_date),

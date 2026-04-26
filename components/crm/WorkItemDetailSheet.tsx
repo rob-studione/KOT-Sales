@@ -67,7 +67,9 @@ export function WorkItemDetailSheet({
   const actionTypeOptions = isProcurementItem
     ? (WORK_ITEM_ACTION_TYPES.filter((t) => t !== "commercial") as WorkItemTouchActionType[])
     : [...WORK_ITEM_ACTION_TYPES];
-  const callKpiCount = activities.filter((a) => isCallKpiActionType(a.action_type)).length;
+  const callKpiCount = activities.filter(
+    (a) => isCallKpiActionType(a.action_type) && (a.performed_by ?? "").trim() !== ""
+  ).length;
 
   const formAction = useCallback(
     async (_prev: { error: string | null }, fd: FormData) => {
@@ -102,14 +104,6 @@ export function WorkItemDetailSheet({
     const d = defaultWorkItemActionTypeForKanbanColumn(item.call_status);
     return isProcurementItem && d === "commercial" ? "call" : d;
   });
-  useEffect(() => {
-    const col = isProcurementItem
-      ? mapCallStatusToProcurementBoardColumn(item.call_status)
-      : normalizeKanbanCallStatus(item.call_status);
-    setCallStatus(col);
-    const d = defaultWorkItemActionTypeForKanbanColumn(col);
-    setActionType(isProcurementItem && d === "commercial" ? "call" : d);
-  }, [item.id, item.call_status, isProcurementItem]);
 
   const completionPreset =
     callStatus === "Užbaigta" && normalizeKanbanCallStatus(item.call_status) === "Užbaigta"

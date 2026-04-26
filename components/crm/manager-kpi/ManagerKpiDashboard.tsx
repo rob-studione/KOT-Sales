@@ -240,7 +240,9 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
           <h1 className="text-xl font-semibold tracking-tight text-zinc-900">Vadybininkų KPI</h1>
           <p className="mt-1 text-sm text-zinc-500">Komandos aktyvumo ir KPI vykdymo suvestinė</p>
           <p className="mt-2 text-xs text-zinc-500">
-            Laikotarpis: {formatDate(model.range.from)} — {formatDate(model.range.to)} ({model.dayCount} d.)
+            Laikotarpis: {formatDate(model.range.from)} — {formatDate(model.range.to)} ({model.dayCount} kalendorinių d.)
+            <br />
+            Darbo dienos: {model.workingDayCount}
           </p>
           {compareOn && model.compareRange ? (
             <p className="mt-1 text-xs text-zinc-400">Lyginama su: {compareCaptionLine(model)}</p>
@@ -359,8 +361,10 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
           />
         </div>
         <p className="mt-2 text-xs text-zinc-500">
-          Skaičiuojama iš veiklos įrašų pagal <span className="font-medium">performed_by</span> (kas atliko veiksmą), o jei jo nėra — pagal darbo eilutės{" "}
-          <span className="font-medium">assigned_to</span>; tik naudotojai su{" "}
+          Skambučių KPI: tik <span className="font-medium">action_type = call</span> ir ne tuščias{" "}
+          <span className="font-medium">performed_by</span> (be priskyrimo pagal kortelės{" "}
+          <span className="font-medium">assigned_to</span>). Komerciniai — su{" "}
+          <span className="font-medium">performed_by</span> arba <span className="font-medium">assigned_to</span>. Tik{" "}
           <span className="font-medium">is_kpi_tracked</span>. „Atsiliepė“ / „neatsiliepė“ pagal{" "}
           <span className="font-medium">ANSWERED_STATUSES</span> / <span className="font-medium">NOT_ANSWERED_STATUSES</span> (
           <code className="text-xs">lib/crm/projectBoardConstants.ts</code>).
@@ -540,15 +544,17 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
         </div>
       </section>
 
-      <ManagerKpiSettingsDrawer
-        open={settingsOpen}
-        onClose={() => {
-          setSettingsOpen(false);
-          router.refresh();
-        }}
-        rows={model.rows}
-        dayCount={model.dayCount}
-      />
+      {settingsOpen ? (
+        <ManagerKpiSettingsDrawer
+          key={`${model.range.from}-${model.range.to}-${model.workingDayCount}-${model.rows.map((r) => r.userId).join(",")}`}
+          onClose={() => {
+            setSettingsOpen(false);
+            router.refresh();
+          }}
+          rows={model.rows}
+          workingDayCount={model.workingDayCount}
+        />
+      ) : null}
     </div>
   );
 }
