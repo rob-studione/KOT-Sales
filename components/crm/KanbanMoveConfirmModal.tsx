@@ -7,9 +7,13 @@ import { confirmKanbanMove } from "@/lib/crm/projectActions";
 import {
   callStatusOptionLabel,
   callStatusSelectOptions,
+  defaultKanbanCompletedAction,
+  kanbanCompletedActionLabel,
+  KANBAN_COMPLETED_ACTION_VALUES,
   normalizeKanbanCallStatus,
   PROCUREMENT_KANBAN_COLUMNS,
   procurementKanbanColumnTitle,
+  type KanbanCompletedAction,
 } from "@/lib/crm/projectBoardConstants";
 import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
 import { WorkItemCompletionSelect } from "@/components/crm/WorkItemCompletionSelect";
@@ -47,6 +51,7 @@ export function KanbanMoveConfirmModal({
   const statusOptions = isProcurementWorkItem
     ? [...PROCUREMENT_KANBAN_COLUMNS]
     : callStatusSelectOptions();
+  const completedActionOptions: KanbanCompletedAction[] = [...KANBAN_COMPLETED_ACTION_VALUES];
   const formAction = useCallback(
     async (_prev: { error: string | null }, fd: FormData) => {
       const r = await confirmKanbanMove(fd);
@@ -67,6 +72,9 @@ export function KanbanMoveConfirmModal({
   }, [onCancel]);
 
   const [callStatus, setCallStatus] = useState(() => normalizeKanbanCallStatus(pending.toColumn));
+  const [completedAction, setCompletedAction] = useState<KanbanCompletedAction>(() =>
+    defaultKanbanCompletedAction(pending.fromColumn, pending.toColumn)
+  );
 
   const toIsLaukti = callStatus === "Laukti";
   const dateDefault = crmDateInputDefaultToday();
@@ -107,6 +115,26 @@ export function KanbanMoveConfirmModal({
           className="mt-4 space-y-3"
         >
           <input type="hidden" name="work_item_id" value={pending.workItemId} />
+
+          <label className="flex flex-col gap-1 text-xs text-zinc-500">
+            Atliktas veiksmas
+            <select
+              name="completed_action"
+              value={completedAction}
+              onChange={(e) => setCompletedAction(e.target.value as KanbanCompletedAction)}
+              className="rounded-lg border border-zinc-200 px-2.5 py-2 text-sm text-zinc-900"
+            >
+              {completedActionOptions.map((v) => (
+                <option key={v} value={v}>
+                  {kanbanCompletedActionLabel(v)}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-zinc-400">
+              KPI „Skambučiai“ didėja tik pasirinkus skambutį. „Tik pakeisti statusą“ — tik istorijos įrašas be
+              skambučio.
+            </span>
+          </label>
 
           <label className="flex flex-col gap-1 text-xs text-zinc-500">
             Sekantis veiksmas (Kanban)

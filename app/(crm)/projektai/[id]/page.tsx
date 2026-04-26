@@ -47,6 +47,7 @@ import {
   type ManualCandidatePageRow,
 } from "@/lib/crm/projectManualLeads";
 import { isProjectWorkItemClosed, isReturnedToCandidates } from "@/lib/crm/projectBoardConstants";
+import { isUžbaigtaSameDayCompletionOnDarbas, vilniusTodayDateString } from "@/lib/crm/projectWorkBoardDoneDate";
 import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
 import {
   isMissingWorkItemSourceColumnsError,
@@ -631,12 +632,20 @@ export default async function ProjektasDetailPage({
     markMs("liveRevenueLookupMs", Date.now() - liveRevenueLookupT0);
   }
 
-  /** „Darbas“: tik neuždarytos eilutės (`result_status` ne „completed“ / completion_* ir pan.). */
-  const workItems = workItemsAll.filter((w) => !isProjectWorkItemClosed(w.result_status));
+  /** „Darbas“: atviros eilutės, taip pat šiandien (Vilnius) Užbaigta uždarytos — lenta iki dienos pabaigos. */
+  const todayVilnius = vilniusTodayDateString();
+  const workItems = workItemsAll.filter(
+    (w) =>
+      !isProjectWorkItemClosed(w.result_status) ||
+      isUžbaigtaSameDayCompletionOnDarbas(w, activitiesByWorkItemId[w.id], todayVilnius)
+  );
 
-  /** „Užbaigta“: uždarytos eilutės, išskyrus grąžintas į kandidatus. */
+  /** „Kontaktuota / Užbaigta“: uždarytos, išskyrus šiandien uždarytas Užbaigta (jos dar „Darbe“). */
   const completedWorkItems = workItemsAll.filter(
-    (w) => isProjectWorkItemClosed(w.result_status) && !isReturnedToCandidates(w.result_status)
+    (w) =>
+      isProjectWorkItemClosed(w.result_status) &&
+      !isReturnedToCandidates(w.result_status) &&
+      !isUžbaigtaSameDayCompletionOnDarbas(w, activitiesByWorkItemId[w.id], todayVilnius)
   );
   const completedWorkCount = completedWorkItems.length;
 
@@ -1204,8 +1213,8 @@ export default async function ProjektasDetailPage({
       {tab === "kontaktuota" ? (
         <div className="mt-4" role="tabpanel">
           <p className="text-xs text-zinc-500">
-            Darbo įrašai, kurie uždaryti užbaigimo rezultatu (įskaitant „Užbaigta“ stulpelyje pasirinktą baigtį). Neberodomi
-            „Darbas“ skirtuke.
+            Darbo įrašai, uždaryti užbaigimo rezultatu (įskaitant „Užbaigta“ stulpelyje pasirinktą baigtį). Tą pačią
+            dieną uždarytos eilutės matomos „Darbas“ lentoje; čia — nuo kitos dienos.
           </p>
           <div className="mt-4 w-full min-w-0">
             {workItemsAll.length === 0 ? (

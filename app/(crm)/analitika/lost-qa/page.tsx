@@ -4,6 +4,11 @@ import { CrmContentContainer } from "@/components/crm/CrmContentContainer";
 import { LostQaAnalyticsFilters } from "@/components/crm/LostQaAnalyticsFilters";
 import { displayAssignedAgentFromMessages } from "@/lib/crm/lostQa/agentDisplay";
 import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
+import {
+  LOST_PRIMARY_REASON_LABEL_LT,
+  lostPrimaryReasonLabelLtOrDefault,
+} from "@/lib/crm/lostQa/reasonLabelLt";
+import type { LostPrimaryReason } from "@/lib/crm/lostQaDb";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +36,6 @@ type PriorityMessageRow = {
   body_plain: string | null;
 };
 
-type TopAgentRow = {
-  assigned_agent_email: string;
-  assigned_agent_name: string | null;
-  lost_count: number;
-};
-
 type DailySummaryRow = {
   id: string;
   summary_date: string;
@@ -62,31 +61,22 @@ type MailboxOption = {
   email_address: string;
 };
 
-const REASON_LT: Record<string, string> = {
-  price_too_high: "Kaina per didelė",
-  slow_response: "Per lėtas atsakas",
-  poor_response_quality: "Prastas atsakymo turinys",
-  missing_followup: "Trūko follow-up",
-  client_not_qualified: "Netinkamas klientas",
-  client_went_silent: "Klientas nebeatsakė",
-  competitor_selected: "Pasirinko kitą tiekėją",
-  scope_mismatch: "Apimties neatitikimas",
-  internal_mistake: "Vidinė klaida",
-  timeline_not_fit: "Netiko terminas",
-  other: "Kita",
-};
-
 function reasonLabelLt(code: unknown): string {
   const s = String(code ?? "").trim();
-  const mapped = REASON_LT[s];
-  if (mapped) return mapped;
+  if (!s) return s;
+  if (s in LOST_PRIMARY_REASON_LABEL_LT) {
+    return LOST_PRIMARY_REASON_LABEL_LT[s as LostPrimaryReason];
+  }
+  const d = lostPrimaryReasonLabelLtOrDefault(s);
+  if (d !== s) return d;
   if (s.includes("_")) {
-    const pretty = s
-      .split("_")
-      .filter(Boolean)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ");
-    return pretty || s;
+    return (
+      s
+        .split("_")
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ") || s
+    );
   }
   return s;
 }
@@ -112,7 +102,7 @@ function shiftDays(iso: string, delta: number): string {
 
 function normalizeIsoDate(raw: string | undefined, fallback: string): string {
   const v = (raw ?? "").trim();
-  return /^\\d{4}-\\d{2}-\\d{2}$/.test(v) ? v : fallback;
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : fallback;
 }
 
 function mergeTopReasons(rows: DailySummaryRow[]): TopReasonRow[] {
@@ -188,6 +178,30 @@ function managerDisplayName(nameOrEmail: string | null | undefined): string {
   return v.toLowerCase().includes("vertimų karaliai") ? "Vadybininkas" : v;
 }
 
+/** Agreguojant „Visas pašto dėžutes“: jei dienai yra suvestinė pagal dėžutes, globalios (null) tos dienos nenaudojamos. Jei dėžučių nėra, rodoma globali. */
+function selectRowsForAllMailboxesView(rows: DailySummaryRow[]): DailySummaryRow[] {
+  const byDate = new Map<string, DailySummaryRow[]>();
+  for (const r of rows) {
+    const k = r.summary_date;
+    const list = byDate.get(k) ?? [];
+    list.push(r);
+    byDate.set(k, list);
+  }
+  const out: DailySummaryRow[] = [];
+  for (const list of byDate.values()) {
+    const perMb = list.filter((x) => x.mailbox_id != null);
+    if (perMb.length) {
+      out.push(...perMb);
+    } else {
+      out.push(...list);
+    }
+  }
+  return out.sort(
+    (a, b) =>
+      a.summary_date.localeCompare(b.summary_date) || String(a.mailbox_id).localeCompare(String(b.mailbox_id))
+  );
+}
+
 export default async function LostQaDailySummaryPage({
   searchParams,
 }: {
@@ -241,10 +255,13 @@ export default async function LostQaDailySummaryPage({
   let effectiveRows: DailySummaryRow[] = [];
   if (mode === "day") {
     let q = supabase.from("lost_daily_summaries").select("*").eq("summary_date", date);
-    q = mailbox === "all" ? q.not("mailbox_id", "is", null) : q.eq("mailbox_id", mailbox);
-    const { data, error } = await q.order("mailbox_id", { ascending: true });
+    if (mailbox !== "all") {
+      q = q.eq("mailbox_id", mailbox);
+    }
+    const { data, error } = await q.order("mailbox_id", { ascending: true, nullsFirst: false });
     if (error) throw error;
-    effectiveRows = (data as DailySummaryRow[] | null) ?? [];
+    const raw = (data as DailySummaryRow[] | null) ?? [];
+    effectiveRows = mailbox === "all" ? selectRowsForAllMailboxesView(raw) : raw;
   } else {
     let q = supabase
       .from("lost_daily_summaries")
@@ -252,10 +269,13 @@ export default async function LostQaDailySummaryPage({
       .gte("summary_date", from)
       .lte("summary_date", to)
       .order("summary_date", { ascending: true });
-    q = mailbox === "all" ? q.not("mailbox_id", "is", null) : q.eq("mailbox_id", mailbox);
+    if (mailbox !== "all") {
+      q = q.eq("mailbox_id", mailbox);
+    }
     const { data, error } = await q;
     if (error) throw error;
-    effectiveRows = (data as DailySummaryRow[] | null) ?? [];
+    const raw = (data as DailySummaryRow[] | null) ?? [];
+    effectiveRows = mailbox === "all" ? selectRowsForAllMailboxesView(raw) : raw;
   }
 
   const selectedLabel = mode === "day" ? `Data: ${date}` : `Intervalas: ${from} – ${to}`;

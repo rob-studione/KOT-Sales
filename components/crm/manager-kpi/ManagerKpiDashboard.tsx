@@ -240,7 +240,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
           <h1 className="text-xl font-semibold tracking-tight text-zinc-900">Vadybininkų KPI</h1>
           <p className="mt-1 text-sm text-zinc-500">Komandos aktyvumo ir KPI vykdymo suvestinė</p>
           <p className="mt-2 text-xs text-zinc-500">
-            Laikotarpis: {formatDate(model.range.from)} — {formatDate(model.range.to)} ({model.dayCount} kalendorinių d.)
+            Laikotarpis: {formatDate(model.range.from)} — {formatDate(model.range.to)}
             <br />
             Darbo dienos: {model.workingDayCount}
           </p>

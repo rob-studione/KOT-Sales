@@ -35,6 +35,7 @@ import {
 } from "@/lib/crm/callListPriority";
 import type { ProjectWorkItemActivityDto } from "@/lib/crm/projectWorkItemActivityDto";
 import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
+import { vilniusDateWhenEnteredUžbaigtaColumn, vilniusTodayDateString } from "@/lib/crm/projectWorkBoardDoneDate";
 import { KanbanMoveConfirmModal, type PendingKanbanMove } from "@/components/crm/KanbanMoveConfirmModal";
 import { WorkItemDetailSheet } from "@/components/crm/WorkItemDetailSheet";
 
@@ -220,31 +221,9 @@ export function ProjectWorkBoard({
     [boardVariant]
   );
 
-  function isoDateLocal(d: Date): string {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-
-  const todayLocal = useMemo(() => isoDateLocal(new Date()), []);
-
-  const movedToDoneDateLocal = useCallback(
-    (workItemId: string): string | null => {
-      const acts = activitiesByWorkItemId[workItemId] ?? [];
-      for (const a of acts) {
-        if (normalizeKanbanCallStatus(a.call_status) === "Užbaigta") {
-          const dt = new Date(a.occurred_at);
-          if (!Number.isNaN(dt.getTime())) return isoDateLocal(dt);
-        }
-      }
-      return null;
-    },
-    [activitiesByWorkItemId]
-  );
-
   const buckets = useMemo(() => {
     const m = new Map<string, ProjectWorkItemDto[]>();
+    const todayVilnius = vilniusTodayDateString();
     for (const k of columnKeys) m.set(k, []);
     for (const it of boardItems) {
       const k =
@@ -252,14 +231,14 @@ export function ProjectWorkBoard({
           ? mapCallStatusToProcurementBoardColumn(it.call_status)
           : normalizeKanbanCallStatus(it.call_status);
       if (k === "Užbaigta") {
-        const moved = movedToDoneDateLocal(it.id);
-        if (moved !== todayLocal) continue;
+        const moved = vilniusDateWhenEnteredUžbaigtaColumn(it, activitiesByWorkItemId[it.id] ?? []);
+        if (moved !== todayVilnius) continue;
       }
       if (!m.has(k)) m.set(k, []);
       m.get(k)!.push(it);
     }
     return m;
-  }, [boardItems, boardVariant, columnKeys, movedToDoneDateLocal, todayLocal]);
+  }, [boardItems, boardVariant, columnKeys, activitiesByWorkItemId]);
 
   const lauktiAttention = useMemo(() => {
     const list = buckets.get("Laukti") ?? [];

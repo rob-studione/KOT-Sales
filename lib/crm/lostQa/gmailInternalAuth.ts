@@ -36,6 +36,18 @@ export function assertCronOrInternalSecret(request: Request): NextResponse | nul
   return null;
 }
 
+/**
+ * Kaip `app/api/cron/sync-saskaita123` — leidžia Vercel Cron (`x-vercel-cron: 1`) be Bearer,
+ * kad nereikėtų sekrėti slaptažodžio į `vercel.json`.
+ * Kitoms užklausoms vis dar reikia `CRON_SECRET` antraštėje.
+ */
+export function assertCronVercelOrInternalSecret(request: Request): NextResponse | null {
+  if (request.headers.get("x-vercel-cron") === "1") {
+    return null;
+  }
+  return assertCronOrInternalSecret(request);
+}
+
 /** Optional: allow same secret as Bearer for Pub/Sub manual replay when OIDC is not used. */
 export function bearerMatchesCronSecret(request: Request): boolean {
   const secret = process.env.CRON_SECRET?.trim();

@@ -11,6 +11,7 @@ import {
   type LostQaStructuredAnalysis,
   validateLostQaStructuredAnalysis,
 } from "@/lib/crm/lostQa/analyze/lostQaAnalysisSchema";
+import { ensureNonEmptyAnalysisLtFields } from "@/lib/crm/lostQa/analyze/analysisLtFallbacks";
 import type { ResponseUsage } from "openai/resources/responses/responses";
 
 export type OpenAiLostCaseAnalysisResult = {
@@ -55,7 +56,7 @@ export async function callOpenAiLostCaseAnalysis(
   }
 
   try {
-    const validated = validateLostQaStructuredAnalysis(parsed);
+    const validated = ensureNonEmptyAnalysisLtFields(validateLostQaStructuredAnalysis(parsed));
     return {
       parsed: validated,
       model: LOST_QA_ANALYSIS_MODEL,

@@ -72,14 +72,22 @@ export const NOT_ANSWERED_STATUSES: readonly KanbanNextActionColumn[] = ["Skambi
 const ANSWERED_STATUS_SET = new Set<string>(ANSWERED_STATUSES);
 const NOT_ANSWERED_STATUS_SET = new Set<string>(NOT_ANSWERED_STATUSES);
 
+/** Veiklos įrašui: aiškus skambučio rezultatas (ne Kanban stulpelis). */
+export const CALL_ACTIVITY_OUTCOME_ANSWERED = "answered" as const;
+export const CALL_ACTIVITY_OUTCOME_NOT_ANSWERED = "not_answered" as const;
+
 /** Skambutis analitikoje laikomas „atsiliepė“ pagal `ANSWERED_STATUSES`. */
 export function isCallAnsweredByStatus(callStatus: string | null | undefined): boolean {
+  const raw = normalizeCallStatusKey(callStatus).toLowerCase();
+  if (raw === CALL_ACTIVITY_OUTCOME_ANSWERED || raw === "atsiliepė" || raw === "atsiliepe") return true;
   const k = normalizeKanbanCallStatus(callStatus);
   return ANSWERED_STATUS_SET.has(k);
 }
 
 /** Skambutis analitikoje laikomas „neatsiliepė“ pagal `NOT_ANSWERED_STATUSES`. */
 export function isCallNotAnsweredByStatus(callStatus: string | null | undefined): boolean {
+  const raw = normalizeCallStatusKey(callStatus).toLowerCase();
+  if (raw === CALL_ACTIVITY_OUTCOME_NOT_ANSWERED || raw === "neatsiliepė" || raw === "neatsiliepe") return true;
   const k = normalizeKanbanCallStatus(callStatus);
   return NOT_ANSWERED_STATUS_SET.has(k);
 }
@@ -203,7 +211,83 @@ export function callStatusSelectOptions(): KanbanNextActionColumn[] {
 }
 
 export function callStatusOptionLabel(key: string): string {
+  const raw = normalizeCallStatusKey(key).toLowerCase();
+  if (raw === CALL_ACTIVITY_OUTCOME_ANSWERED || raw === "atsiliepė" || raw === "atsiliepe") return "Atsiliepė";
+  if (raw === CALL_ACTIVITY_OUTCOME_NOT_ANSWERED || raw === "neatsiliepė" || raw === "neatsiliepe")
+    return "Neatsiliepė";
   return normalizeKanbanCallStatus(key);
+}
+
+/** Kanban patvirtinimo forma: kas buvo atlikta prieš naują stulpelį. */
+export const KANBAN_COMPLETED_ACTION_VALUES = [
+  "call_answered",
+  "call_not_answered",
+  "email",
+  "commercial",
+  "status_only",
+] as const;
+export type KanbanCompletedAction = (typeof KANBAN_COMPLETED_ACTION_VALUES)[number];
+
+export function parseKanbanCompletedAction(raw: string | null | undefined): KanbanCompletedAction {
+  const v = String(raw ?? "").trim();
+  if ((KANBAN_COMPLETED_ACTION_VALUES as readonly string[]).includes(v)) return v as KanbanCompletedAction;
+  return "status_only";
+}
+
+/**
+ * Numatytas „Atliktas veiksmas“ pagal perkėlimą (naudotojas gali pakeisti modale).
+ */
+export function defaultKanbanCompletedAction(fromColumn: string, toColumn: string): KanbanCompletedAction {
+  const from = normalizeKanbanCallStatus(fromColumn);
+  const to = normalizeKanbanCallStatus(toColumn);
+  if (to === "Perskambinti") return "call_not_answered";
+  const postCallTargets: readonly KanbanNextActionColumn[] = [
+    "Siųsti laišką",
+    "Siųsti komercinį",
+    "Užbaigta",
+    "Skubus veiksmas",
+    "Laukti",
+  ];
+  if ((from === "Skambinti" || from === "Perskambinti") && (postCallTargets as readonly string[]).includes(to)) {
+    return "call_answered";
+  }
+  return "status_only";
+}
+
+export function kanbanCompletedActionLabel(v: KanbanCompletedAction): string {
+  switch (v) {
+    case "call_answered":
+      return "Skambinta – atsiliepė";
+    case "call_not_answered":
+      return "Skambinta – neatsiliepė";
+    case "email":
+      return "Laiškas";
+    case "commercial":
+      return "Komercinis";
+    case "status_only":
+      return "Tik pakeisti statusą";
+    default:
+      return "Tik pakeisti statusą";
+  }
+}
+
+/** Veiklos laiko juostai: antrinė eilutė (Kanban stulpelis arba skambučio rezultatas). */
+export function workItemActivityOutcomeLine(actionType: string, callStatus: string): { label: string; value: string } {
+  const at = actionType.trim().toLowerCase();
+  const cs = normalizeCallStatusKey(callStatus);
+  const csl = cs.toLowerCase();
+  if (
+    at === "call" &&
+    (csl === CALL_ACTIVITY_OUTCOME_ANSWERED ||
+      csl === CALL_ACTIVITY_OUTCOME_NOT_ANSWERED ||
+      csl === "atsiliepė" ||
+      csl === "atsiliepe" ||
+      csl === "neatsiliepė" ||
+      csl === "neatsiliepe")
+  ) {
+    return { label: "Skambučio rezultatas", value: callStatusOptionLabel(callStatus) };
+  }
+  return { label: "Sekantis veiksmas (Kanban)", value: callStatusOptionLabel(callStatus) };
 }
 
 /** Pagrindinio darbo srauto veiksmų tipai (istorijoje gali būti ir senesnių tipų, pvz. pastaba). */

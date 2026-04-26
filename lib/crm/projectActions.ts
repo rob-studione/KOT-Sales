@@ -16,9 +16,12 @@ import { fetchCandidateExpandDetails } from "@/lib/crm/candidateExpandDetails";
 import type { CandidateExpandDetails } from "@/lib/crm/candidateExpandTypes";
 import {
   BOARD_DEFAULT_CALL_STATUS,
+  CALL_ACTIVITY_OUTCOME_ANSWERED,
+  CALL_ACTIVITY_OUTCOME_NOT_ANSWERED,
   isProjectWorkItemClosed,
   isReturnedToCandidates,
   normalizeKanbanCallStatus,
+  parseKanbanCompletedAction,
   RESULT_RETURNED_TO_CANDIDATES,
 } from "@/lib/crm/projectBoardConstants";
 import { parseCompletionResult } from "@/lib/crm/projectCompletion";
@@ -1861,12 +1864,39 @@ export async function confirmKanbanMove(formData: FormData): Promise<{ error: st
   const { error: uErr } = await supabase.from("project_work_items").update(updateRow).eq("id", workItemId);
   if (uErr) return { error: uErr.message };
 
+  const completedAction = parseKanbanCompletedAction(String(formData.get("completed_action") ?? ""));
+  let activityActionType: string;
+  let activityCallStatus: string;
+  switch (completedAction) {
+    case "call_answered":
+      activityActionType = "call";
+      activityCallStatus = CALL_ACTIVITY_OUTCOME_ANSWERED;
+      break;
+    case "call_not_answered":
+      activityActionType = "call";
+      activityCallStatus = CALL_ACTIVITY_OUTCOME_NOT_ANSWERED;
+      break;
+    case "email":
+      activityActionType = "email";
+      activityCallStatus = newCallStatus;
+      break;
+    case "commercial":
+      activityActionType = "commercial";
+      activityCallStatus = newCallStatus;
+      break;
+    case "status_only":
+    default:
+      activityActionType = "status_change";
+      activityCallStatus = newCallStatus;
+      break;
+  }
+
   const performedByKanban = await activityPerformedById();
   const { error: aErr } = await supabase.from("project_work_item_activities").insert({
     work_item_id: workItemId,
     occurred_at: new Date().toISOString(),
-    action_type: "status_change",
-    call_status: newCallStatus,
+    action_type: activityActionType,
+    call_status: activityCallStatus,
     next_action,
     next_action_date: activityDateForDb(next_action_date),
     comment,
