@@ -616,6 +616,8 @@ export default async function ProjektasDetailPage({
 
   if (tab === "darbas") {
     const kanbanLiveLookupT0 = Date.now();
+    let kanbanVClientLookupMs = 0;
+    let kanbanRecentInvoicesRpcMs = 0;
     const liveByKey = new Map<
       string,
       {
@@ -636,10 +638,12 @@ export default async function ProjektasDetailPage({
     for (let i = 0; i < revenueKeys.length; i += 200) {
       const part = revenueKeys.slice(i, i + 200);
       roundTripCount += 1;
+      const tV0 = Date.now();
       const { data } = await supabase
         .from("v_client_list_from_invoices")
         .select("client_key,total_revenue,last_invoice_date,email,phone")
         .in("client_key", part);
+      kanbanVClientLookupMs += Date.now() - tV0;
       for (const r of (data ?? []) as Array<{
         client_key?: unknown;
         total_revenue?: unknown;
@@ -668,7 +672,9 @@ export default async function ProjektasDetailPage({
         });
       }
       roundTripCount += 1;
+      const tR0 = Date.now();
       const { data: recentInv } = await supabase.rpc("recent_invoices_for_clients", { p_codes: part });
+      kanbanRecentInvoicesRpcMs += Date.now() - tR0;
       const firstLatestNumForKey = new Set<string>();
       for (const row of (recentInv ?? []) as Array<{
         client_key?: unknown;
@@ -686,6 +692,7 @@ export default async function ProjektasDetailPage({
         entry.invoice_number = num;
       }
     }
+    const kanbanMapT0 = Date.now();
     if (liveByKey.size > 0) {
       workItemsAll = workItemsAll.map((w) => {
         if (w.source_type !== "auto" && w.source_type !== "linked_client") return w;
@@ -701,6 +708,9 @@ export default async function ProjektasDetailPage({
         };
       });
     }
+    markMs("kanbanFooterMapMs", Date.now() - kanbanMapT0);
+    markMs("kanbanVClientLookupMs", kanbanVClientLookupMs);
+    markMs("kanbanRecentInvoicesRpcMs", kanbanRecentInvoicesRpcMs);
     markMs("kanbanClientLiveLookupMs", Date.now() - kanbanLiveLookupT0);
   }
 
@@ -827,6 +837,9 @@ export default async function ProjektasDetailPage({
       revenueFeedMs: perf.revenueFeedMs ?? 0,
       liveRevenueLookupMs: perf.liveRevenueLookupMs ?? 0,
       kanbanClientLiveLookupMs: perf.kanbanClientLiveLookupMs ?? 0,
+      kanbanVClientLookupMs: perf.kanbanVClientLookupMs ?? 0,
+      kanbanRecentInvoicesRpcMs: perf.kanbanRecentInvoicesRpcMs ?? 0,
+      kanbanFooterMapMs: perf.kanbanFooterMapMs ?? 0,
       procurementMs: perf.procurementMs ?? 0,
       roundTripCount,
       tab,
@@ -843,6 +856,9 @@ export default async function ProjektasDetailPage({
     revenueFeedMs: perf.revenueFeedMs ?? 0,
     liveRevenueLookupMs: perf.liveRevenueLookupMs ?? 0,
     kanbanClientLiveLookupMs: perf.kanbanClientLiveLookupMs ?? 0,
+    kanbanVClientLookupMs: perf.kanbanVClientLookupMs ?? 0,
+    kanbanRecentInvoicesRpcMs: perf.kanbanRecentInvoicesRpcMs ?? 0,
+    kanbanFooterMapMs: perf.kanbanFooterMapMs ?? 0,
     procurementMs: perf.procurementMs ?? 0,
     roundTripCount,
     tab,

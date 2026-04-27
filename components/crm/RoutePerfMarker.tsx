@@ -12,6 +12,12 @@ export type RoutePerfMarkerServerPerf = {
   revenueFeedMs?: number;
   liveRevenueLookupMs?: number;
   kanbanClientLiveLookupMs?: number;
+  /** `v_client_list_from_invoices` (suma per batch'us) */
+  kanbanVClientLookupMs?: number;
+  /** `recent_invoices_for_clients` RPC (suma per batch'us) */
+  kanbanRecentInvoicesRpcMs?: number;
+  /** DTO merge (map) po lookup */
+  kanbanFooterMapMs?: number;
   procurementMs?: number;
   roundTripCount?: number;
   tab?: string;
