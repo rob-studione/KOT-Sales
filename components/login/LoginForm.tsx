@@ -57,26 +57,21 @@ export function LoginForm() {
   }
 
   return (
-    <div className="w-full max-w-[460px] rounded-[18px] border border-slate-200/80 bg-white p-8 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.12)] sm:p-10">
+    <div className="m-auto w-full max-w-[440px] rounded-2xl border border-gray-100 bg-white p-8 shadow-lg">
       <div className="text-center">
-        <div className="flex items-center justify-center gap-2.5">
-          <div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-600 to-blue-600 text-lg font-bold leading-none text-white shadow-sm shadow-blue-600/25"
-            aria-hidden
-          >
-            S
-          </div>
-          <span className="text-[1.65rem] font-bold tracking-tight text-slate-900">Salex</span>
+        <div className="mb-8 flex items-center justify-center gap-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo.svg" alt="" className="h-10 w-auto" />
+          <span className="text-xl font-semibold text-gray-900">KOT Sales</span>
         </div>
-        <p className="mt-1.5 text-sm text-slate-500">CRM platforma</p>
-        <h1 className="mt-6 text-xl font-bold leading-snug tracking-tight text-slate-900 sm:text-[1.35rem]">
-          Prisijunkite prie savo paskyros
+        <h1 className="mb-8 text-2xl font-semibold leading-snug tracking-tight text-gray-900">
+          Prisijungimas prie paskyros
         </h1>
       </div>
 
       <form
         method="post"
-        className="mt-8 flex flex-col gap-5"
+        className="flex flex-col gap-5"
         onSubmit={async (e) => {
           e.preventDefault();
           setError(null);
@@ -111,98 +106,99 @@ export function LoginForm() {
           }
         }}
       >
-        <div>
-          <label htmlFor="login-email" className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-600">
-            <IconEnvelope className="h-4 w-4 text-slate-400" />
-            El. paštas
-          </label>
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-              <IconUserCircle className="h-[18px] w-[18px]" />
-            </span>
-            <input
-              id="login-email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              placeholder="El. paštas"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/90 py-2.5 pl-11 pr-3.5 text-sm text-slate-900 shadow-inner shadow-slate-900/5 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/25"
-            />
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <label htmlFor="login-password" className="flex items-center gap-2 text-sm font-medium text-slate-600">
-              <IconLock className="h-4 w-4 text-slate-400" />
-              Slaptažodis
+        <div className="flex flex-col gap-4">
+          <div>
+            <label htmlFor="login-email" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-600">
+              <IconEnvelope className="h-4 w-4 text-gray-400" />
+              El. paštas
             </label>
-            <button
-              type="button"
-              className="shrink-0 text-sm font-medium text-blue-600 underline-offset-2 hover:text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2"
-              onClick={async () => {
-                setError(null);
-                setInfo(null);
-                const emailInput = document.getElementById("login-email") as HTMLInputElement | null;
-                const email = String(emailInput?.value ?? "").trim();
-                if (!email) {
-                  setError("Įveskite el. paštą, kad gautumėte slaptažodžio atkūrimo nuorodą.");
-                  return;
-                }
-                setPending(true);
-                try {
-                  const supabase = createSupabaseBrowserClient();
-                  const redirectTo = resolveResetRedirectTo();
-                  const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-                  if (resetErr) {
-                    const msg = String(resetErr.message ?? "");
-                    const lower = msg.toLowerCase();
-                    if (lower.includes("redirect") && (lower.includes("not allowed") || lower.includes("not whitelisted"))) {
-                      setError(
-                        "Nepavyko išsiųsti atkūrimo nuorodos: neteisingas redirect URL. Patikrinkite Supabase Auth nustatymuose leidžiamus redirect URL."
-                      );
-                    } else if (lower.includes("rate") && lower.includes("limit")) {
-                      setError("Per dažnai bandote. Palaukite kelias minutes ir bandykite dar kartą.");
-                    } else {
-                      setError(
-                        process.env.NODE_ENV === "production"
-                          ? "Nepavyko išsiųsti atkūrimo nuorodos. Bandykite vėliau."
-                          : `Nepavyko išsiųsti atkūrimo nuorodos: ${msg}`
-                      );
-                    }
+            <div className="relative">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                <IconUserCircle className="h-[18px] w-[18px]" />
+              </span>
+              <input
+                id="login-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="El. paštas"
+                className="h-11 w-full rounded-lg border border-gray-400 bg-white px-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label htmlFor="login-password" className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                <IconLock className="h-4 w-4 text-gray-400" />
+                Slaptažodis
+              </label>
+              <button
+                type="button"
+                className="shrink-0 text-sm text-gray-700 hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/10 focus-visible:ring-offset-2"
+                onClick={async () => {
+                  setError(null);
+                  setInfo(null);
+                  const emailInput = document.getElementById("login-email") as HTMLInputElement | null;
+                  const email = String(emailInput?.value ?? "").trim();
+                  if (!email) {
+                    setError("Įveskite el. paštą, kad gautumėte slaptažodžio atkūrimo nuorodą.");
                     return;
                   }
-                  setInfo("Atkūrimo nuoroda išsiųsta į el. paštą (jei toks vartotojas egzistuoja).");
-                } finally {
-                  setPending(false);
-                }
-              }}
-            >
-              Pamiršote slaptažodį?
-            </button>
-          </div>
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-              <IconLock className="h-[18px] w-[18px]" />
-            </span>
-            <input
-              id="login-password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              placeholder="••••••••"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/90 py-2.5 pl-11 pr-3.5 text-sm text-slate-900 shadow-inner shadow-slate-900/5 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/25"
-            />
+                  setPending(true);
+                  try {
+                    const supabase = createSupabaseBrowserClient();
+                    const redirectTo = resolveResetRedirectTo();
+                    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+                    if (resetErr) {
+                      const msg = String(resetErr.message ?? "");
+                      const lower = msg.toLowerCase();
+                      if (lower.includes("redirect") && (lower.includes("not allowed") || lower.includes("not whitelisted"))) {
+                        setError(
+                          "Nepavyko išsiųsti atkūrimo nuorodos: neteisingas redirect URL. Patikrinkite Supabase Auth nustatymuose leidžiamus redirect URL."
+                        );
+                      } else if (lower.includes("rate") && lower.includes("limit")) {
+                        setError("Per dažnai bandote. Palaukite kelias minutes ir bandykite dar kartą.");
+                      } else {
+                        setError(
+                          process.env.NODE_ENV === "production"
+                            ? "Nepavyko išsiųsti atkūrimo nuorodos. Bandykite vėliau."
+                            : `Nepavyko išsiųsti atkūrimo nuorodos: ${msg}`
+                        );
+                      }
+                      return;
+                    }
+                    setInfo("Atkūrimo nuoroda išsiųsta į el. paštą (jei toks vartotojas egzistuoja).");
+                  } finally {
+                    setPending(false);
+                  }
+                }}
+              >
+                Pamiršote slaptažodį?
+              </button>
+            </div>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                <IconLock className="h-[18px] w-[18px]" />
+              </span>
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                placeholder="••••••••"
+                className="h-11 w-full rounded-lg border border-gray-400 bg-white px-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              />
+            </div>
           </div>
         </div>
 
-        <label className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-600">
+        <label className="flex cursor-pointer items-start gap-2.5 text-sm text-gray-600">
           <input
             name="remember"
             type="checkbox"
-            className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/30"
           />
           <span>Prisiminti mane šiame įrenginyje</span>
         </label>
@@ -210,13 +206,13 @@ export function LoginForm() {
         <button
           type="submit"
           disabled={pending}
-          className="mt-1 w-full rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition hover:from-sky-500 hover:to-blue-500 hover:shadow-lg hover:shadow-blue-600/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          className="mt-4 h-11 w-full rounded-lg bg-gray-800 text-sm font-medium text-white shadow-md transition-all hover:bg-gray-900 hover:shadow-lg active:scale-[0.99] disabled:bg-gray-300 disabled:hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/10 focus-visible:ring-offset-2"
         >
           {pending ? "Jungiamasi…" : "Prisijungti"}
         </button>
 
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        {info ? <p className="text-sm text-emerald-700">{info}</p> : null}
+        {error ? <p className="text-sm text-gray-900">{error}</p> : null}
+        {info ? <p className="text-sm text-gray-600">{info}</p> : null}
       </form>
     </div>
   );

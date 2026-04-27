@@ -159,30 +159,25 @@ export function AuthRecoveryClient() {
   }, [next]);
 
   return (
-    <div className="w-full max-w-[460px] rounded-[18px] border border-slate-200/80 bg-white p-8 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.12)] sm:p-10">
+    <div className="m-auto w-full max-w-[440px] rounded-2xl border border-gray-100 bg-white p-8 shadow-lg">
       <div className="text-center">
-        <div className="flex items-center justify-center gap-2.5">
-          <div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-600 to-blue-600 text-lg font-bold leading-none text-white shadow-sm shadow-blue-600/25"
-            aria-hidden
-          >
-            S
-          </div>
-          <span className="text-[1.65rem] font-bold tracking-tight text-slate-900">Salex</span>
+        <div className="mb-8 flex items-center justify-center gap-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo.svg" alt="" className="h-10 w-auto" />
+          <span className="text-xl font-semibold text-gray-900">KOT Sales</span>
         </div>
-        <p className="mt-1.5 text-sm text-slate-500">CRM platforma</p>
-        <h1 className="mt-6 text-xl font-bold leading-snug tracking-tight text-slate-900 sm:text-[1.35rem]">
+        <h1 className="mb-8 text-2xl font-semibold leading-snug tracking-tight text-gray-900">
           Slaptažodžio atkūrimas
         </h1>
       </div>
 
       {phase === "verifying" ? (
-        <p className="mt-8 text-center text-sm text-slate-600">Tikrinama nuoroda…</p>
+        <p className="mt-8 text-center text-sm text-gray-600">Tikrinama nuoroda…</p>
       ) : null}
 
       {phase === "set_password" ? (
         <form
-          className="mt-8 flex flex-col gap-4"
+          className="flex flex-col gap-4"
           onSubmit={async (e) => {
             e.preventDefault();
             setError(null);
@@ -229,32 +224,32 @@ export function AuthRecoveryClient() {
           }}
         >
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700">Naujas slaptažodis</span>
+            <span className="font-medium text-gray-700">Naujas slaptažodis</span>
             <input
               name="password"
               type="password"
               required
               autoComplete="new-password"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-inner shadow-slate-900/5 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/25"
+              className="h-11 w-full rounded-lg border border-gray-400 bg-white px-4 text-sm text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700">Pakartokite slaptažodį</span>
+            <span className="font-medium text-gray-700">Pakartokite slaptažodį</span>
             <input
               name="password2"
               type="password"
               required
               autoComplete="new-password"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-inner shadow-slate-900/5 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/25"
+              className="h-11 w-full rounded-lg border border-gray-400 bg-white px-4 text-sm text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
             />
           </label>
 
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          {info ? <p className="text-sm text-emerald-700">{info}</p> : null}
+          {error ? <p className="text-sm text-gray-900">{error}</p> : null}
+          {info ? <p className="text-sm text-gray-600">{info}</p> : null}
 
           <button
             type="submit"
-            className="mt-1 w-full rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition hover:from-sky-500 hover:to-blue-500 hover:shadow-lg hover:shadow-blue-600/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            className="mt-4 h-11 w-full rounded-lg bg-gray-800 text-sm font-medium text-white shadow-md transition-all hover:bg-gray-900 hover:shadow-lg active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/10 focus-visible:ring-offset-2"
           >
             Nustatyti slaptažodį
           </button>
@@ -263,10 +258,10 @@ export function AuthRecoveryClient() {
 
       {phase === "error" ? (
         <div className="mt-8">
-          <p className="text-sm text-red-600">{error ?? "Nepavyko patvirtinti atkūrimo nuorodos."}</p>
+          <p className="text-sm text-gray-900">{error ?? "Nepavyko patvirtinti atkūrimo nuorodos."}</p>
           <button
             type="button"
-            className="mt-4 w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+            className="mt-4 h-11 w-full rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-800 hover:bg-gray-50"
             onClick={() => router.replace("/login")}
           >
             Grįžti į prisijungimą
@@ -274,7 +269,7 @@ export function AuthRecoveryClient() {
         </div>
       ) : null}
 
-      {phase === "done" ? <p className="mt-8 text-center text-sm text-slate-600">Atlikta.</p> : null}
+      {phase === "done" ? <p className="mt-8 text-center text-sm text-gray-600">Atlikta.</p> : null}
     </div>
   );
 }
