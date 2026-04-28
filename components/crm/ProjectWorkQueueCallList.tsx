@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useFormStatus } from "react-dom";
-import { useActionState, useCallback, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
 import { formatDate, formatDateTimeLt, formatMoney } from "@/lib/crm/format";
 import {
   defaultNextActionDateYmdForKanbanColumn,
