@@ -288,7 +288,7 @@ export default async function LostQaCaseDetailPage({ params }: { params: Promise
                         key={`${km.type}-${i}`}
                         className={`rounded-md border border-gray-200 bg-white px-3 py-3 shadow-sm ${
                           km.type === "client"
-                            ? "border-l-4 border-l-sky-400 bg-sky-50/30"
+                            ? "border-l-4 border-l-gray-400 bg-gray-50"
                             : "border-l-4 border-l-amber-500 bg-amber-50/30"
                         }`}
                       >

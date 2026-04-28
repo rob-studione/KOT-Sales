@@ -378,26 +378,33 @@ function WorkItemCard({
     [item.id]
   );
 
-  const toggle = () => {
-    setOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        const ck = item.client_key;
-        if (ck && !detailsCache.has(ck) && !parseProcurementContractIdFromClientKey(ck)) {
-          setFetching(true);
-          loadCandidateExpandDetailsAction(ck)
-            .then((d) => {
-              setDetailsCache((prevMap) => new Map(prevMap).set(ck, d));
-              setFetching(false);
-            })
-            .catch(() => setFetching(false));
-        }
-      } else {
+  const toggle = () => setOpen((prev) => !prev);
+
+  useEffect(() => {
+    if (!open) {
+      setFetching(false);
+      return;
+    }
+    const ck = item.client_key;
+    if (!ck) return;
+    if (parseProcurementContractIdFromClientKey(ck)) return;
+    if (detailsCache.has(ck)) return;
+
+    let cancelled = false;
+    setFetching(true);
+    loadCandidateExpandDetailsAction(ck)
+      .then((d) => {
+        if (cancelled) return;
+        setDetailsCache((prevMap) => new Map(prevMap).set(ck, d));
+      })
+      .finally(() => {
+        if (cancelled) return;
         setFetching(false);
-      }
-      return next;
-    });
-  };
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detailsCache, item.client_key, open]);
 
   const detail = item.client_key ? detailsCache.get(item.client_key) ?? null : null;
   const showLoading = open && fetching && item.client_key !== "" && !detailsCache.has(item.client_key);

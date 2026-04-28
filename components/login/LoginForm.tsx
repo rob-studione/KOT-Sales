@@ -123,7 +123,7 @@ export function LoginForm() {
                 autoComplete="email"
                 required
                 placeholder="El. paštas"
-                className="h-11 w-full rounded-lg border border-gray-400 bg-white px-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                className="h-11 w-full rounded-lg border border-gray-400 bg-white px-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-[#7C4A57] focus:outline-none focus:ring-2 focus:ring-[#7C4A57]/10"
               />
             </div>
           </div>
@@ -189,7 +189,7 @@ export function LoginForm() {
                 autoComplete="current-password"
                 required
                 placeholder="••••••••"
-                className="h-11 w-full rounded-lg border border-gray-400 bg-white px-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                className="h-11 w-full rounded-lg border border-gray-400 bg-white px-4 pl-11 text-sm text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-[#7C4A57] focus:outline-none focus:ring-2 focus:ring-[#7C4A57]/10"
               />
             </div>
           </div>
@@ -199,6 +199,7 @@ export function LoginForm() {
           <input
             name="remember"
             type="checkbox"
+            className="accent-[#7C4A57]"
           />
           <span>Prisiminti mane šiame įrenginyje</span>
         </label>

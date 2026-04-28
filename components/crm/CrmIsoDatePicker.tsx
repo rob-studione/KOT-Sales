@@ -48,13 +48,13 @@ export function CrmIsoDatePicker({
         onChange={(e) => setValue(normalizeIsoYmdInput(e.target.value))}
         onFocus={openPicker}
         required={required}
-        className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 pr-11 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+        className="h-10 w-full rounded-xl border border-gray-300 bg-white px-3 pr-11 text-sm text-gray-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
       />
 
       <button
         type="button"
         onClick={openPicker}
-        className="absolute right-3 top-0 h-10 w-8 inline-flex items-center justify-center text-slate-400 hover:text-slate-700"
+        className="absolute right-3 top-0 inline-flex h-10 w-8 items-center justify-center text-gray-400 hover:text-gray-700"
         aria-label="Pasirinkti datą"
       >
         <Calendar className="h-4 w-4" />

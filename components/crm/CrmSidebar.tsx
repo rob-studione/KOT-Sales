@@ -333,8 +333,8 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
 
   const itemBase =
     "group relative flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-sm leading-5 transition-colors duration-150";
-  const itemInactive = "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900";
-  const itemActive = "bg-zinc-100/90 text-zinc-900 font-medium";
+  const itemInactive = "text-zinc-600 hover:bg-zinc-50 hover:text-[#7C4A57]";
+  const itemActive = "bg-zinc-100/90 text-[#7C4A57] font-medium";
   const headerBase =
     "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors";
 
@@ -348,7 +348,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
             className={`${itemBase} ${pathname === "/dashboard" ? itemActive : itemInactive}`}
           >
             {pathname === "/dashboard" ? (
-              <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-zinc-400" aria-hidden />
+              <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[#7C4A57]" aria-hidden />
             ) : null}
             <SidebarIconSlot icon={LayoutDashboard} active={pathname === "/dashboard"} />
             <span className="truncate">Apžvalga</span>
@@ -365,7 +365,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                 className={[
                   headerBase,
                   SUBMENU_MS,
-                  routeActive ? "bg-zinc-100/80 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
+                  routeActive ? "bg-zinc-100/80 text-[#7C4A57]" : "text-zinc-600 hover:bg-zinc-50 hover:text-[#7C4A57]",
                 ].join(" ")}
               >
                 {id === "projektai" ? (
@@ -464,7 +464,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                               >
                                 {active ? (
                                   <span
-                                    className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-zinc-400"
+                                    className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[#7C4A57]"
                                     aria-hidden
                                   />
                                 ) : null}

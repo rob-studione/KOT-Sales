@@ -7,7 +7,7 @@ import type { SalesDashboardPeriod, SalesDashboardRange } from "@/lib/crm/salesA
 
 const BTN =
   "cursor-pointer rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50";
-const ACTIVE = "border-zinc-900 bg-zinc-900 text-white";
+const ACTIVE = "border-[#7C4A57] bg-white text-[#7C4A57]";
 const IDLE = "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50";
 
 export function AnalyticsDateFilter({
@@ -115,7 +115,7 @@ export function AnalyticsDateFilter({
               name="from"
               required
               defaultValue={range.from}
-              className="rounded-md border border-zinc-200 px-2 py-1 text-sm text-zinc-900"
+              className="rounded-md border border-zinc-200 px-2 py-1 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
             />
           </label>
           <label className="flex items-center gap-1.5 text-xs text-zinc-600">
@@ -125,7 +125,7 @@ export function AnalyticsDateFilter({
               name="to"
               required
               defaultValue={range.to}
-              className="rounded-md border border-zinc-200 px-2 py-1 text-sm text-zinc-900"
+              className="rounded-md border border-zinc-200 px-2 py-1 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
             />
           </label>
           <button type="submit" className={`${BTN} ${IDLE}`} disabled={isPending}>

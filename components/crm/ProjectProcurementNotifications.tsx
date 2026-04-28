@@ -18,7 +18,7 @@ export function ProjectProcurementNotifications({
         {notifications.map((n) => (
           <li
             key={n.id}
-            className={`rounded-lg border px-3 py-2 text-sm ${n.is_read ? "border-zinc-100 bg-zinc-50/50 text-zinc-700" : "border-sky-100 bg-sky-50/40 text-zinc-900"}`}
+            className={`rounded-lg border px-3 py-2 text-sm ${n.is_read ? "border-zinc-100 bg-zinc-50/50 text-zinc-700" : "border-gray-200 bg-gray-50 text-zinc-900"}`}
           >
             <p className={n.is_read ? "" : "font-medium"}>{n.message}</p>
             <p className="mt-1 text-xs text-zinc-500">

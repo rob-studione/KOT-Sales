@@ -896,7 +896,7 @@ export function ProcurementContractsPanel({
                   "outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2",
                   importLocked ? "cursor-not-allowed opacity-60" : "",
                   csvDropActive
-                    ? "border-blue-500 bg-blue-50/80 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.35)]"
+                    ? "border-gray-900 bg-gray-50 shadow-[inset_0_0_0_1px_rgba(17,24,39,0.12)]"
                     : csvFile
                       ? "border-emerald-300/90 bg-emerald-50/45 hover:border-emerald-400 hover:bg-emerald-50/70"
                       : "border-zinc-300 bg-zinc-50/90 hover:border-zinc-400 hover:bg-zinc-100",
@@ -929,7 +929,7 @@ export function ProcurementContractsPanel({
                   <>
                     <CsvDropzoneGraphic
                       className={
-                        csvDropActive ? "text-blue-600" : "text-zinc-400 transition-colors group-hover:text-zinc-500"
+                        csvDropActive ? "text-gray-700" : "text-zinc-400 transition-colors group-hover:text-zinc-500"
                       }
                     />
                     <p className="mt-3 text-base font-semibold tracking-tight text-zinc-900">Įkelk CSV failą</p>

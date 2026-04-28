@@ -162,7 +162,7 @@ export function CrmNotificationBell() {
                   <li key={n.id}>
                     <Link
                       href={hrefFor(n)}
-                      className={`block px-3 py-2.5 text-left transition-colors hover:bg-zinc-50 ${n.is_read ? "bg-white" : "bg-sky-50/50"}`}
+                      className={`block px-3 py-2.5 text-left transition-colors hover:bg-zinc-50 ${n.is_read ? "bg-white" : "bg-gray-50"}`}
                       onClick={() => {
                         if (!n.is_read) void markRead(n.id);
                         setOpen(false);

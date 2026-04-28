@@ -268,6 +268,7 @@ export function CallsByDayBarChart({
           const bh = isZero ? ZERO_BAR_H : padT + innerH - yTop;
           const height = Math.max(2, bh);
           const rx = Math.max(1, Math.min(6, barW / 2, height / 2));
+          const fill = hover?.i === i ? "#6B3F4B" : "#7C4A57";
           return (
             <rect
               key={`${d.date}-${i}`}
@@ -276,8 +277,7 @@ export function CallsByDayBarChart({
               width={barW}
               height={height}
               rx={rx}
-              fill={isZero ? "#bfdbfe" : "#3b82f6"}
-              opacity={hover?.i === i ? (isZero ? 0.7 : 0.9) : isZero ? 0.5 : 0.75}
+              fill={fill}
             />
           );
         })}

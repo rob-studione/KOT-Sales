@@ -259,7 +259,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
                 })}
                 className={
                   model.preset === p.id
-                    ? "shrink-0 rounded-lg bg-zinc-900 px-2.5 py-1.5 text-sm font-medium text-white sm:px-3"
+                    ? "shrink-0 rounded-lg border border-[#7C4A57] bg-white px-2.5 py-1.5 text-sm font-medium text-[#7C4A57] sm:px-3"
                     : "shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 sm:px-3"
                 }
               >
@@ -299,7 +299,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
                 <input
                   name="from"
                   type="date"
-                  className="ml-1 rounded-md border border-zinc-200 px-2 py-1 text-sm"
+                  className="ml-1 rounded-md border border-zinc-200 px-2 py-1 text-sm outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
                   defaultValue={customFrom}
                   onChange={(e) => setCustomFrom(e.target.value)}
                 />
@@ -309,7 +309,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
                 <input
                   name="to"
                   type="date"
-                  className="ml-1 rounded-md border border-zinc-200 px-2 py-1 text-sm"
+                  className="ml-1 rounded-md border border-zinc-200 px-2 py-1 text-sm outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
                   defaultValue={customTo}
                   onChange={(e) => setCustomTo(e.target.value)}
                 />

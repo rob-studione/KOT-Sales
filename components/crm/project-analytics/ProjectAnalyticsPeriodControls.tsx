@@ -74,7 +74,7 @@ export function ProjectAnalyticsPeriodControls({
             href={buildHref(projectId, id)}
             className={
               activePeriod === id
-                ? "inline-flex h-9 items-center rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white"
+                ? "inline-flex h-9 items-center rounded-lg border border-[#7C4A57] bg-white px-3 text-sm font-medium text-[#7C4A57]"
                 : "inline-flex h-9 items-center rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 shadow-sm shadow-black/5 hover:bg-zinc-50"
             }
           >
@@ -87,7 +87,7 @@ export function ProjectAnalyticsPeriodControls({
           type="date"
           value={from}
           onChange={(e) => setFrom(e.target.value)}
-          className="h-9 w-[11.25rem] rounded-lg border border-zinc-200 bg-white px-2.5 text-sm text-zinc-900 shadow-sm shadow-black/5 focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+          className="h-9 w-[11.25rem] rounded-lg border border-zinc-200 bg-white px-2.5 text-sm text-zinc-900 shadow-sm shadow-black/5 focus:border-[#7C4A57] focus:outline-none focus:ring-2 focus:ring-[#7C4A57]/10"
           aria-label="Nuo"
         />
         <span className="px-1 text-sm font-medium text-zinc-500">–</span>
@@ -95,7 +95,7 @@ export function ProjectAnalyticsPeriodControls({
           type="date"
           value={to}
           onChange={(e) => setTo(e.target.value)}
-          className="h-9 w-[11.25rem] rounded-lg border border-zinc-200 bg-white px-2.5 text-sm text-zinc-900 shadow-sm shadow-black/5 focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+          className="h-9 w-[11.25rem] rounded-lg border border-zinc-200 bg-white px-2.5 text-sm text-zinc-900 shadow-sm shadow-black/5 focus:border-[#7C4A57] focus:outline-none focus:ring-2 focus:ring-[#7C4A57]/10"
           aria-label="Iki"
         />
         <button

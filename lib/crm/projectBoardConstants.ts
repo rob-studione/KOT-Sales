@@ -180,19 +180,19 @@ export function kanbanColumnHeaderBorderClass(columnKey: string): string {
   const k = normalizeKanbanCallStatus(columnKey);
   switch (k) {
     case "Skambinti":
-      return "border-b-[3px] border-b-blue-600";
+      return "border-b-[3px] border-b-red-600";
     case "Perskambinti":
-      return "border-b-[3px] border-b-sky-400";
+      return "border-b-[3px] border-b-amber-500";
     case "Laukti":
-      return "border-b-[3px] border-b-amber-400";
+      return "border-b-[3px] border-b-amber-500";
     case "Siųsti laišką":
-      return "border-b-[3px] border-b-slate-400";
+      return "border-b-[3px] border-b-[#7C4A57]";
     case "Siųsti komercinį":
-      return "border-b-[3px] border-b-purple-500";
+      return "border-b-[3px] border-b-[#7C4A57]";
     case "Skubus veiksmas":
       return "border-b-[3px] border-b-red-500";
     case "Užbaigta":
-      return "border-b-[3px] border-b-emerald-600";
+      return "border-b-[3px] border-b-green-600";
     default:
       return "border-b-[3px] border-b-zinc-300";
   }
