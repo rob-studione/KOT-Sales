@@ -9,7 +9,6 @@ import { vilniusTodayDateString } from "@/lib/crm/vilniusTime";
 export const KANBAN_NEXT_ACTION_COLUMNS = [
   "Skambinti",
   "Perskambinti",
-  "Laukti",
   "Siųsti laišką",
   "Siųsti komercinį",
   "Skubus veiksmas",
@@ -22,7 +21,6 @@ export type KanbanNextActionColumn = (typeof KANBAN_NEXT_ACTION_COLUMNS)[number]
 export const PROCUREMENT_KANBAN_COLUMNS: readonly KanbanNextActionColumn[] = [
   "Skambinti",
   "Perskambinti",
-  "Laukti",
   "Siųsti laišką",
   "Užbaigta",
 ] as const;
@@ -35,8 +33,9 @@ const LEGACY_CALL_STATUS_TO_KANBAN: Record<string, KanbanNextActionColumn> = {
   "": "Skambinti",
   Neatsiliepė: "Skambinti",
   Perskambins: "Perskambinti",
-  "Susisiekti vėliau": "Laukti",
-  "Aktualu pagal poreikį": "Laukti",
+  Laukti: "Perskambinti",
+  "Susisiekti vėliau": "Perskambinti",
+  "Aktualu pagal poreikį": "Perskambinti",
 };
 
 export function normalizeCallStatusKey(raw: string | null | undefined): string {
@@ -59,7 +58,6 @@ export function normalizeKanbanCallStatus(raw: string | null | undefined): Kanba
  * Naujus statusus pridėti čia (ir atitinkamai į NOT_ANSWERED_STATUSES, jei tai „laukia skambučio“ būsena).
  */
 export const ANSWERED_STATUSES: readonly KanbanNextActionColumn[] = [
-  "Laukti",
   "Siųsti laišką",
   "Siųsti komercinį",
   "Skubus veiksmas",
@@ -147,7 +145,6 @@ export function callStatusFromBoardColumnId(columnId: string): string {
 /** Antraštė viešųjų pirkimų lentoje („Laukti“ rodoma kaip „Laukiame“). */
 export function procurementKanbanColumnTitle(columnKey: string): string {
   const k = normalizeKanbanCallStatus(columnKey);
-  if (k === "Laukti") return "Laukiame";
   return k;
 }
 
@@ -182,8 +179,6 @@ export function kanbanColumnHeaderBorderClass(columnKey: string): string {
     case "Skambinti":
       return "border-b-[3px] border-b-red-600";
     case "Perskambinti":
-      return "border-b-[3px] border-b-amber-500";
-    case "Laukti":
       return "border-b-[3px] border-b-amber-500";
     case "Siųsti laišką":
       return "border-b-[3px] border-b-[#7C4A57]";
@@ -248,7 +243,6 @@ export function defaultKanbanCompletedAction(fromColumn: string, toColumn: strin
     "Siųsti komercinį",
     "Užbaigta",
     "Skubus veiksmas",
-    "Laukti",
   ];
   if ((from === "Skambinti" || from === "Perskambinti") && (postCallTargets as readonly string[]).includes(to)) {
     return "call_answered";
@@ -334,7 +328,8 @@ export function waitColumnHighlightState(
   callStatus: string | null | undefined,
   nextActionDate: string | null | undefined
 ): "none" | "today" | "overdue" {
-  if (normalizeKanbanCallStatus(callStatus) !== "Laukti") return "none";
+  // "Laukti" status is deprecated; normalize maps it to "Perskambinti".
+  if (normalizeKanbanCallStatus(callStatus) !== "Perskambinti") return "none";
   const d = typeof nextActionDate === "string" ? nextActionDate.trim() : "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "none";
   const today = vilniusTodayDateString();

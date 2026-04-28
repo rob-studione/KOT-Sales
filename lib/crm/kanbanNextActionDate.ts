@@ -12,7 +12,6 @@ export function defaultNextActionDateYmdForKanbanColumn(columnRaw: string): stri
     case "Užbaigta":
       return null;
     case "Perskambinti":
-    case "Laukti":
       return nextWorkingDayAfterTodayVilnius(today);
     case "Siųsti laišką":
     case "Siųsti komercinį":
@@ -26,7 +25,6 @@ export function defaultNextActionDateYmdForKanbanColumn(columnRaw: string): stri
 /** Stulpeliai, kuriuose Kanban kortelėje rodoma follow-up data. */
 export const KANBAN_COLUMNS_SHOW_FOLLOW_UP_DATE = [
   "Perskambinti",
-  "Laukti",
   "Skubus veiksmas",
   "Siųsti laišką",
   "Siųsti komercinį",
@@ -42,7 +40,6 @@ export function kanbanColumnShowsDateFieldInModal(columnRaw: string): boolean {
   const s = normalizeKanbanCallStatus(columnRaw);
   return (
     s === "Perskambinti" ||
-    s === "Laukti" ||
     s === "Skubus veiksmas" ||
     s === "Siųsti laišką" ||
     s === "Siųsti komercinį"
@@ -73,7 +70,7 @@ export function resolveNextActionDateForKanbanStatus(opts: {
     return { iso: null, error: null };
   }
 
-  if (col === "Laukti" || col === "Perskambinti") {
+  if (col === "Perskambinti") {
     if (!parsed) {
       return {
         iso: null,

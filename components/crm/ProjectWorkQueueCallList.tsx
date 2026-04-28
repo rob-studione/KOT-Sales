@@ -347,8 +347,6 @@ function WorkItemCard({
           return "Išsiųstas laiškas";
         case "Perskambinti":
           return "Neperskambino";
-        case "Laukti":
-          return "Laukti";
         case "Užbaigta":
           return item.source_type === "procurement_contract"
             ? projectResultStatusLabel(item.result_status)

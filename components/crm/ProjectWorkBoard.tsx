@@ -119,14 +119,13 @@ function KanbanCard({
 
   const col = normalizeKanbanCallStatus(columnKey);
   const waitHint = waitColumnHighlightState(item.call_status, item.next_action_date);
-  const isLauktiColumn = col === "Laukti";
   const isDoneColumn = col === "Užbaigta";
   const isUrgentColumn = col === "Skubus veiksmas";
 
   const waitRing =
-    isLauktiColumn && waitHint === "overdue"
+    col === "Perskambinti" && waitHint === "overdue"
       ? "border-amber-400/90 ring-1 ring-amber-300/60"
-      : isLauktiColumn && waitHint === "today"
+      : col === "Perskambinti" && waitHint === "today"
         ? "border-amber-300/80 ring-1 ring-amber-200/50"
         : "";
 
@@ -230,24 +229,24 @@ function KanbanCard({
                         .then(() => setCopyHint("invoice"));
                     }}
                   >
-                    <div className="flex min-w-0 items-start gap-1 tabular-nums">
+                    <div className="flex min-w-0 items-start gap-1 overflow-hidden tabular-nums">
                       <FileText
                         className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400"
                         strokeWidth={1.5}
                         aria-hidden
                       />
-                      <span className="min-w-0">{invBlock.mainText}</span>
+                      <span className="min-w-0 truncate whitespace-nowrap text-ellipsis">{invBlock.mainText}</span>
                     </div>
                     <KanbanCopyFeedbackBadge show={copyHint === "invoice"} />
                   </div>
                 ) : (
-                  <div className="flex min-w-0 items-start gap-1 tabular-nums">
+                  <div className="flex min-w-0 items-start gap-1 overflow-hidden tabular-nums">
                     <FileText
                       className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400"
                       strokeWidth={1.5}
                       aria-hidden
                     />
-                    <span className="min-w-0">{invBlock.mainText}</span>
+                    <span className="min-w-0 truncate whitespace-nowrap text-ellipsis">{invBlock.mainText}</span>
                   </div>
                 )}
                 {invBlock.phone != null ? (
@@ -263,20 +262,20 @@ function KanbanCard({
                       void navigator.clipboard.writeText(copy).then(() => setCopyHint("phone"));
                     }}
                   >
-                    <div className="flex min-w-0 items-start gap-1 tabular-nums break-all">
+                    <div className="flex min-w-0 items-start gap-1 overflow-hidden tabular-nums">
                       <Phone
                         className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400"
                         strokeWidth={1.5}
                         aria-hidden
                       />
-                      <span className="min-w-0">{invBlock.phone.display}</span>
+                      <span className="min-w-0 truncate whitespace-nowrap text-ellipsis">{invBlock.phone.display}</span>
                     </div>
                     <KanbanCopyFeedbackBadge show={copyHint === "phone"} />
                   </div>
                 ) : null}
                 {invBlock.email != null ? (
                   <div
-                    className="relative w-full min-w-0 cursor-pointer overflow-visible break-all text-zinc-500 hover:text-zinc-600"
+                    className="relative w-full min-w-0 cursor-pointer overflow-visible text-zinc-500 hover:text-zinc-600"
                     title="Kopijuoti"
                     role="button"
                     onClick={(e) => {
@@ -287,13 +286,13 @@ function KanbanCard({
                       void navigator.clipboard.writeText(copy).then(() => setCopyHint("email"));
                     }}
                   >
-                    <div className="flex min-w-0 items-start gap-1">
+                    <div className="flex min-w-0 items-start gap-1 overflow-hidden">
                       <Mail
                         className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400"
                         strokeWidth={1.5}
                         aria-hidden
                       />
-                      <span className="min-w-0 break-all">{invBlock.email.display}</span>
+                      <span className="min-w-0 truncate whitespace-nowrap text-ellipsis">{invBlock.email.display}</span>
                     </div>
                     <KanbanCopyFeedbackBadge show={copyHint === "email"} />
                   </div>
@@ -319,20 +318,20 @@ function CardDragPreview({ item, priority }: { item: ProjectWorkItemDto; priorit
           <div className="tabular-nums text-zinc-500">{b.mainText}</div>
         ) : (
           <>
-            <div className="flex min-w-0 items-start gap-1 tabular-nums text-zinc-500">
+            <div className="flex min-w-0 items-start gap-1 overflow-hidden tabular-nums text-zinc-500">
               <FileText className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400" strokeWidth={1.5} aria-hidden />
-              <span className="min-w-0">{b.mainText}</span>
+              <span className="min-w-0 truncate whitespace-nowrap text-ellipsis">{b.mainText}</span>
             </div>
             {b.phone != null ? (
-              <div className="flex min-w-0 items-start gap-1 tabular-nums break-all text-zinc-500">
+              <div className="flex min-w-0 items-start gap-1 overflow-hidden tabular-nums text-zinc-500">
                 <Phone className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400" strokeWidth={1.5} aria-hidden />
-                <span className="min-w-0">{b.phone.display}</span>
+                <span className="min-w-0 truncate whitespace-nowrap text-ellipsis">{b.phone.display}</span>
               </div>
             ) : null}
             {b.email != null ? (
-              <div className="flex min-w-0 items-start gap-1 break-all text-zinc-500">
+              <div className="flex min-w-0 items-start gap-1 overflow-hidden text-zinc-500">
                 <Mail className="mt-0.5 h-3 w-3 shrink-0 text-zinc-400" strokeWidth={1.5} aria-hidden />
-                <span className="min-w-0 break-all">{b.email.display}</span>
+                <span className="min-w-0 truncate whitespace-nowrap text-ellipsis">{b.email.display}</span>
               </div>
             ) : null}
           </>
@@ -387,7 +386,7 @@ export function ProjectWorkBoard({
   }, [boardItems, boardVariant, columnKeys, activitiesByWorkItemId]);
 
   const lauktiAttention = useMemo(() => {
-    const list = buckets.get("Laukti") ?? [];
+    const list = buckets.get("Perskambinti") ?? [];
     let today = 0;
     let overdue = 0;
     for (const it of list) {
@@ -475,7 +474,7 @@ export function ProjectWorkBoard({
       >
         <div
           className={`grid min-w-0 grid-cols-1 gap-3 pb-4 ${
-            boardVariant === "procurement" ? "xl:grid-cols-5" : "xl:grid-cols-7"
+            boardVariant === "procurement" ? "xl:grid-cols-4" : "xl:grid-cols-6"
           }`}
         >
           {columnKeys.map((colKey) => {
