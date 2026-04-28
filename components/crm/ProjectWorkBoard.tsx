@@ -120,20 +120,8 @@ function KanbanCard({
   const col = normalizeKanbanCallStatus(columnKey);
   const waitHint = waitColumnHighlightState(item.call_status, item.next_action_date);
   const isDoneColumn = col === "Užbaigta";
-  const isUrgentColumn = col === "Skubus veiksmas";
-
-  const waitRing =
-    col === "Perskambinti" && waitHint === "overdue"
-      ? "border-amber-400/90 ring-1 ring-amber-300/60"
-      : col === "Perskambinti" && waitHint === "today"
-        ? "border-amber-300/80 ring-1 ring-amber-200/50"
-        : "";
-
-  const cardSurface = isUrgentColumn
-    ? "border-zinc-200 bg-white shadow-sm border-l-[3px] border-l-rose-400/85"
-    : isDoneColumn
-      ? "border-zinc-200/80 bg-zinc-50/90 opacity-95 shadow-none"
-      : "border-zinc-200 bg-white shadow-sm";
+  // Keep status colors on columns only (no card outlines/borders).
+  const waitEmphasis = col === "Perskambinti" && (waitHint === "today" || waitHint === "overdue");
 
   const followColLabel =
     boardVariant === "procurement" ? procurementKanbanColumnTitle(col) : callStatusOptionLabel(col);
@@ -154,9 +142,9 @@ function KanbanCard({
     <div
       ref={setNodeRef}
       style={style}
-      className={`rounded-lg border transition-shadow ${cardSurface} ${
-        isDragging ? "opacity-40 shadow-md" : isDoneColumn ? "hover:border-zinc-300" : "hover:border-zinc-300 hover:shadow"
-      } ${waitRing}`}
+      className={`rounded-lg bg-white shadow-sm transition-shadow ${
+        isDragging ? "opacity-40 shadow-md" : "hover:shadow"
+      } ${waitEmphasis ? "shadow" : ""}`}
     >
       <div className="flex gap-1 p-1.5">
         <button
@@ -309,7 +297,7 @@ function KanbanCard({
 function CardDragPreview({ item, priority }: { item: ProjectWorkItemDto; priority: CallListPriority }) {
   const b = kanbanCardInvoiceBlockText(item);
   return (
-    <div className="max-w-[min(260px,85vw)] min-w-0 rounded-lg border border-zinc-300 bg-white p-2 shadow-lg">
+    <div className="max-w-[min(260px,85vw)] min-w-0 rounded-lg bg-white p-2 shadow-lg">
       <div className="text-xs font-medium text-zinc-600">{callListPriorityLabel(priority)}</div>
       <div className="mt-0.5 text-sm font-semibold text-zinc-900">{item.client_name_snapshot}</div>
       <div className="space-y-0.5 text-xs text-zinc-600">
@@ -448,7 +436,7 @@ export function ProjectWorkBoard({
       ) : null}
       {lauktiAttention.today > 0 || lauktiAttention.overdue > 0 ? (
         <div
-          className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-2 text-sm font-medium text-amber-950"
+          className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-1.5 text-sm font-medium text-amber-950"
           role="status"
         >
           {lauktiAttention.today > 0 ? (

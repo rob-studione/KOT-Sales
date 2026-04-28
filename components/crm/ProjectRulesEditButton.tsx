@@ -8,6 +8,9 @@ import { updateAutomaticProjectRulesAction } from "@/lib/crm/projectActions";
 export function ProjectRulesEditButton({
   projectId,
   initial,
+  children,
+  triggerClassName,
+  triggerAriaLabel,
 }: {
   projectId: string;
   initial: {
@@ -17,6 +20,9 @@ export function ProjectRulesEditButton({
     inactivityDays: number;
     sortOption: ProjectSortOption;
   };
+  children?: React.ReactNode;
+  triggerClassName?: string;
+  triggerAriaLabel?: string;
 }) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -27,13 +33,17 @@ export function ProjectRulesEditButton({
     <>
       <button
         type="button"
-        className="cursor-pointer rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+        aria-label={triggerAriaLabel ?? "Redaguoti taisykles"}
+        className={
+          triggerClassName ??
+          "cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 hover:text-zinc-800"
+        }
         onClick={() => {
           setError(null);
           dialogRef.current?.showModal();
         }}
       >
-        Redaguoti taisykles
+        {children ?? "Redaguoti taisykles"}
       </button>
 
       <dialog ref={dialogRef} className="w-full max-w-xl rounded-xl p-0 backdrop:bg-black/30">
