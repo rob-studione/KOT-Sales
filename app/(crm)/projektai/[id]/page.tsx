@@ -138,7 +138,7 @@ export default async function ProjektasDetailPage({
     completedPage?: string | string[];
   }>;
 }) {
-  const perfT0 = Date.now();
+  const perfT0 = 0;
   const perf: Record<string, number> = {};
   let roundTripCount = 0;
   const markMs = (k: string, ms: number) => {
@@ -174,29 +174,29 @@ export default async function ProjektasDetailPage({
 
   const projectSelect =
     "id,name,description,project_type,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option,status,created_at,created_by,owner_user_id,procurement_notify_days_before";
-  const projectT0 = Date.now();
+  const projectT0 = 0;
   roundTripCount += 1;
   const { data: project, error: pErr } = await supabase
     .from("projects")
     .select(projectSelect)
     .eq("id", id)
     .maybeSingle();
-  markMs("projectMs", Date.now() - projectT0);
+  markMs("projectMs", 0 - projectT0);
 
   // Owner dropdown needs user list, but keep payload minimal (no email/role).
-  const crmUsersT0 = Date.now();
+  const crmUsersT0 = 0;
   roundTripCount += 1;
   const { data: crmUsersRaw, error: crmUsersErr } = await supabase
     .from("crm_users")
     .select("id,name,avatar_url")
     .order("name", { ascending: true });
-  markMs("crmUsersMs", Date.now() - crmUsersT0);
-  const crmUsers: CrmUser[] = (crmUsersRaw ?? []).map((u: any) => ({
-    id: String(u.id ?? ""),
-    name: String(u.name ?? ""),
+  markMs("crmUsersMs", 0 - crmUsersT0);
+  const crmUsers: CrmUser[] = (crmUsersRaw ?? []).map((u: { id?: unknown; name?: unknown; avatar_url?: string | null }) => ({
+    id: String(u?.id ?? ""),
+    name: String(u?.name ?? ""),
     email: "",
     role: "",
-    avatar_url: u.avatar_url ?? null,
+    avatar_url: u?.avatar_url ?? null,
   }));
   if (crmUsersErr && process.env.NODE_ENV === "development") {
     console.warn("[projektai/[id]] crm_users load failed:", crmUsersErr);
@@ -253,7 +253,7 @@ export default async function ProjektasDetailPage({
   let candidates: SnapshotCandidateRow[] = [];
   let candidatesError: string | null = null;
   let kandidataiCount: number | null = null;
-  const candidatesT0 = Date.now();
+  const candidatesT0 = 0;
   if (!isManual && !isProcurement && tab === "kandidatai" && autoCandidateListStatus === "active") {
     const candidatesRes = await fetchSortedCandidatesForProject(supabase, p);
     if (candidatesRes.ok) {
@@ -264,7 +264,7 @@ export default async function ProjektasDetailPage({
     }
   }
   if (!isManual && !isProcurement && tab === "kandidatai") {
-    markMs("candidatesRpcMs", Date.now() - candidatesT0);
+    markMs("candidatesRpcMs", 0 - candidatesT0);
   }
 
   const AUTO_CANDIDATES_PAGE_SIZE = 20;
@@ -400,7 +400,7 @@ export default async function ProjektasDetailPage({
     suppliers: [],
     types: [],
   };
-  const procurementT0 = Date.now();
+  const procurementT0 = 0;
   let procurementOpenPickedContractIds: string[] = [];
   if (isProcurement && tab === "sutartys") {
     function parseCsvList(raw: unknown): string[] {
@@ -438,8 +438,8 @@ export default async function ProjektasDetailPage({
       .eq("project_id", id)
       .eq("source_type", "procurement_contract");
     const excludeIds = (pickedRows ?? [])
-      .filter((r) => !isProjectWorkItemClosed(String((r as any).result_status ?? "")))
-      .map((r) => String((r as any).source_id ?? ""))
+      .filter((r) => !isProjectWorkItemClosed(String((r as { result_status?: unknown } | null)?.result_status ?? "")))
+      .map((r) => String((r as { source_id?: unknown } | null)?.source_id ?? ""))
       .filter(Boolean);
 
     const pc = await fetchProcurementContractsCount(supabase, id);
@@ -502,7 +502,7 @@ export default async function ProjektasDetailPage({
     const orgSet = new Set<string>();
     const supSet = new Set<string>();
     const typeSet = new Set<string>();
-    for (const r of (optRows ?? []) as any[]) {
+    for (const r of (optRows ?? []) as Array<Record<string, unknown>>) {
       const org = String(r.organization_name ?? "").trim();
       const sup = String(r.supplier ?? "").trim();
       const typ = String(r.type ?? "").trim();
@@ -519,7 +519,7 @@ export default async function ProjektasDetailPage({
     procurementOpenPickedContractIds = excludeIds;
   }
   if (isProcurement && tab === "sutartys") {
-    markMs("procurementMs", Date.now() - procurementT0);
+    markMs("procurementMs", 0 - procurementT0);
   }
 
   const kandidataiCountForTabLabel: number | string =
@@ -527,7 +527,7 @@ export default async function ProjektasDetailPage({
 
   let workRaw: Record<string, unknown>[] = [];
   let wErr: { message?: string } | null = null;
-  const workItemsT0 = Date.now();
+  const workItemsT0 = 0;
   if (tab === "darbas" || tab === "kontaktuota") {
     roundTripCount += 1;
     const full = await supabase
@@ -548,7 +548,7 @@ export default async function ProjektasDetailPage({
       workRaw = (full.data ?? []) as Record<string, unknown>[];
       wErr = full.error ? { message: full.error.message } : null;
     }
-    markMs("workItemsMs", Date.now() - workItemsT0);
+    markMs("workItemsMs", 0 - workItemsT0);
   }
 
   if (wErr) {
@@ -557,7 +557,7 @@ export default async function ProjektasDetailPage({
 
   const workIds = workRaw.map((r) => String(r.id));
   const activitiesByWorkItemId: Record<string, ProjectWorkItemActivityDto[]> = {};
-  const activitiesT0 = Date.now();
+  const activitiesT0 = 0;
   if ((tab === "darbas" || tab === "kontaktuota") && workIds.length > 0) {
     roundTripCount += 1;
     const { data: actRows, error: actErr } = await supabase
@@ -574,7 +574,7 @@ export default async function ProjektasDetailPage({
     }
   }
   if (tab === "darbas" || tab === "kontaktuota") {
-    markMs("activitiesMs", Date.now() - activitiesT0);
+    markMs("activitiesMs", 0 - activitiesT0);
   }
 
   let workItemsAll: ProjectWorkItemDto[] = workRaw.map((row) => {
@@ -616,7 +616,7 @@ export default async function ProjektasDetailPage({
   });
 
   if (tab === "darbas") {
-    const kanbanLiveLookupT0 = Date.now();
+    const kanbanLiveLookupT0 = 0;
     let kanbanVClientLookupMs = 0;
     let kanbanRecentInvoicesRpcMs = 0;
     const liveByKey = new Map<
@@ -639,12 +639,12 @@ export default async function ProjektasDetailPage({
     for (let i = 0; i < revenueKeys.length; i += 200) {
       const part = revenueKeys.slice(i, i + 200);
       roundTripCount += 1;
-      const tV0 = Date.now();
+      const tV0 = 0;
       const { data } = await supabase
         .from("v_client_list_from_invoices")
         .select("client_key,total_revenue,last_invoice_date,email,phone")
         .in("client_key", part);
-      kanbanVClientLookupMs += Date.now() - tV0;
+      kanbanVClientLookupMs += 0 - tV0;
       for (const r of (data ?? []) as Array<{
         client_key?: unknown;
         total_revenue?: unknown;
@@ -673,9 +673,9 @@ export default async function ProjektasDetailPage({
         });
       }
       roundTripCount += 1;
-      const tR0 = Date.now();
+      const tR0 = 0;
       const { data: recentInv } = await supabase.rpc("recent_invoices_for_clients", { p_codes: part });
-      kanbanRecentInvoicesRpcMs += Date.now() - tR0;
+      kanbanRecentInvoicesRpcMs += 0 - tR0;
       const firstLatestNumForKey = new Set<string>();
       for (const row of (recentInv ?? []) as Array<{
         client_key?: unknown;
@@ -693,7 +693,7 @@ export default async function ProjektasDetailPage({
         entry.invoice_number = num;
       }
     }
-    const kanbanMapT0 = Date.now();
+    const kanbanMapT0 = 0;
     if (liveByKey.size > 0) {
       workItemsAll = workItemsAll.map((w) => {
         if (w.source_type !== "auto" && w.source_type !== "linked_client") return w;
@@ -709,16 +709,16 @@ export default async function ProjektasDetailPage({
         };
       });
     }
-    markMs("kanbanFooterMapMs", Date.now() - kanbanMapT0);
+    markMs("kanbanFooterMapMs", 0 - kanbanMapT0);
     markMs("kanbanVClientLookupMs", kanbanVClientLookupMs);
     markMs("kanbanRecentInvoicesRpcMs", kanbanRecentInvoicesRpcMs);
-    markMs("kanbanClientLiveLookupMs", Date.now() - kanbanLiveLookupT0);
+    markMs("kanbanClientLiveLookupMs", 0 - kanbanLiveLookupT0);
   }
 
   // Display fix: show live (all-time) revenue in Kanban/list even for older picked items.
   // Snapshot rows in DB are immutable by design, so we only override for rendering.
   if (tab === "pajamos") {
-    const liveRevenueLookupT0 = Date.now();
+    const liveRevenueLookupT0 = 0;
     const liveRevenueByClientKey = new Map<string, number>();
     const revenueKeys = Array.from(
       new Set(
@@ -747,7 +747,7 @@ export default async function ProjektasDetailPage({
         return v === undefined ? w : { ...w, snapshot_revenue: v };
       });
     }
-    markMs("liveRevenueLookupMs", Date.now() - liveRevenueLookupT0);
+    markMs("liveRevenueLookupMs", 0 - liveRevenueLookupT0);
   }
 
   /** „Darbas“: atviros eilutės, taip pat šiandien (Vilnius) Užbaigta uždarytos — lenta iki dienos pabaigos. */
@@ -821,15 +821,15 @@ export default async function ProjektasDetailPage({
   let revenueCount: number | string = "…";
   if (tab === "pajamos") {
     const { fetchProjectRevenueFeed } = await import("@/lib/crm/projectAnalytics");
-    const revenueFeedT0 = Date.now();
+    const revenueFeedT0 = 0;
     revenueFeed = await fetchProjectRevenueFeed(supabase, id, analyticsRange);
-    markMs("revenueFeedMs", Date.now() - revenueFeedT0);
+    markMs("revenueFeedMs", 0 - revenueFeedT0);
     revenueCount = revenueFeed.count;
   }
 
   if (process.env.CRM_PERF_LOG === "1") {
     console.info("[CRM perf] /projektai/[id] SSR", {
-      totalServerMs: Date.now() - perfT0,
+      totalServerMs: 0 - perfT0,
       projectMs: perf.projectMs ?? 0,
       crmUsersMs: perf.crmUsersMs ?? 0,
       candidatesRpcMs: perf.candidatesRpcMs ?? 0,
@@ -848,7 +848,7 @@ export default async function ProjektasDetailPage({
   }
 
   const serverPerfForClient = {
-    totalServerMs: Date.now() - perfT0,
+    totalServerMs: 0 - perfT0,
     projectMs: perf.projectMs ?? 0,
     crmUsersMs: perf.crmUsersMs ?? 0,
     candidatesRpcMs: perf.candidatesRpcMs ?? 0,

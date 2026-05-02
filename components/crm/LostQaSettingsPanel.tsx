@@ -36,6 +36,7 @@ export function LostQaSettingsPanel(props: { initial: LostQaControlSettings; sta
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCostDraft(costLimitToDraft(settings.cost_limit_eur));
   }, [settings.cost_limit_eur]);
 

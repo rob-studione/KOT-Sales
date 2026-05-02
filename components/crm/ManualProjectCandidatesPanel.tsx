@@ -232,8 +232,7 @@ export function ManualProjectCandidatesPanel({
     const lower = new Map(headers.map((h) => [h.toLowerCase(), h] as const));
     const guess = (keys: string[]) => keys.map((k) => lower.get(k)).find(Boolean) ?? "";
     setMapping((m) => {
-      let companyNameColumn =
-        guess(["company_name", "pavadinimas", "imone", "įmonė", "imonė"]) || m.companyNameColumn;
+      const companyNameColumn = guess(["company_name", "pavadinimas", "imone", "įmonė", "imonė"]) || m.companyNameColumn;
       let companyCodeColumn =
         guess(["company_code", "kodas", "įm. kodas", "imones_kodas", "imones kodas"]) || m.companyCodeColumn;
       let annualRevenueColumn =

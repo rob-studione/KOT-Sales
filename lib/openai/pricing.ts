@@ -48,9 +48,9 @@ export function estimateOpenAiCostEur(params: { model: string; usage?: OpenAiUsa
   const model = String(params.model ?? "").trim();
   const usage = params.usage ?? null;
 
-  let input_tokens = num(usage?.input_tokens, 0);
+  const input_tokens = num(usage?.input_tokens, 0);
   let output_tokens = num(usage?.output_tokens, 0);
-  let total_tokens = num(usage?.total_tokens, input_tokens + output_tokens);
+  const total_tokens = num(usage?.total_tokens, input_tokens + output_tokens);
 
   // Some SDK shapes may omit detailed splits; fall back to attributing all tokens as output if needed.
   if (input_tokens === 0 && output_tokens === 0 && total_tokens > 0) {

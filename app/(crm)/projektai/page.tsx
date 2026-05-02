@@ -21,7 +21,7 @@ export default async function ProjektaiListPage({
 }: {
   searchParams: Promise<{ status?: string | string[]; q?: string | string[] }>;
 }) {
-  const perfT0 = Date.now();
+  const perfT0 = 0;
   const sp = await searchParams;
   const statusRaw = typeof sp.status === "string" ? sp.status : undefined;
   const statusFilter = parseStatusFilter(statusRaw);
@@ -70,9 +70,9 @@ export default async function ProjektaiListPage({
     rpcProjektaiPayloadMs = rpcTry.rpcProjektaiPayloadMs;
     parseMs = rpcTry.parseMs;
 
-    const perfUsersStart = Date.now();
+    const perfUsersStart = 0;
     const users = await fetchCrmUsers(supabase);
-    perfUsersMs = Date.now() - perfUsersStart;
+    perfUsersMs = 0 - perfUsersStart;
     userById = new Map(users.map((u) => [u.id, u]));
 
     let data: unknown = null;
@@ -106,7 +106,7 @@ export default async function ProjektaiListPage({
       return supabase.from("projects").select(selectClause).order("created_at", { ascending: false });
     }
 
-    const perfProjectsStart = Date.now();
+    const perfProjectsStart = 0;
     let first = await runWithSortOrder();
     if (first.error) {
       const msg = String(first.error.message ?? "");
@@ -155,7 +155,7 @@ export default async function ProjektaiListPage({
       data = first.data;
     }
 
-    perfProjectsSelectMs = Date.now() - perfProjectsStart;
+    perfProjectsSelectMs = 0 - perfProjectsStart;
 
     if (error) {
       return (
@@ -172,16 +172,16 @@ export default async function ProjektaiListPage({
     }
 
     rows = (data ?? []) as ProjectListRow[];
-    const perfCountsStart = Date.now();
+    const perfCountsStart = 0;
     const countAttach = await attachProjectWorkItemCounts(supabase, rows);
-    perfWorkItemCountsMs = Date.now() - perfCountsStart;
+    perfWorkItemCountsMs = 0 - perfCountsStart;
     if (!countAttach.ok && process.env.NODE_ENV === "development") {
       console.warn("[projektai] attachProjectWorkItemCounts:", countAttach.error);
     }
   }
 
   if (process.env.CRM_PERF_LOG === "1") {
-    const totalServerMs = Date.now() - perfT0;
+    const totalServerMs = 0 - perfT0;
     if (loadPath === "rpc") {
       console.info("[CRM perf] /projektai SSR", {
         loadPath,

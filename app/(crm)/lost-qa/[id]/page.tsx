@@ -96,8 +96,9 @@ function asStringArray(v: unknown): string[] {
 
 function extractSummaryLt(a: AnalysisRow | null): string[] {
   if (!a) return [];
-  const aj = (a.analysis_json ?? null) as any;
-  const arr = asStringArray(aj?.summary_lt);
+  const aj = a.analysis_json as unknown;
+  const ajRec = aj && typeof aj === "object" ? (aj as Record<string, unknown>) : null;
+  const arr = asStringArray(ajRec?.summary_lt);
   if (arr.length) return arr;
   return [];
 }
@@ -109,7 +110,7 @@ function extractKeyMoments(a: AnalysisRow | null): Array<{ type: "client" | "age
   const out: Array<{ type: "client" | "agent"; text: string }> = [];
   for (const it of raw) {
     if (!it || typeof it !== "object") continue;
-    const o = it as any;
+    const o = it as Record<string, unknown>;
     const type = o.type === "client" || o.type === "agent" ? o.type : null;
     const text = typeof o.text === "string" ? o.text.trim() : "";
     if (!type || !text) continue;
@@ -120,8 +121,9 @@ function extractKeyMoments(a: AnalysisRow | null): Array<{ type: "client" | "age
 
 function extractWhatToDoBetter(a: AnalysisRow | null): string[] {
   if (!a) return [];
-  const aj = (a.analysis_json ?? null) as any;
-  const raw = String(a.what_to_do_better_lt ?? aj?.what_to_do_better_lt ?? "").trim();
+  const aj = a.analysis_json as unknown;
+  const ajRec = aj && typeof aj === "object" ? (aj as Record<string, unknown>) : null;
+  const raw = String(a.what_to_do_better_lt ?? ajRec?.what_to_do_better_lt ?? "").trim();
   if (!raw) return [];
 
   const newlineSplit = raw

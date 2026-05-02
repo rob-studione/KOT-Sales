@@ -12,12 +12,10 @@ export function SalesAnalyticsDashboardView({
   monthCallsTrend: Array<{ date: string; calls: number }>;
   monthRange: { from: string; to: string };
 }) {
-  const { kpi, warnings, bestCallTimes, directInvoices, influencedInvoices } = data;
+  const { kpi, warnings, bestCallTimes, coldInvoices, returningInvoices } = data;
 
-  const directDisplay = kpi.directRevenueEur === 0 ? "—" : formatMoney(kpi.directRevenueEur);
-  const influencedDisplay = kpi.influencedRevenueEur === 0 ? "—" : formatMoney(kpi.influencedRevenueEur);
-  const avgDisplay =
-    kpi.avgEurPerCall === null || kpi.avgEurPerCall === 0 ? "—" : formatMoney(kpi.avgEurPerCall);
+  const coldDisplay = kpi.coldRevenueEur === 0 ? "—" : formatMoney(kpi.coldRevenueEur);
+  const returningDisplay = kpi.returningRevenueEur === 0 ? "—" : formatMoney(kpi.returningRevenueEur);
   const conversionDisplay =
     kpi.conversionPercent === null ? "—" : `${kpi.conversionPercent}%`;
 
@@ -62,33 +60,27 @@ export function SalesAnalyticsDashboardView({
           PVM sąskaitos pagal <span className="font-medium text-zinc-700">invoice_date</span> fiksuotame pardavimų lange: jei viršuje pasirinkta{" "}
           <span className="font-medium text-zinc-700">Pasirinkti laikotarpį</span> — naudojamos tos pačios <span className="font-medium text-zinc-700">nuo / iki</span>{" "}
           datos; kitu atveju — <span className="font-medium text-zinc-700">paskutinės 30 kalendorinių dienų</span> iki šiandien (Vilnius). Sąskaita
-          įtraukiama, jei sąskaitos data vėlesnė nei pirmas skambutis tame lange; direct / influenced skirstoma pagal naujausią veiklos būseną tame
-          lange.
+          įtraukiama, jei su tuo klientu buvo atliktas relevant veiksmas (call/email/meeting) per <span className="font-medium text-zinc-700">365 d.</span> iki sąskaitos datos.
+          Cold / Returning skirstoma pagal visą kliento sąskaitų istoriją iki sąskaitos datos.
         </p>
         <div className="mt-4 space-y-3">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <KpiCard label="Direct pajamos (€, KPI langas)" value={directDisplay} />
-            <KpiCard label="Influenced pajamos (€, KPI langas)" value={influencedDisplay} />
-            <KpiCard
-              label="Vid. € / skambutį (KPI langas)"
-              value={avgDisplay}
-              sub="direct pajamos / skambučių sk. tame pačiame KPI lange"
-            />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <KpiCard label="Cold pajamos (€, KPI langas)" value={coldDisplay} />
+            <KpiCard label="Returning pajamos (€, KPI langas)" value={returningDisplay} />
           </div>
 
-          {directInvoices.length > 0 || influencedInvoices.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {directInvoices.length > 0 ? (
-                <InvoicesBreakdownTable className="sm:col-start-1" rows={directInvoices} title="Pajamų detalės" />
+          {coldInvoices.length > 0 || returningInvoices.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {coldInvoices.length > 0 ? (
+                <InvoicesBreakdownTable className="sm:col-start-1" rows={coldInvoices} title="Cold sąskaitos" />
               ) : null}
-              {influencedInvoices.length > 0 ? (
+              {returningInvoices.length > 0 ? (
                 <InvoicesBreakdownTable
                   className="sm:col-start-2"
-                  rows={influencedInvoices}
-                  title="Influenced breakdown"
+                  rows={returningInvoices}
+                  title="Returning sąskaitos"
                 />
               ) : null}
-              {/* 3 stulpelis (Avg €): niekada nieko nerodom */}
             </div>
           ) : null}
         </div>

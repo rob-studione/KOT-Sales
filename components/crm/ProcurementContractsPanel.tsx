@@ -265,7 +265,7 @@ export function ProcurementContractsPanel({
 
     const windowSize = 5;
     let start = Math.max(0, cur - Math.floor(windowSize / 2));
-    let end = Math.min(total - 1, start + windowSize - 1);
+    const end = Math.min(total - 1, start + windowSize - 1);
     start = Math.max(0, end - windowSize + 1);
 
     const pages: number[] = [];

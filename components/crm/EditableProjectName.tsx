@@ -35,8 +35,12 @@ export function EditableProjectName({
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName(initialName);
-    if (!isEditing) setDraft(initialName);
+    if (!isEditing) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDraft(initialName);
+    }
   }, [initialName, isEditing]);
 
   useEffect(() => {

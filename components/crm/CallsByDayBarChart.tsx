@@ -157,14 +157,14 @@ export function CallsByDayBarChart({
 
   const gridTicks = 4;
 
-  const xCenters = useMemo(() => {
+  const xCenters: number[] = (() => {
     const list: number[] = [];
     for (let i = 0; i < n; i += 1) {
       const xLeft = startX + i * (barW + gap);
       list.push(xLeft + barW / 2);
     }
     return list;
-  }, [n, startX, barW, gap]);
+  })();
 
   function xAt(i: number): number {
     return xCenters[i] ?? startX + barW / 2;

@@ -12,6 +12,20 @@ import { clientDetailPath } from "@/lib/crm/clientRouting";
 
 export const dynamic = "force-dynamic";
 
+type InvoiceRow = {
+  invoice_id: string;
+  invoice_date: string | null;
+  created_at: string | null;
+  amount: number | null;
+  company_name: string | null;
+  company_code: string | null;
+  client_id: string | null;
+  invoice_search_display?: string | null;
+  series_title?: string | null;
+  series_number?: number | null;
+  invoice_number?: string | null;
+};
+
 export default async function SaskaitosPage({
   searchParams,
 }: {
@@ -88,7 +102,8 @@ export default async function SaskaitosPage({
     rowQuery = rowQuery.or(`company_name.ilike.${pat},company_code.ilike.${pat},invoice_search_display.ilike.${pat}`);
   }
 
-  const { data, error } = await rowQuery.range(from, to);
+  const { data: dataRaw, error } = await rowQuery.range(from, to);
+  const data = (dataRaw ?? []) as InvoiceRow[];
 
   const kpiMissing = Boolean(kpiRes.error);
   const kpis =
@@ -131,7 +146,7 @@ export default async function SaskaitosPage({
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {(data ?? []).map((r: any) => {
+            {data.map((r) => {
               const invNo = displayInvoiceNumberFromRow(r);
               const amount = Number(r.amount ?? 0);
               const date = r.invoice_date ? String(r.invoice_date) : "";

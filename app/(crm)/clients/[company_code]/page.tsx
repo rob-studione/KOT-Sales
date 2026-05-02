@@ -32,7 +32,7 @@ export default async function LegacyClientDetailRedirect({
     .eq("client_key", segment)
     .maybeSingle();
 
-  const clientId = String((data as any)?.client_id ?? "").trim();
+  const clientId = String((data as { client_id?: unknown } | null)?.client_id ?? "").trim();
   if (error || !clientId) redirect("/klientai");
 
   redirect(qp.toString() ? `/klientai/${encodeURIComponent(clientId)}?${qp.toString()}` : `/klientai/${encodeURIComponent(clientId)}`);

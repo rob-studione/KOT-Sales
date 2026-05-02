@@ -19,13 +19,21 @@ import {
   Sliders,
   Target,
   FileSearch,
-  Brain,
   ChevronRight,
+  GitBranch,
+  Mic,
+  Wrench,
 } from "lucide-react";
 
-type SectionId = "analitika" | "klientai" | "projektai" | "nustatymai";
+type SectionId = "analitika" | "klientai" | "projektai" | "irankiai" | "nustatymai";
 
-type NavChild = { href: string; label: string; adminOnly?: boolean; separatorBefore?: boolean };
+type NavChild = {
+  href: string;
+  label: string;
+  adminOnly?: boolean;
+  separatorBefore?: boolean;
+  aiBadge?: boolean;
+};
 
 const analitikaChildren: NavChild[] = [
   { href: "/analitika/kpi", label: "Vadybininkų KPI", adminOnly: true },
@@ -41,6 +49,12 @@ const settingsChildren: NavChild[] = [
   { href: "/nustatymai/bendri", label: "Bendri", adminOnly: true },
   { href: "/nustatymai/paskyros", label: "Paskyros", adminOnly: true },
   { href: "/nustatymai/lost-qa", label: "Lost QA", adminOnly: true },
+  { href: "/nustatymai/podcastai-ai", label: "Podcastai (AI)", adminOnly: true },
+];
+
+const irankiaiChildren: NavChild[] = [
+  { href: "/scenarijai", label: "Scenarijai" },
+  { href: "/irankiai/podcastai", label: "Podcastai", aiBadge: true },
 ];
 
 function settingsIconForHref(href: string): LucideIcon {
@@ -48,6 +62,7 @@ function settingsIconForHref(href: string): LucideIcon {
   if (href === "/nustatymai/bendri") return Sliders;
   if (href === "/nustatymai/kpi") return Target;
   if (href === "/nustatymai/lost-qa") return FileSearch;
+  if (href === "/nustatymai/podcastai-ai") return Mic;
   return Settings;
 }
 
@@ -70,6 +85,7 @@ function SidebarIcon({
 
 function SidebarIconSlot({ icon, active }: { icon: LucideIcon; active: boolean }) {
   const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {
@@ -86,6 +102,8 @@ function iconForHref(href: string): LucideIcon {
   if (href === "/klientai/aktyvus") return CheckCircle;
   if (href === "/klientai/prarasti") return XCircle;
   if (href === "/projektai") return Folder;
+  if (href === "/scenarijai") return GitBranch;
+  if (href === "/irankiai/podcastai") return Mic;
   if (href === "/klientai/saskaitos") return FileText;
   return Settings;
 }
@@ -111,6 +129,8 @@ function projektaiLinkActive(pathname: string, href: string): boolean {
 
 function activeSectionForPath(pathname: string): SectionId | null {
   if (pathname.startsWith("/nustatymai")) return "nustatymai";
+  if (pathname.startsWith("/irankiai")) return "irankiai";
+  if (pathname.startsWith("/scenarijai")) return "irankiai";
   if (pathname.startsWith("/projektai")) return "projektai";
   if (pathname.startsWith("/klientai")) return "klientai";
   if (pathname.startsWith("/analitika")) return "analitika";
@@ -136,6 +156,7 @@ function ProjectSidebarLabel({ text }: { text: string }) {
 
   useLayoutEffect(() => {
     if (isSingleWord) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDisplay(raw);
       return;
     }
@@ -243,8 +264,8 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
               .eq("status", "active")
               .order("created_at", { ascending: false });
             if (retry.error) return;
-            const rows = (retry.data ?? []) as any[];
-            data = rows.filter((r) => !("deleted_at" in r) || r.deleted_at == null);
+            const rows = (retry.data ?? []) as Array<{ id?: unknown; name?: unknown; deleted_at?: unknown }>;
+            data = rows.filter((r) => r.deleted_at == null) as Array<{ id: string; name: string | null }>;
           } else if (missingDeletedAt) {
             const retry = await base
               .select("id,name,status,created_at,sort_order")
@@ -252,19 +273,19 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
               .order("sort_order", { ascending: true, nullsFirst: false })
               .order("created_at", { ascending: false });
             if (retry.error) return;
-            data = (retry.data ?? []) as any;
+            data = (retry.data ?? []) as Array<{ id: string; name: string | null }>;
           } else {
             return;
           }
         } else {
-          const rows = (first.data ?? []) as any[];
-          data = rows.filter((r) => !("deleted_at" in r) || r.deleted_at == null);
+          const rows = (first.data ?? []) as Array<{ id: string; name: string | null; deleted_at?: unknown }>;
+          data = rows.filter((r) => r.deleted_at == null).map((r) => ({ id: r.id, name: r.name ?? null }));
         }
 
         const items = (data ?? [])
           .map((r) => ({
-            id: String((r as any).id ?? ""),
-            name: String((r as any).name ?? "").trim(),
+            id: String(r.id ?? ""),
+            name: String(r.name ?? "").trim(),
           }))
           .filter((p) => Boolean(p.id) && Boolean(p.name));
 
@@ -300,6 +321,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
         { id: "analitika", label: "Analitika", icon: BarChart3, children: filterChildren(analitikaChildren, isAdmin) },
         { id: "klientai", label: "Klientai", icon: Users, children: klientaiChildren },
         { id: "projektai", label: "Projektai", icon: Folder, children: projektaiChildren },
+        { id: "irankiai", label: "Įrankiai", icon: Wrench, children: irankiaiChildren },
         {
           id: "nustatymai",
           label: "Nustatymai",
@@ -317,6 +339,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
   useEffect(() => {
     // Active section (by URL) must always be expanded.
     // If we're on dashboard (no section), keep all sections collapsed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpenSectionId(routeSection ?? null);
   }, [routeSection, sections]);
 
@@ -369,46 +392,72 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                 ].join(" ")}
               >
                 {id === "projektai" ? (
-                  <Link
-                    href="/projektai"
-                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus:outline-none"
-                  >
-                    <SidebarIconSlot icon={SectionIcon} active={routeActive} />
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => toggleSection(id)}
-                    aria-expanded={expanded}
-                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus:outline-none"
-                  >
-                    <SidebarIconSlot icon={SectionIcon} active={routeActive} />
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                  </button>
-                )}
+                  <>
+                    <Link
+                      href="/projektai"
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus:outline-none"
+                    >
+                      <SidebarIconSlot icon={SectionIcon} active={routeActive} />
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
+                    </Link>
 
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleSection(id);
-                  }}
-                  aria-expanded={expanded}
-                  className="shrink-0 rounded-md p-1.5 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/15"
-                >
-                  <ChevronRight
-                    size={16}
-                    strokeWidth={1.75}
-                    className={[
-                      "text-zinc-400 transition-transform",
-                      SUBMENU_MS,
-                      SUBMENU_EASE,
-                      expanded ? "rotate-90" : "rotate-0",
-                    ].join(" ")}
-                    aria-hidden
-                  />
-                </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSection(id);
+                      }}
+                      aria-expanded={expanded}
+                      className="shrink-0 rounded-md p-1.5 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/15"
+                    >
+                      <ChevronRight
+                        size={16}
+                        strokeWidth={1.75}
+                        className={[
+                          "text-zinc-400 transition-transform",
+                          SUBMENU_MS,
+                          SUBMENU_EASE,
+                          expanded ? "rotate-90" : "rotate-0",
+                        ].join(" ")}
+                        aria-hidden
+                      />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(id)}
+                      aria-expanded={expanded}
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus:outline-none"
+                    >
+                      <SidebarIconSlot icon={SectionIcon} active={routeActive} />
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSection(id);
+                      }}
+                      aria-expanded={expanded}
+                      className="shrink-0 rounded-md p-1.5 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/15"
+                    >
+                      <ChevronRight
+                        size={16}
+                        strokeWidth={1.75}
+                        className={[
+                          "text-zinc-400 transition-transform",
+                          SUBMENU_MS,
+                          SUBMENU_EASE,
+                          expanded ? "rotate-90" : "rotate-0",
+                        ].join(" ")}
+                        aria-hidden
+                      />
+                    </button>
+                  </>
+                )}
               </div>
 
               <div
@@ -423,59 +472,66 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                   <ul
                     className={[
                       "flex flex-col gap-0.5 pb-1.5 pt-0.5",
-                      id === "projektai" ? "pl-0" : "pl-1",
+                      id === "projektai" ? "pl-0" : id === "irankiai" ? "pl-3" : "pl-1",
                     ].join(" ")}
                   >
-                    {children.map(({ href, label: childLabel, separatorBefore }) => {
-                      const active =
-                        id === "klientai"
-                          ? klientaiLinkActive(pathname, href)
-                          : id === "projektai"
-                            ? projektaiLinkActive(pathname, href)
-                          : linkActive(pathname, href);
-                      const icon = id === "nustatymai" ? settingsIconForHref(href) : iconForHref(href);
-                      return (
-                        <Fragment key={href}>
-                          {separatorBefore ? (
-                            <li className="list-none px-2.5 py-1" aria-hidden>
-                              <div className="h-px bg-zinc-200/70" />
+                      {children.map(({ href, label: childLabel, separatorBefore, aiBadge }) => {
+                        const active =
+                          id === "klientai"
+                            ? klientaiLinkActive(pathname, href)
+                            : id === "projektai"
+                              ? projektaiLinkActive(pathname, href)
+                              : linkActive(pathname, href);
+                        const icon = id === "nustatymai" ? settingsIconForHref(href) : iconForHref(href);
+                        return (
+                          <Fragment key={href}>
+                            {separatorBefore ? (
+                              <li className="list-none px-2.5 py-1" aria-hidden>
+                                <div className="h-px bg-zinc-200/70" />
+                              </li>
+                            ) : null}
+                            <li>
+                              {id === "projektai" ? (
+                                <Link
+                                  href={href}
+                                  className={`${itemBase} ${active ? itemActive : itemInactive} relative px-2 gap-1.5`}
+                                >
+                                  <span className="relative inline-block h-[18px] w-[18px] shrink-0" aria-hidden>
+                                    <span
+                                      className={[
+                                        "absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full",
+                                        active ? "bg-zinc-400/80" : "bg-zinc-300/70",
+                                      ].join(" ")}
+                                    />
+                                  </span>
+                                  <ProjectSidebarLabel text={childLabel} />
+                                </Link>
+                              ) : (
+                                <Link href={href} className={`${itemBase} ${active ? itemActive : itemInactive}`}>
+                                  {active ? (
+                                    <span
+                                      className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[#7C4A57]"
+                                      aria-hidden
+                                    />
+                                  ) : null}
+                                  <SidebarIconSlot icon={icon} active={active} />
+                                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                    <span className="truncate">{childLabel}</span>
+                                    {aiBadge ? (
+                                      <span
+                                        className="shrink-0 rounded border border-violet-200 bg-violet-50 px-1 py-0 text-[9px] font-semibold uppercase leading-none tracking-wide text-violet-700"
+                                        title="AI"
+                                      >
+                                        AI
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </Link>
+                              )}
                             </li>
-                          ) : null}
-                          <li>
-                            {id === "projektai" ? (
-                              <Link
-                                href={href}
-                                className={`${itemBase} ${active ? itemActive : itemInactive} relative px-2 gap-1.5`}
-                              >
-                                <span className="relative inline-block h-[18px] w-[18px] shrink-0" aria-hidden>
-                                  <span
-                                    className={[
-                                      "absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                                      active ? "bg-zinc-400/80" : "bg-zinc-300/70",
-                                    ].join(" ")}
-                                  />
-                                </span>
-                                <ProjectSidebarLabel text={childLabel} />
-                              </Link>
-                            ) : (
-                              <Link
-                                href={href}
-                                className={`${itemBase} ${active ? itemActive : itemInactive}`}
-                              >
-                                {active ? (
-                                  <span
-                                    className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[#7C4A57]"
-                                    aria-hidden
-                                  />
-                                ) : null}
-                                <SidebarIconSlot icon={icon} active={active} />
-                                <span className="truncate">{childLabel}</span>
-                              </Link>
-                            )}
-                          </li>
-                        </Fragment>
-                      );
-                    })}
+                          </Fragment>
+                        );
+                      })}
                   </ul>
                 </div>
               </div>

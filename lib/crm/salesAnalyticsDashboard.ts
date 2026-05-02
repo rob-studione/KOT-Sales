@@ -40,12 +40,10 @@ export type SalesDashboardKpi = {
   answeredCalls: number;
   /** Įrašai `project_work_item_activities` su `action_type = commercial` (pasirinktame intervale). */
   commercialActions: number;
-  /** PVM sąskaitų direct suma pardavimų KPI lange (žr. `resolveSalesKpiRange`). */
-  directRevenueEur: number;
-  /** PVM sąskaitų influenced suma tame pačiame KPI lange. */
-  influencedRevenueEur: number;
-  /** `directRevenueEur` / skambučių skaičiaus tame pačiame KPI veiklos lange. */
-  avgEurPerCall: number | null;
+  /** PVM sąskaitų cold suma pardavimų KPI lange (žr. `resolveSalesKpiRange`). */
+  coldRevenueEur: number;
+  /** PVM sąskaitų returning suma tame pačiame KPI lange. */
+  returningRevenueEur: number;
   /** Unikalūs klientai su priskirta sąskaita / skambučių skaičius intervale (kaip iki šiol). */
   conversionPercent: number | null;
 };
@@ -80,8 +78,8 @@ export type SalesDashboardData = {
   period: SalesDashboardPeriod;
   kpi: SalesDashboardKpi;
   trend: SalesDashboardTrendDay[];
-  directInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
-  influencedInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
+  coldInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
+  returningInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
   bestCallTimes: BestCallTimesData;
   warnings: string[];
 };
@@ -156,14 +154,13 @@ type RpcV1 = {
     calls: number;
     answeredCalls: number;
     commercialActions: number;
-    directRevenueEur: number;
-    influencedRevenueEur: number;
-    avgEurPerCall: number | null;
+    coldRevenueEur: number;
+    returningRevenueEur: number;
     conversionPercent: number | null;
   };
   trend: Array<{ date: string; calls: number; answered: number; notAnswered: number }>;
-  directInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string; companyName?: string | null }>;
-  influencedInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string; companyName?: string | null }>;
+  coldInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string; companyName?: string | null }>;
+  returningInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string; companyName?: string | null }>;
 };
 
 function asFiniteNumber(v: unknown, fallback = 0): number {
@@ -201,8 +198,8 @@ export async function fetchSalesDashboard(
   const payload = (data ?? {}) as Partial<RpcV1>;
   const k = payload.kpi ?? ({} as RpcV1["kpi"]);
   const trendRaw = Array.isArray(payload.trend) ? payload.trend : [];
-  const directInvoicesRaw = Array.isArray(payload.directInvoices) ? payload.directInvoices : [];
-  const influencedInvoicesRaw = Array.isArray(payload.influencedInvoices) ? payload.influencedInvoices : [];
+  const coldInvoicesRaw = Array.isArray(payload.coldInvoices) ? payload.coldInvoices : [];
+  const returningInvoicesRaw = Array.isArray(payload.returningInvoices) ? payload.returningInvoices : [];
 
   const out: SalesDashboardData = {
     range,
@@ -211,9 +208,8 @@ export async function fetchSalesDashboard(
       calls: asFiniteNumber(k.calls, 0),
       answeredCalls: asFiniteNumber(k.answeredCalls, 0),
       commercialActions: asFiniteNumber(k.commercialActions, 0),
-      directRevenueEur: asFiniteNumber(k.directRevenueEur, 0),
-      influencedRevenueEur: asFiniteNumber(k.influencedRevenueEur, 0),
-      avgEurPerCall: k.avgEurPerCall == null ? null : asFiniteNumber(k.avgEurPerCall, 0),
+      coldRevenueEur: asFiniteNumber(k.coldRevenueEur, 0),
+      returningRevenueEur: asFiniteNumber(k.returningRevenueEur, 0),
       conversionPercent: k.conversionPercent == null ? null : asFiniteNumber(k.conversionPercent, 0),
     },
     trend: trendRaw
@@ -224,7 +220,7 @@ export async function fetchSalesDashboard(
         notAnswered: asFiniteNumber((r as any).notAnswered, 0),
       }))
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date)),
-    directInvoices: directInvoicesRaw
+    coldInvoices: coldInvoicesRaw
       .map((r) => ({
         invoiceNumber: String((r as any).invoiceNumber ?? "").trim(),
         date: String((r as any).date ?? "").slice(0, 10),
@@ -234,7 +230,7 @@ export async function fetchSalesDashboard(
           (r as any).companyName == null ? null : String((r as any).companyName ?? "").trim() || null,
       }))
       .filter((r) => r.invoiceNumber && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.clientKey),
-    influencedInvoices: influencedInvoicesRaw
+    returningInvoices: returningInvoicesRaw
       .map((r) => ({
         invoiceNumber: String((r as any).invoiceNumber ?? "").trim(),
         date: String((r as any).date ?? "").slice(0, 10),

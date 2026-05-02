@@ -18,9 +18,6 @@ type DashboardRow = {
   client_count: number | string | null;
 };
 
-/* Server component: early returns po async užklausų; JSX čia ne „render“ klaidos. */
-/* eslint-disable react-hooks/error-boundaries */
-
 type SortOption = "revenue" | "last_invoice_date";
 type ClientsView = "all" | "active" | "lost";
 type LostSort = "last_invoice_date" | "revenue";
@@ -232,20 +229,7 @@ async function renderAllClients(sp: { [key: string]: string | string[] | undefin
       );
     }
 
-    const rows: ClientListRow[] =
-      (data ?? []).map((r) => ({
-        client_key: String((r as any).client_key ?? ""),
-        company_code: String((r as any).company_code ?? ""),
-        client_id: String((r as any).client_id ?? ""),
-        company_name: String((r as any).company_name ?? ""),
-        vat_code: String((r as any).vat_code ?? ""),
-        address: String((r as any).address ?? ""),
-        email: String((r as any).email ?? ""),
-        phone: String((r as any).phone ?? ""),
-        last_invoice_date: (r as any).last_invoice_date ? String((r as any).last_invoice_date) : null,
-        invoice_count: Number((r as any).invoice_count ?? 0),
-        total_revenue: Number((r as any).total_revenue ?? 0),
-      })) ?? [];
+    const rows = ((data ?? []) as Array<Parameters<typeof mapRawToClientListRow>[0]>).map(mapRawToClientListRow) as unknown as ClientListRow[];
 
     const range = showingRange1Based(pageIndex0, pageSize, totalCount);
     return renderClientsShell({

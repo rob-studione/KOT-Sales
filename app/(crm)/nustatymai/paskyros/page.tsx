@@ -80,23 +80,24 @@ export default async function PaskyrosPage() {
           role: string;
           status: CrmUserStatus;
           phone: string | null;
+          avatar_url: string | null;
         }>,
       };
   const crmById = new Map((crmRows ?? []).map((r) => [r.id, r]));
 
   const rows: Row[] = authUsers.map((u) => {
     const p = crmById.get(u.id);
-    const fn = (p as any)?.first_name ? String((p as any).first_name).trim() : "";
-    const ln = (p as any)?.last_name ? String((p as any).last_name).trim() : "";
+    const fn = p?.first_name?.trim() ?? "";
+    const ln = p?.last_name?.trim() ?? "";
     const full = [fn, ln].filter(Boolean).join(" ").trim();
-    const legacyName = (p as any)?.name ? String((p as any).name).trim() : "";
+    const legacyName = p?.name?.trim() ?? "";
     const name = full || legacyName || "—";
     const email = (p?.email?.trim() ? p.email : (u.email ?? "")).trim() || "—";
     const role = (p?.role?.trim() ? p.role : "sales") as UserRole;
-    const statusRaw = String(((p as any)?.status ?? "active") as string).toLowerCase();
+    const statusRaw = String(p?.status ?? "active").toLowerCase();
     const status = statusRaw === "inactive" ? "Neaktyvi" : "Aktyvi";
-    const phone = (p as any)?.phone == null ? null : String((p as any).phone);
-    const avatar_url = (p as any)?.avatar_url == null ? null : String((p as any).avatar_url);
+    const phone = p?.phone == null ? null : String(p.phone);
+    const avatar_url = p?.avatar_url == null ? null : String(p.avatar_url);
     return {
       id: u.id,
       name,

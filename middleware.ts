@@ -22,6 +22,8 @@ function isProtectedPath(pathname: string): boolean {
     pathname.startsWith("/clients") ||
     pathname.startsWith("/invoices") ||
     pathname.startsWith("/projektai") ||
+    pathname.startsWith("/scenarijai") ||
+    pathname.startsWith("/irankiai") ||
     pathname.startsWith("/nustatymai")
   );
 }
@@ -31,7 +33,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (!isProtectedPath(pathname)) return NextResponse.next();
 
-  let response = NextResponse.next();
+  const response = NextResponse.next();
 
   const supabase = createServerClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
     cookies: {
