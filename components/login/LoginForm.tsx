@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import loginCardStyles from "./login-card.module.css";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 function IconEnvelope({ className }: { className?: string }) {
@@ -57,12 +58,16 @@ export function LoginForm() {
   }
 
   return (
-    <div className="m-auto w-full max-w-[440px] rounded-2xl border border-gray-100 bg-white p-8 shadow-lg">
+    <div
+      className={`m-auto w-full max-w-[440px] rounded-2xl p-8 ${loginCardStyles.loginCard}`}
+    >
       <div className="text-center">
         <div className="mb-8 flex items-center justify-center gap-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/logo.svg" alt="" className="h-10 w-auto" />
-          <span className="text-xl font-semibold text-gray-900">KOT Sales</span>
+          <span className="text-xl font-semibold text-gray-900" suppressHydrationWarning>
+            KoT Sales
+          </span>
         </div>
         <h1 className="mb-8 text-2xl font-semibold leading-snug tracking-tight text-gray-900">
           Prisijungimas prie paskyros

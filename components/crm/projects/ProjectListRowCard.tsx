@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Layers } from "lucide-react";
 import { formatDate } from "@/lib/crm/format";
 import { projectWorkItemCount, type ProjectListRow } from "@/lib/crm/projectListHelpers";
 import { ProjectOwnerCell } from "@/components/crm/ProjectOwnerCell";
@@ -53,8 +54,12 @@ export function ProjectListRowCard({
         >
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-start justify-between gap-3 gap-y-2">
-              <h2 className="min-w-0 text-lg font-semibold tracking-tight text-zinc-900 group-hover:text-zinc-800">
-                {row.name}
+              <h2 className="flex min-w-0 items-center gap-2 text-lg font-semibold tracking-tight text-zinc-900 group-hover:text-zinc-800">
+                <Layers
+                  className="h-4 w-4 shrink-0 text-[#7C4A57] transition-colors group-hover:text-[#693948]"
+                  aria-hidden
+                />
+                <span className="min-w-0 truncate">{row.name}</span>
               </h2>
               <span className="inline-flex shrink-0 items-center gap-2 text-sm text-zinc-600">
                 <span

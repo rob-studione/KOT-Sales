@@ -1,0 +1,151 @@
+.shell {
+  position: relative;
+  overflow: hidden;
+  min-height: 100vh;
+  background-color: #f7f5f4;
+  background-image: url("/auth/login-bg-soft-wave.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.animLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+}
+
+.blob1 {
+  width: 620px;
+  height: 620px;
+  left: -12%;
+  top: 8%;
+  background: #7c4a57;
+  opacity: 0.17;
+  filter: blur(105px);
+  animation: floatBlob1 28s ease-in-out infinite;
+}
+
+.blob2 {
+  width: 700px;
+  height: 700px;
+  right: -18%;
+  bottom: -8%;
+  background: #5a343d;
+  opacity: 0.18;
+  filter: blur(100px);
+  animation: floatBlob2 34s ease-in-out infinite;
+}
+
+.blob3 {
+  width: 520px;
+  height: 520px;
+  left: 35%;
+  bottom: 15%;
+  background: #a87882;
+  opacity: 0.16;
+  filter: blur(110px);
+  animation: floatBlob3 42s ease-in-out infinite;
+}
+
+.wave {
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: soft-light;
+  background: radial-gradient(
+    80% 60% at 40% 35%,
+    rgba(255, 255, 255, 0.24) 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(124, 74, 87, 0.05) 100%
+  );
+  animation: slowWave 40s ease-in-out infinite alternate;
+}
+
+.content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+}
+
+@media (min-width: 640px) {
+  .content {
+    padding: 4rem 1rem;
+  }
+}
+
+@keyframes floatBlob1 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(95px, 122px, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes floatBlob2 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-122px, -95px, 0) scale(1.06);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes floatBlob3 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-68px, 108px, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes slowWave {
+  0% {
+    transform: translate3d(-2%, 1%, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(2%, -1%, 0) scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blob1,
+  .blob2,
+  .blob3,
+  .wave {
+    animation: none;
+  }
+
+  .wave {
+    transform: none;
+  }
+}

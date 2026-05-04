@@ -22,6 +22,7 @@ import {
   FileSearch,
   ChevronDown,
   GitBranch,
+  Layers,
   Mic,
   Wrench,
 } from "lucide-react";
@@ -67,6 +68,8 @@ function settingsIconForHref(href: string): LucideIcon {
   return Settings;
 }
 
+const SIDEBAR_ICON_PX = 14;
+
 function SidebarIcon({
   icon: Icon,
   active,
@@ -76,7 +79,7 @@ function SidebarIcon({
 }) {
   return (
     <Icon
-      size={18}
+      size={SIDEBAR_ICON_PX}
       strokeWidth={1.5}
       className={active ? "text-white" : "text-white/65 group-hover:text-white"}
       aria-hidden
@@ -90,7 +93,13 @@ function SidebarIconSlot({ icon, active }: { icon: LucideIcon; active: boolean }
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {
-    return <span className="inline-block h-[18px] w-[18px] shrink-0" aria-hidden />;
+    return (
+      <span
+        className="inline-block shrink-0"
+        style={{ width: SIDEBAR_ICON_PX, height: SIDEBAR_ICON_PX }}
+        aria-hidden
+      />
+    );
   }
   return <SidebarIcon icon={icon} active={active} />;
 }
@@ -418,7 +427,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                       className="shrink-0 rounded-md p-1.5 text-white/80 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
                     >
                       <ChevronDown
-                        size={16}
+                        size={SIDEBAR_ICON_PX}
                         strokeWidth={1.75}
                         className={[
                           "text-white/70 transition-transform",
@@ -452,7 +461,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                       className="shrink-0 rounded-md p-1.5 text-white/80 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
                     >
                       <ChevronDown
-                        size={16}
+                        size={SIDEBAR_ICON_PX}
                         strokeWidth={1.75}
                         className={[
                           "text-white/70 transition-transform",
@@ -479,7 +488,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                   <ul
                     className={[
                       "flex flex-col gap-0.5 pb-1.5 pt-0.5",
-                      id === "projektai" ? "pl-0" : id === "irankiai" ? "pl-3" : "pl-1",
+                      id === "irankiai" ? "pl-3" : "pl-1",
                     ].join(" ")}
                   >
                       {children.map(({ href, label: childLabel, separatorBefore, aiBadge }) => {
@@ -501,16 +510,9 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                               {id === "projektai" ? (
                                 <Link
                                   href={href}
-                                  className={`${submenuItemBase} ${active ? itemActive : itemInactive} relative px-2 gap-1.5`}
+                                  className={`${submenuItemBase} ${active ? itemActive : itemInactive} relative`}
                                 >
-                                  <span className="relative inline-block h-[18px] w-[18px] shrink-0" aria-hidden>
-                                    <span
-                                      className={[
-                                        "absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                                        active ? "bg-white/75" : "bg-white/40",
-                                      ].join(" ")}
-                                    />
-                                  </span>
+                                  <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden />
                                   <ProjectSidebarLabel text={childLabel} />
                                 </Link>
                               ) : (

@@ -255,7 +255,9 @@ export function AuthConfirmClient() {
         <div className="mb-8 flex items-center justify-center gap-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/logo.svg" alt="" className="h-10 w-auto" />
-          <span className="text-xl font-semibold text-gray-900">KOT Sales</span>
+          <span className="text-xl font-semibold text-gray-900" suppressHydrationWarning>
+            KoT Sales
+          </span>
         </div>
         <h1 className="mb-8 text-2xl font-semibold leading-snug tracking-tight text-gray-900">
           Slaptažodžio nustatymas
