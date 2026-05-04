@@ -42,7 +42,7 @@ export function ManualProjectCandidatesFiltersBar({
           })}
           className={[
             "inline-flex h-full min-w-[6.5rem] items-center justify-center px-4 text-sm font-medium transition-colors",
-            defaultCandidateStatus === "active" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-50",
+            defaultCandidateStatus === "active" ? "bg-[#7C4A57] text-white" : "text-zinc-700 hover:bg-zinc-50",
           ].join(" ")}
         >
           Aktyvūs
@@ -56,7 +56,7 @@ export function ManualProjectCandidatesFiltersBar({
           })}
           className={[
             "inline-flex h-full min-w-[6.5rem] items-center justify-center border-l border-zinc-200 px-4 text-sm font-medium transition-colors",
-            defaultCandidateStatus === "netinkamas" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-50",
+            defaultCandidateStatus === "netinkamas" ? "bg-[#7C4A57] text-white" : "text-zinc-700 hover:bg-zinc-50",
           ].join(" ")}
         >
           Netinkami

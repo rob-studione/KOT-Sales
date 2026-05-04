@@ -26,7 +26,7 @@ export default async function BendriSettingsPage() {
   const help = "mt-1 text-xs text-zinc-500";
   const label = "text-xs font-medium text-zinc-700";
   const input =
-    "mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm shadow-black/5 focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900/10";
+    "mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm shadow-black/5 focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#7C4A57]/20";
 
   return (
     <CrmTableContainer className="pb-10 pt-5">
@@ -60,7 +60,7 @@ export default async function BendriSettingsPage() {
             </div>
 
             <div className="pt-1">
-              <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-zinc-800">
+              <button type="submit" className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#693948]">
                 Išsaugoti
               </button>
             </div>

@@ -116,7 +116,7 @@ export function YtPodcastAiSettingsPanel(props: { initial: YtPodcastAiSettings; 
             step={1}
             defaultValue={props.initial.costLimitEur}
             disabled={isPending}
-            className="mt-1 h-9 w-full max-w-xs rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+            className="mt-1 h-9 w-full max-w-xs rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#7C4A57]/20"
           />
         </div>
 
@@ -147,7 +147,7 @@ export function YtPodcastAiSettingsPanel(props: { initial: YtPodcastAiSettings; 
             step={1}
             defaultValue={props.initial.maxVideosPerRun}
             disabled={isPending}
-            className="mt-1 h-9 w-full max-w-xs rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+            className="mt-1 h-9 w-full max-w-xs rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#7C4A57]/20"
           />
         </div>
 
@@ -164,7 +164,7 @@ export function YtPodcastAiSettingsPanel(props: { initial: YtPodcastAiSettings; 
             step={1000}
             defaultValue={props.initial.maxTranscriptChars}
             disabled={isPending}
-            className="mt-1 h-9 w-full max-w-xs rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+            className="mt-1 h-9 w-full max-w-xs rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#7C4A57]/20"
           />
         </div>
 
@@ -179,7 +179,7 @@ export function YtPodcastAiSettingsPanel(props: { initial: YtPodcastAiSettings; 
             maxLength={64}
             defaultValue={props.initial.analysisPromptVersion}
             disabled={isPending}
-            className="mt-1 h-9 w-full max-w-md rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+            className="mt-1 h-9 w-full max-w-md rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm focus:border-zinc-300 focus:outline-none focus:ring-2 focus:ring-[#7C4A57]/20"
           />
         </div>
 
@@ -187,7 +187,7 @@ export function YtPodcastAiSettingsPanel(props: { initial: YtPodcastAiSettings; 
           <button
             type="submit"
             disabled={isPending}
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-zinc-800 disabled:opacity-60"
+            className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#693948] disabled:opacity-60"
           >
             Išsaugoti
           </button>

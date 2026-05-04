@@ -113,7 +113,7 @@ export function CrmNotificationBell() {
     <div className="relative" ref={wrapRef}>
       <button
         type="button"
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-[#7C4A57] hover:bg-[#7C4A57]/10 hover:text-[#693948]"
         aria-label="Pranešimai"
         aria-expanded={open}
         onPointerEnter={() => {

@@ -73,7 +73,7 @@ export default function PlaybookCard({
           {canRun ? (
             <Link
               href={`/scenarijai/${row.id}/run`}
-              className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-zinc-900/10 transition-colors hover:bg-zinc-800"
+              className="inline-flex items-center justify-center rounded-lg bg-[#7C4A57] px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-[#7C4A57]/20 transition-colors hover:bg-[#693948]"
             >
               Paleisti
             </Link>

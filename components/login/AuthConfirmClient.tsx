@@ -340,7 +340,7 @@ export function AuthConfirmClient() {
 
           <button
             type="submit"
-            className="mt-4 h-11 w-full rounded-lg bg-gray-800 text-sm font-medium text-white shadow-md transition-all hover:bg-gray-900 hover:shadow-lg active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/10 focus-visible:ring-offset-2"
+            className="mt-4 h-11 w-full rounded-lg bg-[#7C4A57] text-sm font-medium text-white shadow-md transition-all hover:bg-[#693948] hover:shadow-lg active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7C4A57]/20 focus-visible:ring-offset-2"
           >
             Nustatyti slaptažodį
           </button>

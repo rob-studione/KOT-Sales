@@ -253,7 +253,7 @@ export function ProjectCreateForm({ users }: { users: CrmUser[] }) {
         <button
           type="button"
           disabled={isCreating || users.length === 0}
-          className="cursor-pointer rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+          className="cursor-pointer rounded-md bg-[#7C4A57] px-3 py-2 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
           onClick={() => {
             const el = formRef.current;
             if (!el) return;

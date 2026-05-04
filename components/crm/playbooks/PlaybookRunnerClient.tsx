@@ -219,7 +219,7 @@ export function PlaybookRunnerClient({
             </button>
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-3 py-2 text-sm font-semibold text-white shadow-sm ring-1 ring-zinc-900/10 hover:bg-zinc-800"
+              className="inline-flex items-center justify-center rounded-lg bg-[#7C4A57] px-3 py-2 text-sm font-semibold text-white shadow-sm ring-1 ring-[#7C4A57]/20 hover:bg-[#693948]"
               onClick={onReset}
             >
               Pradėti iš naujo
@@ -255,7 +255,7 @@ export function PlaybookRunnerClient({
                 className={[
                   "rounded-xl px-5 py-5 transition-[opacity,box-shadow,background-color,border-color] duration-200",
                   isActive
-                    ? "border border-[#7C4A57]/20 bg-zinc-100/80 shadow-md ring-1 ring-zinc-900/[0.06]"
+                    ? "border border-[#7C4A57]/20 bg-zinc-100/80 shadow-md ring-1 ring-[#7C4A57]/10"
                     : "border border-transparent bg-white/70 opacity-[0.72] shadow-none",
                 ].join(" ")}
               >
@@ -309,7 +309,7 @@ export function PlaybookRunnerClient({
                       </div>
                       <button
                         type="button"
-                        className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-zinc-900/10 transition-transform hover:bg-zinc-800 active:translate-y-px"
+                        className="inline-flex items-center justify-center rounded-lg bg-[#7C4A57] px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-[#7C4A57]/20 transition-transform hover:bg-[#693948] active:translate-y-px"
                         onClick={onReset}
                       >
                         Pradėti iš naujo
@@ -342,7 +342,7 @@ export function PlaybookRunnerClient({
                             className={[
                               "inline-flex max-w-full items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                               isPicked
-                                ? "border-zinc-900 bg-zinc-900 text-white shadow-sm"
+                                ? "border-[#7C4A57] bg-[#7C4A57] text-white shadow-sm"
                                 : "border-zinc-200/90 bg-white/80 text-zinc-500",
                             ].join(" ")}
                           >

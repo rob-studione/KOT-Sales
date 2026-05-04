@@ -447,7 +447,7 @@ export function ProcurementContractsPanel({
                     }
                   });
                 }}
-                className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                className="rounded-md bg-[#7C4A57] px-3 py-2 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
               >
                 {notifyPending ? "…" : "Išsaugoti"}
               </button>
@@ -629,7 +629,7 @@ export function ProcurementContractsPanel({
           <div
             role="dialog"
             aria-modal="true"
-            className="relative z-10 w-full max-w-2xl rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-2xl shadow-zinc-900/10"
+            className="relative z-10 w-full max-w-2xl rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-2xl shadow-[#7C4A57]/15"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
@@ -788,7 +788,7 @@ export function ProcurementContractsPanel({
                   replaceWithParams(params);
                   setFiltersOpen(false);
                 }}
-                className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                className="rounded-md bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948]"
               >
                 Taikyti
               </button>
@@ -804,7 +804,7 @@ export function ProcurementContractsPanel({
             role="dialog"
             aria-modal="true"
             aria-labelledby="proc-import-title"
-            className="relative z-10 w-full max-w-lg rounded-2xl border border-zinc-200/90 bg-white p-6 shadow-2xl shadow-zinc-900/10"
+            className="relative z-10 w-full max-w-lg rounded-2xl border border-zinc-200/90 bg-white p-6 shadow-2xl shadow-[#7C4A57]/15"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
@@ -1035,7 +1035,7 @@ export function ProcurementContractsPanel({
                       }
                     });
                   }}
-                  className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-zinc-800 disabled:opacity-50"
+                  className="rounded-lg bg-[#7C4A57] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#693948] disabled:opacity-50"
                 >
                   {importPending ? "Importuojama…" : "Importuoti"}
                 </button>
@@ -1200,7 +1200,7 @@ export function ProcurementContractsPanel({
               <Link
                 href={paginationHref(0)}
                 className={`rounded-md border px-2.5 py-1.5 text-sm tabular-nums ${
-                  pagination.pageIndex0 === 0 ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                  pagination.pageIndex0 === 0 ? "border-[#7C4A57] bg-[#7C4A57] text-white" : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
                 }`}
               >
                 1
@@ -1213,7 +1213,7 @@ export function ProcurementContractsPanel({
                     key={p}
                     href={paginationHref(p)}
                     className={`rounded-md border px-2.5 py-1.5 text-sm tabular-nums ${
-                      p === pagination.pageIndex0 ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                      p === pagination.pageIndex0 ? "border-[#7C4A57] bg-[#7C4A57] text-white" : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
                     }`}
                     aria-current={p === pagination.pageIndex0 ? "page" : undefined}
                   >
@@ -1226,7 +1226,7 @@ export function ProcurementContractsPanel({
                   href={paginationHref(pageButtons.total - 1)}
                   className={`rounded-md border px-2.5 py-1.5 text-sm tabular-nums ${
                     pagination.pageIndex0 === pageButtons.total - 1
-                      ? "border-zinc-900 bg-zinc-900 text-white"
+                      ? "border-[#7C4A57] bg-[#7C4A57] text-white"
                       : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
                   }`}
                 >

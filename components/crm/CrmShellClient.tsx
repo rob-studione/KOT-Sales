@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/AppHeader";
 import { CrmSidebar } from "@/components/crm/CrmSidebar";
+import { SupabaseSessionRecoveryClient } from "@/components/crm/SupabaseSessionRecoveryClient";
 import { CrmContentContainer } from "@/components/crm/CrmContentContainer";
 import { AccountEditDrawer } from "@/components/crm/accounts/AccountEditDrawer";
 import type { AccountListRow } from "@/components/crm/accounts/AccountsCardList";
@@ -47,6 +48,7 @@ export function CrmShellClient({
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50">
+      <SupabaseSessionRecoveryClient />
       <AppHeader
         user={user}
         onOpenMyAccount={() => {

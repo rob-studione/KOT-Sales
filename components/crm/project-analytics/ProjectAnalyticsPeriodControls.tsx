@@ -102,7 +102,7 @@ export function ProjectAnalyticsPeriodControls({
           type="button"
           onClick={applyCustom}
           disabled={!isIsoDate(from) || !isIsoDate(to)}
-          className="h-9 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white shadow-sm shadow-black/10 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500"
+          className="h-9 rounded-lg bg-[#7C4A57] px-4 text-sm font-medium text-white shadow-sm shadow-black/10 hover:bg-[#693948] disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500"
         >
           Taikyti
         </button>

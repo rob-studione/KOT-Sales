@@ -1166,7 +1166,7 @@ export default async function ProjektasDetailPage({
                         className={[
                           "inline-flex h-full min-w-[6.5rem] items-center justify-center px-4 text-sm font-medium transition-colors",
                           autoCandidateListStatus === "active"
-                            ? "bg-zinc-900 text-white"
+                            ? "bg-[#7C4A57] text-white"
                             : "text-zinc-700 hover:bg-zinc-50",
                         ].join(" ")}
                       >
@@ -1184,7 +1184,7 @@ export default async function ProjektasDetailPage({
                         className={[
                           "inline-flex h-full min-w-[6.5rem] items-center justify-center border-l border-zinc-200 px-4 text-sm font-medium transition-colors",
                           autoCandidateListStatus === "netinkamas"
-                            ? "bg-zinc-900 text-white"
+                            ? "bg-[#7C4A57] text-white"
                             : "text-zinc-700 hover:bg-zinc-50",
                         ].join(" ")}
                       >
@@ -1352,7 +1352,7 @@ export default async function ProjektasDetailPage({
               href={buildProjectDetailHref(id, { tab: "darbas", view: "board", ...projectLinkOpts })}
               className={
                 darbasView === "board"
-                  ? "cursor-pointer rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
+                  ? "cursor-pointer rounded-lg bg-[#7C4A57] px-3 py-1.5 text-sm font-medium text-white"
                   : "cursor-pointer rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
               }
             >
@@ -1362,7 +1362,7 @@ export default async function ProjektasDetailPage({
               href={buildProjectDetailHref(id, { tab: "darbas", view: "list", ...projectLinkOpts })}
               className={
                 darbasView === "list"
-                  ? "cursor-pointer rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white"
+                  ? "cursor-pointer rounded-lg bg-[#7C4A57] px-3 py-1.5 text-sm font-medium text-white"
                   : "cursor-pointer rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
               }
             >

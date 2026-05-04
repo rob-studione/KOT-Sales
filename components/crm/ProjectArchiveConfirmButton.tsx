@@ -63,7 +63,7 @@ export function ProjectArchiveConfirmButton({ projectId }: { projectId: string }
             <button
               type="button"
               disabled={pending || !confirmed}
-              className="cursor-pointer rounded-md bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-60"
+              className="cursor-pointer rounded-md bg-[#7C4A57] px-3 py-2 text-sm font-semibold text-white hover:bg-[#693948] disabled:opacity-60"
               onClick={() => {
                 setError(null);
                 startTransition(async () => {

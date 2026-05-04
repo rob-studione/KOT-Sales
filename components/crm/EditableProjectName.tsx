@@ -132,7 +132,7 @@ export function EditableProjectName({
                 cancel();
               }
             }}
-            className="w-full min-w-[14rem] rounded-md border border-zinc-200 bg-white px-2 py-1 text-xl font-semibold text-zinc-900 shadow-sm outline-none ring-0 focus:border-zinc-300 focus:ring-2 focus:ring-zinc-900/10"
+            className="w-full min-w-[14rem] rounded-md border border-zinc-200 bg-white px-2 py-1 text-xl font-semibold text-zinc-900 shadow-sm outline-none ring-0 focus:border-zinc-300 focus:ring-2 focus:ring-[#7C4A57]/20"
           />
           {error ? <div className="mt-1 text-xs text-red-600">{error}</div> : null}
         </div>

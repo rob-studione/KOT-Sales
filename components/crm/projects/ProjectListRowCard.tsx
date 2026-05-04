@@ -113,7 +113,7 @@ export function ProjectListRowCard({
                   <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Aktyvūs kontaktai</p>
                   <p className="mt-1.5 text-3xl font-semibold tabular-nums leading-none tracking-tight text-zinc-900">{wc}</p>
                 </div>
-                <span className="pointer-events-none inline-flex items-center justify-center gap-1.5 self-start rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-zinc-900/10 transition-all duration-200 group-hover:bg-zinc-800 group-hover:shadow-md sm:self-auto">
+                <span className="pointer-events-none inline-flex items-center justify-center gap-1.5 self-start rounded-lg bg-[#7C4A57] px-4 py-2.5 text-sm font-semibold text-white shadow-sm ring-1 ring-[#7C4A57]/20 transition-all duration-200 group-hover:bg-[#693948] group-hover:shadow-md sm:self-auto">
                   Atidaryti projektą
                   <svg
                     className="h-4 w-4 opacity-90 transition-transform duration-200 group-hover:translate-x-0.5"

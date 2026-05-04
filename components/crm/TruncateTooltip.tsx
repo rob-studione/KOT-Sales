@@ -67,7 +67,7 @@ export function TruncateTooltip({
           role="tooltip"
           className={[
             "pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[320px] -translate-x-1/2",
-            "rounded-md bg-zinc-900 px-3 py-2 text-sm text-white shadow-lg",
+            "rounded-md bg-[#7C4A57] px-3 py-2 text-sm text-white shadow-lg",
             "break-words",
             tooltipClassName ?? "",
           ]

@@ -60,7 +60,7 @@ export function ProjectAnalyticsCallChart({ trend }: { trend: ProjectAnalyticsDt
       </svg>
       <div className="mt-2 flex flex-wrap gap-4 text-xs text-zinc-600">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-0.5 w-4 bg-zinc-900" /> Skambučiai
+          <span className="h-0.5 w-4 bg-[#7C4A57]" /> Skambučiai
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-0.5 w-4 bg-green-600" /> Atsiliepė

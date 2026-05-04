@@ -113,7 +113,7 @@ export function ProjectCandidatePickForm(props: ProjectCandidatePickFormProps) {
       <button
         type="submit"
         disabled={pending}
-        className="cursor-pointer rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-50"
+        className="cursor-pointer rounded-lg bg-[#7C4A57] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-[#693948] disabled:opacity-50"
       >
         {pending ? "…" : "Priskirti sau"}
       </button>

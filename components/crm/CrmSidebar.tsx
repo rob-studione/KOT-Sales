@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { fetchPublicBuildInfo, formatDeploymentUpdatedAt, getPublicBuildInfo } from "@/lib/buildInfo";
+import { CRM_SIDEBAR_BG, CRM_SIDEBAR_WIDTH_PX } from "@/lib/crm/crmShellLayout";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   BarChart3,
@@ -19,7 +20,7 @@ import {
   Sliders,
   Target,
   FileSearch,
-  ChevronRight,
+  ChevronDown,
   GitBranch,
   Mic,
   Wrench,
@@ -37,7 +38,7 @@ type NavChild = {
 
 const analitikaChildren: NavChild[] = [
   { href: "/analitika/kpi", label: "Vadybininkų KPI", adminOnly: true },
-  { href: "/analitika/lost-qa", label: "Lost QA", adminOnly: true },
+  { href: "/analitika/lost-qa", label: "Lost QA", adminOnly: true, aiBadge: true },
 ];
 
 const klientaiChildren: NavChild[] = [
@@ -48,7 +49,7 @@ const klientaiChildren: NavChild[] = [
 const settingsChildren: NavChild[] = [
   { href: "/nustatymai/bendri", label: "Bendri", adminOnly: true },
   { href: "/nustatymai/paskyros", label: "Paskyros", adminOnly: true },
-  { href: "/nustatymai/lost-qa", label: "Lost QA", adminOnly: true },
+  { href: "/nustatymai/lost-qa", label: "Lost QA", adminOnly: true, aiBadge: true },
   { href: "/nustatymai/podcastai-ai", label: "Podcastai (AI)", adminOnly: true },
 ];
 
@@ -77,7 +78,7 @@ function SidebarIcon({
     <Icon
       size={18}
       strokeWidth={1.5}
-      className={active ? "text-zinc-900" : "text-zinc-400 group-hover:text-zinc-600"}
+      className={active ? "text-white" : "text-white/65 group-hover:text-white"}
       aria-hidden
     />
   );
@@ -356,14 +357,20 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
 
   const itemBase =
     "group relative flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-sm leading-5 transition-colors duration-150";
-  const itemInactive = "text-zinc-600 hover:bg-zinc-50 hover:text-[#7C4A57]";
-  const itemActive = "bg-zinc-100/90 text-[#7C4A57] font-medium";
+  /** Poįrašiniai – šiek tiek mažesnis šriftas nei sekcija / „Apžvalga“. */
+  const submenuItemBase =
+    "group relative flex items-center gap-2 rounded-lg px-2.5 py-[6px] text-xs leading-4 transition-colors duration-150";
+  const itemInactive = "text-white/90 hover:bg-white/10 hover:text-white";
+  const itemActive = "bg-white/15 text-white font-medium";
   const headerBase =
     "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors";
 
   return (
-    <aside className="flex w-[248px] shrink-0 flex-col border-r border-zinc-200/80 bg-white">
-      <nav className="flex flex-col gap-0.5 px-2 py-3" aria-label="Pagrindinis meniu">
+    <aside
+      className="flex shrink-0 flex-col border-r border-white/15"
+      style={{ width: CRM_SIDEBAR_WIDTH_PX, backgroundColor: CRM_SIDEBAR_BG }}
+    >
+      <nav className="flex flex-col gap-0.5 px-2 pb-3 pt-4" aria-label="Pagrindinis meniu">
         <div className="pb-1.5">
           <Link
             href="/dashboard"
@@ -371,7 +378,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
             className={`${itemBase} ${pathname === "/dashboard" ? itemActive : itemInactive}`}
           >
             {pathname === "/dashboard" ? (
-              <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[#7C4A57]" aria-hidden />
+              <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-white" aria-hidden />
             ) : null}
             <SidebarIconSlot icon={LayoutDashboard} active={pathname === "/dashboard"} />
             <span className="truncate">Apžvalga</span>
@@ -388,14 +395,14 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                 className={[
                   headerBase,
                   SUBMENU_MS,
-                  routeActive ? "bg-zinc-100/80 text-[#7C4A57]" : "text-zinc-600 hover:bg-zinc-50 hover:text-[#7C4A57]",
+                  routeActive ? "bg-white/12 text-white" : "text-white/90 hover:bg-white/10 hover:text-white",
                 ].join(" ")}
               >
                 {id === "projektai" ? (
                   <>
                     <Link
                       href="/projektai"
-                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus:outline-none"
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left text-inherit focus:outline-none"
                     >
                       <SidebarIconSlot icon={SectionIcon} active={routeActive} />
                       <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -408,16 +415,16 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                         toggleSection(id);
                       }}
                       aria-expanded={expanded}
-                      className="shrink-0 rounded-md p-1.5 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/15"
+                      className="shrink-0 rounded-md p-1.5 text-white/80 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
                     >
-                      <ChevronRight
+                      <ChevronDown
                         size={16}
                         strokeWidth={1.75}
                         className={[
-                          "text-zinc-400 transition-transform",
+                          "text-white/70 transition-transform",
                           SUBMENU_MS,
                           SUBMENU_EASE,
-                          expanded ? "rotate-90" : "rotate-0",
+                          expanded ? "rotate-180" : "rotate-0",
                         ].join(" ")}
                         aria-hidden
                       />
@@ -429,7 +436,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                       type="button"
                       onClick={() => toggleSection(id)}
                       aria-expanded={expanded}
-                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus:outline-none"
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left text-inherit focus:outline-none"
                     >
                       <SidebarIconSlot icon={SectionIcon} active={routeActive} />
                       <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -442,16 +449,16 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                         toggleSection(id);
                       }}
                       aria-expanded={expanded}
-                      className="shrink-0 rounded-md p-1.5 hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/15"
+                      className="shrink-0 rounded-md p-1.5 text-white/80 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
                     >
-                      <ChevronRight
+                      <ChevronDown
                         size={16}
                         strokeWidth={1.75}
                         className={[
-                          "text-zinc-400 transition-transform",
+                          "text-white/70 transition-transform",
                           SUBMENU_MS,
                           SUBMENU_EASE,
-                          expanded ? "rotate-90" : "rotate-0",
+                          expanded ? "rotate-180" : "rotate-0",
                         ].join(" ")}
                         aria-hidden
                       />
@@ -487,30 +494,30 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                           <Fragment key={href}>
                             {separatorBefore ? (
                               <li className="list-none px-2.5 py-1" aria-hidden>
-                                <div className="h-px bg-zinc-200/70" />
+                                <div className="h-px bg-white/20" />
                               </li>
                             ) : null}
                             <li>
                               {id === "projektai" ? (
                                 <Link
                                   href={href}
-                                  className={`${itemBase} ${active ? itemActive : itemInactive} relative px-2 gap-1.5`}
+                                  className={`${submenuItemBase} ${active ? itemActive : itemInactive} relative px-2 gap-1.5`}
                                 >
                                   <span className="relative inline-block h-[18px] w-[18px] shrink-0" aria-hidden>
                                     <span
                                       className={[
                                         "absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                                        active ? "bg-zinc-400/80" : "bg-zinc-300/70",
+                                        active ? "bg-white/75" : "bg-white/40",
                                       ].join(" ")}
                                     />
                                   </span>
                                   <ProjectSidebarLabel text={childLabel} />
                                 </Link>
                               ) : (
-                                <Link href={href} className={`${itemBase} ${active ? itemActive : itemInactive}`}>
+                                <Link href={href} className={`${submenuItemBase} ${active ? itemActive : itemInactive}`}>
                                   {active ? (
                                     <span
-                                      className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[#7C4A57]"
+                                      className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-white"
                                       aria-hidden
                                     />
                                   ) : null}
@@ -519,7 +526,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                                     <span className="truncate">{childLabel}</span>
                                     {aiBadge ? (
                                       <span
-                                        className="shrink-0 rounded border border-violet-200 bg-violet-50 px-1 py-0 text-[9px] font-semibold uppercase leading-none tracking-wide text-violet-700"
+                                        className="shrink-0 rounded border border-white/35 bg-white/15 px-1 py-0 text-[9px] font-semibold uppercase leading-none tracking-wide text-white"
                                         title="AI"
                                       >
                                         AI
@@ -541,7 +548,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
       </nav>
 
       {footerText ? (
-        <div className="mt-auto border-t border-zinc-200/70 px-4 py-3 text-[11px] text-zinc-400/80">{footerText}</div>
+        <div className="mt-auto border-t border-white/15 px-4 py-3 text-[11px] text-white/55">{footerText}</div>
       ) : null}
     </aside>
   );

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { CurrentCrmUser } from "@/lib/crm/currentUser";
 import { CrmNotificationBell } from "@/components/crm/CrmNotificationBell";
+import { CRM_SIDEBAR_BG, CRM_SIDEBAR_WIDTH_PX } from "@/lib/crm/crmShellLayout";
 
 function initialsFromNameOrEmail(name: string, email: string): string {
   const t = (name ?? "").trim();
@@ -57,36 +58,32 @@ export function AppHeader({
   }, [user]);
 
   return (
-    <header
-      className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-zinc-200 bg-white px-4 backdrop-blur-sm sm:px-6"
-      role="banner"
-    >
-      <div className="flex min-w-0 items-center gap-2.5">
+    <header className="sticky top-0 z-40 flex h-14 shrink-0 backdrop-blur-sm" role="banner">
+      <div
+        className="flex shrink-0 items-center border-b border-r border-white/15 px-2"
+        style={{ width: CRM_SIDEBAR_WIDTH_PX, backgroundColor: CRM_SIDEBAR_BG }}
+      >
         <Link
           href="/dashboard"
-          className="inline-flex shrink-0 cursor-pointer items-center gap-2 text-2xl font-semibold leading-none tracking-tight text-zinc-900 transition-colors hover:text-zinc-700"
+          className="inline-flex min-w-0 cursor-pointer items-center gap-2 text-[18px] font-normal leading-none tracking-tight text-white transition-colors hover:text-white/90"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/brand/logo.svg"
             alt=""
-            className="inline-block h-[38px] w-[38px] rounded-md"
+            className="inline-block h-[34px] w-[34px] shrink-0 rounded-md"
           />
-          <span className="font-bold">KoT</span>{" "}
-          <span className="font-normal text-zinc-800">Sales</span>
+          <span className="truncate font-normal">KoT</span>{" "}
+          <span className="truncate font-normal text-white/90">Sales</span>
         </Link>
       </div>
 
-      <div className="flex shrink-0 items-center gap-0.5 text-zinc-300 sm:gap-1" aria-label="Vieta paieškai, veiksmams ir paskyrai">
-        <span className="inline-flex h-9 w-9 items-center justify-center rounded-md" aria-hidden>
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-4 border-b border-zinc-200 bg-white px-4 sm:px-6">
+        <div className="flex shrink-0 items-center gap-0.5 sm:gap-1" aria-label="Vieta paieškai, veiksmams ir paskyrai">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#7C4A57]" aria-hidden>
           <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" />
             <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
-          </svg>
-        </span>
-        <span className="inline-flex h-9 w-9 items-center justify-center rounded-md" aria-hidden>
-          <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
           </svg>
         </span>
         {user ? <CrmNotificationBell /> : null}
@@ -133,6 +130,7 @@ export function AppHeader({
             </div>
           ) : null}
         </div>
+      </div>
       </div>
     </header>
   );

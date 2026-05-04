@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isInvalidRefreshTokenError } from "@/lib/supabase/isInvalidRefreshTokenError";
 
 function env(name: string): string {
   const v = process.env[name]?.trim();
@@ -28,12 +29,23 @@ function isProtectedPath(pathname: string): boolean {
   );
 }
 
+function redirectToLogin(request: NextRequest, pathname: string, supabaseResponse: NextResponse) {
+  const url = request.nextUrl.clone();
+  url.pathname = "/login";
+  url.searchParams.set("next", pathname);
+  const redirectResponse = NextResponse.redirect(url);
+  for (const c of supabaseResponse.cookies.getAll()) {
+    redirectResponse.cookies.set(c.name, c.value);
+  }
+  return redirectResponse;
+}
+
 export async function middleware(request: NextRequest) {
   const t0 = Date.now();
   const { pathname } = request.nextUrl;
   if (!isProtectedPath(pathname)) return NextResponse.next();
 
-  const response = NextResponse.next();
+  let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
     cookies: {
@@ -41,35 +53,41 @@ export async function middleware(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
+        for (const { name, value } of cookiesToSet) {
+          request.cookies.set(name, value);
+        }
+        supabaseResponse = NextResponse.next({ request });
         for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options);
+          supabaseResponse.cookies.set(name, value, options);
         }
       },
     },
   });
 
   const authT0 = Date.now();
-  const { data } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
   const authMs = Date.now() - authT0;
+
+  if (error && isInvalidRefreshTokenError(error)) {
+    await supabase.auth.signOut();
+  }
+
   const user = data.user;
 
   if (!user) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    return redirectToLogin(request, pathname, supabaseResponse);
   }
 
   const totalMs = Date.now() - t0;
   // Expose middleware timings for DevTools Network inspection.
-  response.headers.set(
+  supabaseResponse.headers.set(
     "server-timing",
     `mw;dur=${totalMs}, mw_auth;dur=${authMs}`
   );
-  response.headers.set("x-crm-mw-ms", String(totalMs));
-  response.headers.set("x-crm-mw-auth-ms", String(authMs));
+  supabaseResponse.headers.set("x-crm-mw-ms", String(totalMs));
+  supabaseResponse.headers.set("x-crm-mw-auth-ms", String(authMs));
 
-  return response;
+  return supabaseResponse;
 }
 
 export const config = {

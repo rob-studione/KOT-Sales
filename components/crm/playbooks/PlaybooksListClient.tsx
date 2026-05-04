@@ -132,7 +132,7 @@ export function PlaybooksListClient({ initialRows }: { initialRows: PlaybookList
               className={[
                 "rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors",
                 active
-                  ? "border-zinc-900 bg-zinc-900 text-white"
+                  ? "border-[#7C4A57] bg-[#7C4A57] text-white"
                   : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50",
               ].join(" ")}
             >

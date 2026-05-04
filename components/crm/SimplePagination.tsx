@@ -29,7 +29,7 @@ const btnDisabled =
 const btnWordsDisabled =
   "inline-flex h-8 min-w-[6.5rem] cursor-not-allowed items-center justify-center rounded border border-zinc-100 bg-transparent px-2 text-sm text-zinc-400";
 const btnActive =
-  "inline-flex h-8 min-w-[2rem] cursor-pointer items-center justify-center rounded bg-zinc-900 px-2 text-sm font-medium text-white hover:bg-zinc-800";
+  "inline-flex h-8 min-w-[2rem] cursor-pointer items-center justify-center rounded bg-[#7C4A57] px-2 text-sm font-medium text-white hover:bg-[#693948]";
 
 function buildHref(
   basePath: string,

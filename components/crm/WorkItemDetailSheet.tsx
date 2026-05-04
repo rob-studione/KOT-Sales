@@ -44,7 +44,7 @@ function SaveBtn({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="cursor-pointer rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+      className="cursor-pointer rounded-lg bg-[#7C4A57] px-3 py-2 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
     >
       {pending ? "…" : label}
     </button>
@@ -117,7 +117,7 @@ export function WorkItemDetailSheet({
     <div className="fixed inset-0 z-50 flex justify-end">
       <button
         type="button"
-        className="absolute inset-0 bg-zinc-900/20 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-[#7C4A57]/20 backdrop-blur-[1px]"
         aria-label="Uždaryti"
         onClick={onClose}
       />

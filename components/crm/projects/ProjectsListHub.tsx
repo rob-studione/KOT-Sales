@@ -110,7 +110,7 @@ export function ProjectsListHub({
           <div className="flex flex-col items-start gap-3 sm:items-end">
             <Link
               href="/projektai/naujas"
-              className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800"
+              className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-[#7C4A57] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#693948]"
             >
               + Sukurti projektą
             </Link>

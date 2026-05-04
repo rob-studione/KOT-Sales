@@ -428,7 +428,7 @@ export function ScenarioBuilderClient({
             onClick={onSavePlaybook}
             disabled={pbSaving}
             className={[
-              "inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-zinc-800",
+              "inline-flex items-center justify-center rounded-lg bg-[#7C4A57] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#693948]",
               pbSaving ? "cursor-wait opacity-70" : "",
             ].join(" ")}
           >
@@ -513,7 +513,7 @@ export function ScenarioBuilderClient({
               type="button"
               onClick={onCreateNode}
               disabled={busy}
-              className="rounded-md bg-zinc-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="rounded-md bg-[#7C4A57] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#693948] disabled:opacity-50"
             >
               + Naujas
             </button>
@@ -535,7 +535,7 @@ export function ScenarioBuilderClient({
                       className={[
                         "flex w-full flex-col items-start rounded-lg border px-3 py-2.5 text-left text-sm transition-colors",
                         active
-                          ? "border-zinc-900 bg-zinc-50 font-medium text-zinc-900"
+                          ? "border-[#7C4A57] bg-zinc-50 font-medium text-zinc-900"
                           : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50/80",
                       ].join(" ")}
                     >
@@ -561,7 +561,7 @@ export function ScenarioBuilderClient({
                   type="button"
                   onClick={onSaveNode}
                   disabled={busy}
-                  className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-zinc-800 disabled:opacity-50"
+                  className="inline-flex items-center justify-center rounded-lg bg-[#7C4A57] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#693948] disabled:opacity-50"
                 >
                   Išsaugoti
                 </button>
@@ -746,7 +746,7 @@ export function ScenarioBuilderClient({
                 type="button"
                 disabled={busy || !aiJson.trim()}
                 onClick={onInsertAiJson}
-                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50"
+                className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-semibold text-white hover:bg-[#693948] disabled:opacity-50"
               >
                 Įterpti į DB
               </button>

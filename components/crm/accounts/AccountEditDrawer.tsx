@@ -397,7 +397,7 @@ export function AccountEditDrawer({
               <button
                 type="submit"
                 form="account-edit-form"
-                className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-zinc-900/10 hover:bg-zinc-800"
+                className="rounded-xl bg-[#7C4A57] px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#7C4A57]/15 hover:bg-[#693948]"
                 disabled={saving || loading || uploading}
               >
                 {saving ? "Saugoma…" : loading ? "Įkeliama…" : "Išsaugoti"}

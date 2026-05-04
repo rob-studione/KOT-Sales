@@ -329,7 +329,7 @@ export function ManualProjectCandidatesPanel({
             </button>
             <button
               type="button"
-              className="cursor-pointer rounded-md bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-60"
+              className="cursor-pointer rounded-md bg-[#7C4A57] px-3 py-2 text-sm font-semibold text-white hover:bg-[#693948] disabled:opacity-60"
               disabled={!pendingInvalidLeadId || rowActionPending}
               onClick={() => {
                 const leadId = pendingInvalidLeadId;
@@ -370,7 +370,7 @@ export function ManualProjectCandidatesPanel({
               setDuplicateMatch(null);
               setOpen(true);
             }}
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-zinc-800"
+            className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#693948]"
           >
             Pridėti kandidatą
           </button>
@@ -412,7 +412,7 @@ export function ManualProjectCandidatesPanel({
                 setDuplicateMatch(null);
                 setOpen(true);
               }}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948]"
             >
               Pridėti kandidatą
             </button>
@@ -730,7 +730,7 @@ export function ManualProjectCandidatesPanel({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                  className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
                 >
                   {pending ? "Tikrinama…" : "Išsaugoti"}
                 </button>
@@ -832,7 +832,7 @@ export function ManualProjectCandidatesPanel({
                         setLinkPending(false);
                       }
                     }}
-                    className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                    className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
                   >
                     {linkPending ? "Jungiama…" : "Pridėti esamą klientą į projektą"}
                   </button>
@@ -1200,7 +1200,7 @@ export function ManualProjectCandidatesPanel({
                         }
                       });
                     }}
-                    className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                    className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
                   >
                     {importPending ? "Importuojama…" : "Importuoti"}
                   </button>

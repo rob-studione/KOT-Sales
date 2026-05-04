@@ -116,7 +116,7 @@ export function ManagerKpiSettingsDrawer({
           <button
             type="button"
             disabled={pending}
-            className="w-full rounded-lg bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+            className="w-full rounded-lg bg-[#7C4A57] py-2.5 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
             onClick={() => {
               setError(null);
               startTransition(async () => {

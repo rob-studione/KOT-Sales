@@ -55,7 +55,7 @@ export function ListPageSearchForm({
         <input key={k} type="hidden" name={k} value={v} />
       ))}
       <div className="relative min-w-0 flex-1">
-        <span className="pointer-events-none absolute left-2.5 top-1/2 z-[1] -translate-y-1/2 text-zinc-400">
+        <span className="pointer-events-none absolute left-2.5 top-1/2 z-[1] -translate-y-1/2 text-[#7C4A57]">
           <SearchIcon className="block" />
         </span>
         <input
@@ -74,7 +74,7 @@ export function ListPageSearchForm({
       <button
         type="submit"
         className={[
-          "inline-flex shrink-0 cursor-pointer items-center justify-center border-l border-zinc-200 bg-zinc-100 font-medium text-zinc-800 transition-colors duration-150 hover:bg-zinc-200 hover:text-zinc-900 active:bg-zinc-200/90",
+          "inline-flex shrink-0 cursor-pointer items-center justify-center border-l border-[#7C4A57]/25 bg-[#7C4A57] font-medium text-white transition-colors duration-150 hover:bg-[#693948] hover:text-white active:bg-[#693948]",
           isRegular ? "h-10 px-4 text-sm" : "h-8 px-3 text-xs",
         ].join(" ")}
       >

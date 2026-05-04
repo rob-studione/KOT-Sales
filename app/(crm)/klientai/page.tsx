@@ -472,7 +472,7 @@ async function renderLostClients(sp: { [key: string]: string | string[] | undefi
           const active = m === months;
           const href = `/klientai?${lostQueryString({ months: m, pageSize, page: 0, sort, q: qTrim || undefined })}`;
           return active ? (
-            <span key={m} className="rounded-md bg-zinc-900 px-2.5 py-1 text-xs font-medium text-white">
+            <span key={m} className="rounded-md bg-[#7C4A57] px-2.5 py-1 text-xs font-medium text-white">
               {m} mėn.{m === DEFAULT_LOST_MONTHS ? " (numatytasis)" : ""}
             </span>
           ) : (

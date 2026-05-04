@@ -10,7 +10,7 @@ import {
 
 function categoryTabClass(active: boolean): string {
   return active
-    ? "rounded-full bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-white sm:px-2.5 sm:text-xs"
+    ? "rounded-full bg-[#7C4A57] px-2 py-1 text-[11px] font-semibold text-white sm:px-2.5 sm:text-xs"
     : "rounded-full px-2 py-1 text-[11px] font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 sm:px-2.5 sm:text-xs";
 }
 
