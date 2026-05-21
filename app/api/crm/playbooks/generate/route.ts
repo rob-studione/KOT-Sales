@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
+import { isOpenAiGloballyDisabledByEnv, openAiGloballyDisabledMessage } from "@/lib/openai/callGate";
 import { createOpenAIClient } from "@/lib/openai/serverClient";
 import type { GeneratedScenario } from "@/lib/crm/playbooks/generatedScenario";
 import { parseGeneratedScenarioJson } from "@/lib/crm/playbooks/generatedScenario";
@@ -31,6 +32,13 @@ export async function POST(request: Request) {
   const context = typeof body.context === "string" ? body.context.trim() : "";
   if (!goal) {
     return NextResponse.json({ ok: false, error: "Missing goal" }, { status: 400 });
+  }
+
+  if (isOpenAiGloballyDisabledByEnv()) {
+    return NextResponse.json(
+      { ok: false, error: openAiGloballyDisabledMessage(), disabled: true },
+      { status: 503 },
+    );
   }
 
   let client;

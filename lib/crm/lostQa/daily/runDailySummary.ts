@@ -2,12 +2,14 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { requireOpenAiApiKey } from "@/lib/openai/serverClient";
+import { fetchLostQaControlSettings } from "@/lib/crm/lostQa/lostQaControlSettings";
 import { buildDailyAggregate, dailyDeterministicFieldsEqual, parseYmdOrThrow } from "@/lib/crm/lostQa/daily/dailySummaryBuild";
 import { callOpenAiDailySummary } from "@/lib/crm/lostQa/daily/openaiDailySummary";
 import { fetchDailySummary, upsertDailySummary } from "@/lib/crm/lostQa/daily/dailySummaryRepository";
 import { estimateOpenAiCostEur } from "@/lib/openai/pricing";
 import { insertAiUsageLog } from "@/lib/crm/lostQa/aiUsageLogsRepository";
+import { isOpenAiGloballyDisabledByEnv, openAiGloballyDisabledMessage } from "@/lib/openai/callGate";
+import { requireOpenAiApiKey } from "@/lib/openai/serverClient";
 
 export type GenerateDailySummaryParams = {
   summaryDate: string; // YYYY-MM-DD
@@ -33,6 +35,27 @@ export async function generateDailySummary(
 
   if (!force && existing && dailyDeterministicFieldsEqual(existing, aggregate)) {
     return { ok: true, outcome: "skipped", reason: "No changes in analyzed-case aggregates.", total_lost_count: aggregate.total_lost_count };
+  }
+
+  if (isOpenAiGloballyDisabledByEnv()) {
+    console.info("[lost-qa daily] skip (OPENAI_API_CALLS_DISABLED)", { summary_date: summaryDate, mailbox_id: mailboxId });
+    return {
+      ok: true,
+      outcome: "skipped",
+      reason: openAiGloballyDisabledMessage(),
+      total_lost_count: aggregate.total_lost_count,
+    };
+  }
+
+  const control = await fetchLostQaControlSettings(admin);
+  if (!control.enabled && aggregate.total_lost_count > 0) {
+    console.info("[lost-qa daily] skip (lost_qa.enabled=false)", { summary_date: summaryDate, mailbox_id: mailboxId });
+    return {
+      ok: true,
+      outcome: "skipped",
+      reason: "LOST QA išjungta (lost_qa.enabled=false).",
+      total_lost_count: aggregate.total_lost_count,
+    };
   }
 
   // Zero-case behavior: deterministic row; no OpenAI call.
