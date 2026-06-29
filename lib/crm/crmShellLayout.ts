@@ -1,5 +1,5 @@
 /** CRM shell: sidebar width (px). Header brand strip uses the same value. */
-export const CRM_SIDEBAR_WIDTH_PX = 212;
+export const CRM_SIDEBAR_WIDTH_PX = 240;
 
 /** CRM shell: sidebar background (and matching header strip). */
 export const CRM_SIDEBAR_BG = "#5A343D";
