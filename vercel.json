@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/cron/sync-saskaita123?job=tick",
+      "path": "/api/cron/sync-neksar",
       "schedule": "*/15 * * * *"
     },
     {

@@ -37,7 +37,7 @@ export function assertCronOrInternalSecret(request: Request): NextResponse | nul
 }
 
 /**
- * Kaip `app/api/cron/sync-saskaita123` — leidžia Vercel Cron (`x-vercel-cron: 1`) be Bearer,
+ * Kaip `app/api/cron/sync-neksar` — leidžia Vercel Cron (`x-vercel-cron: 1`) be Bearer,
  * kad nereikėtų sekrėti slaptažodžio į `vercel.json`.
  * Kitoms užklausoms vis dar reikia `CRON_SECRET` antraštėje.
  */
