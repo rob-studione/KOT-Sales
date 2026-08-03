@@ -19,7 +19,7 @@ function assertCronAuth(request: Request): NextResponse | null {
  *
  * Calls syncNeksarInvoices() in-process (no self-HTTP / SITE_URL proxy).
  * Sliding updatedSince window (default: last 2 days) + idempotent upsert/number-dedup.
- * Schedule: */15 via vercel.json.
+ * Schedule: every 15 minutes via vercel.json.
  *
  * Optional query: ?dryRun=1 for a no-write probe.
  */
