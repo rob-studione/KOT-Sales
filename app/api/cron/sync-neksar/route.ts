@@ -27,6 +27,16 @@ export async function GET(request: Request) {
   const unauthorized = assertCronAuth(request);
   if (unauthorized) return unauthorized;
 
+  // Project-level gate: only the primary Vercel production scheduler may sync.
+  // Must run before any Supabase / Neksar / sync-state work.
+  if (process.env.NEKSAR_CRON_ENABLED !== "true") {
+    return NextResponse.json({
+      ok: true,
+      disabled: true,
+      reason: "not_primary_scheduler",
+    });
+  }
+
   const startedAt = Date.now();
   const url = new URL(request.url);
   const dryRun = url.searchParams.get("dryRun") === "1" || url.searchParams.get("dryRun") === "true";
