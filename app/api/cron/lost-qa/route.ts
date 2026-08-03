@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { assertCronVercelOrInternalSecret } from "@/lib/crm/lostQa/gmailInternalAuth";
 import { runLostQaPipelineTick } from "@/lib/crm/lostQa/cron/runLostQaPipelineTick";
+import { isLostQaPipelineEnabled } from "@/lib/crm/lostQa/pipelineEnabled";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const maxDuration = 300;
@@ -42,6 +43,10 @@ function formatErrorForResponse(e: unknown): { error: string; meta?: Record<stri
  * Jei Gmail API ar history sinchronas neturi veikti (pvz. testuojant), naudokite `?skipGmail=1`.
  */
 export async function GET(request: Request) {
+  if (!isLostQaPipelineEnabled()) {
+    return NextResponse.json({ ok: true, disabled: true });
+  }
+
   const unauthorized = assertCronVercelOrInternalSecret(request);
   if (unauthorized) return unauthorized;
 

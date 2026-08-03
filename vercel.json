@@ -3,10 +3,6 @@
     {
       "path": "/api/cron/sync-neksar",
       "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/lost-qa",
-      "schedule": "*/10 * * * *"
     }
   ]
 }

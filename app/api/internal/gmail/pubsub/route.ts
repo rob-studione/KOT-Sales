@@ -6,6 +6,7 @@ import { verifyPubSubOidcBearer } from "@/lib/crm/lostQa/pubsubVerify";
 import { GmailHistoryInvalidError } from "@/lib/crm/lostQa/gmailErrors";
 import { fetchActiveMailboxes } from "@/lib/crm/lostQa/lostQaRepository";
 import { runHistorySyncForMailbox } from "@/lib/crm/lostQa/lostQaGmailOrchestrator";
+import { isLostQaPipelineEnabled } from "@/lib/crm/lostQa/pipelineEnabled";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type PubSubPushBody = {
@@ -38,6 +39,10 @@ async function assertPubSubAuthorized(request: Request): Promise<NextResponse | 
  * or use `CRON_SECRET` locally to POST synthetic payloads.
  */
 export async function POST(request: Request) {
+  if (!isLostQaPipelineEnabled()) {
+    return NextResponse.json({ ok: true, disabled: true });
+  }
+
   const unauthorized = await assertPubSubAuthorized(request);
   if (unauthorized) return unauthorized;
 
