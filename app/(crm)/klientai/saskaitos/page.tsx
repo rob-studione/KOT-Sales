@@ -105,11 +105,15 @@ export default async function SaskaitosPage({
   const { data: dataRaw, error } = await rowQuery.range(from, to);
   const data = (dataRaw ?? []) as InvoiceRow[];
 
-  const kpiMissing = Boolean(kpiRes.error);
-  const kpis =
-    !kpiRes.error && kpiRes.data
-      ? (kpiRes.data as unknown as { total_amount?: unknown; total_count?: unknown })
-      : null;
+  // RPC returns TABLE → PostgREST sends a one-row array: [{ invoice_count, total_amount }]
+  const kpiRow = (() => {
+    if (kpiRes.error || kpiRes.data == null) return null;
+    const raw = kpiRes.data as unknown;
+    const row = Array.isArray(raw) ? raw[0] : raw;
+    if (!row || typeof row !== "object") return null;
+    return row as { invoice_count?: unknown; total_amount?: unknown; total_count?: unknown };
+  })();
+  const kpiError = kpiRes.error?.message ?? null;
 
   const vatCount = (vatKpiCountRes as unknown as { count?: number | null })?.count ?? null;
 
@@ -212,16 +216,19 @@ export default async function SaskaitosPage({
 
       <div className="rounded-xl border border-zinc-200/80 bg-white p-4 text-sm text-zinc-700 shadow-sm">
         <div className="font-medium text-zinc-900">KPI (PVM sąskaitos)</div>
-        {kpiMissing ? (
-          <p className="mt-1 text-xs text-amber-700">KPI RPC nerastas (vat_invoices_kpis). KPI blokas bus tuščias.</p>
+        {kpiError ? (
+          <p className="mt-1 text-xs text-amber-700">KPI klaida (vat_invoices_kpis): {kpiError}</p>
         ) : (
           <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2 text-sm">
             <div>
-              <span className="text-zinc-500">Kiekis:</span> <span className="font-medium">{Number(kpis?.total_count ?? vatCount ?? 0).toLocaleString("lt-LT")}</span>
+              <span className="text-zinc-500">Kiekis:</span>{" "}
+              <span className="font-medium">
+                {Number(kpiRow?.invoice_count ?? kpiRow?.total_count ?? vatCount ?? 0).toLocaleString("lt-LT")}
+              </span>
             </div>
             <div>
               <span className="text-zinc-500">Suma:</span>{" "}
-              <span className="font-medium">{formatMoney(Number(kpis?.total_amount ?? 0))}</span>
+              <span className="font-medium">{formatMoney(Number(kpiRow?.total_amount ?? 0))}</span>
             </div>
           </div>
         )}

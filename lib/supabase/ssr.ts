@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 function env(name: string): string {
   const v = process.env[name]?.trim();
@@ -7,10 +8,20 @@ function env(name: string): string {
   return v;
 }
 
+/**
+ * @supabase/ssr uses skipAutoInitialize: the JWT is not attached until
+ * getUser()/getSession()/getClaims() runs on that client instance.
+ * Without this, PostgREST calls use the anon key as the role.
+ */
+async function attachSession(client: SupabaseClient): Promise<SupabaseClient> {
+  await client.auth.getUser();
+  return client;
+}
+
 /** Cookie-based Supabase client for Server Components / Server Actions. */
 export async function createSupabaseSsrClient() {
   const cookieStore = await cookies();
-  return createServerClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+  const client = createServerClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -22,6 +33,7 @@ export async function createSupabaseSsrClient() {
       },
     },
   });
+  return attachSession(client);
 }
 
 /**
@@ -31,7 +43,7 @@ export async function createSupabaseSsrClient() {
  */
 export async function createSupabaseSsrReadOnlyClient() {
   const cookieStore = await cookies();
-  return createServerClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+  const client = createServerClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -41,5 +53,6 @@ export async function createSupabaseSsrReadOnlyClient() {
       },
     },
   });
+  return attachSession(client);
 }
 
