@@ -218,7 +218,7 @@ function parseProcurementCreateForm(
 export async function loadCandidateExpandDetailsAction(clientKey: string): Promise<CandidateExpandDetails> {
   let supabase;
   try {
-    supabase = createSupabaseServerClient();
+    supabase = await createSupabaseSsrClient();
   } catch {
     return { email: null, phone: null, address: null, invoices: [] };
   }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CrmListPageControls, CrmListPageIntro, CrmListPageMain } from "@/components/crm/CrmListPageLayout";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { ClientsExpandableTable, type ClientListRow } from "@/components/crm/ClientsExpandableTable";
 import { KlientaiSubNav } from "@/components/crm/KlientaiSubNav";
 import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
@@ -153,7 +153,7 @@ async function renderAllClients(sp: { [key: string]: string | string[] | undefin
   try {
     let supabase;
     try {
-      supabase = createSupabaseServerClient();
+      supabase = await createSupabaseSsrReadOnlyClient();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Nežinoma klaida";
       console.error(LOG, { step: "supabase_init", error: message });
@@ -279,7 +279,7 @@ async function renderActiveClients(sp: { [key: string]: string | string[] | unde
 
   let supabase;
   try {
-    supabase = createSupabaseServerClient();
+    supabase = await createSupabaseSsrReadOnlyClient();
   } catch (e) {
     const message = e instanceof Error ? e.message : "Nežinoma klaida";
     return (
@@ -390,7 +390,7 @@ async function renderLostClients(sp: { [key: string]: string | string[] | undefi
 
   let supabase;
   try {
-    supabase = createSupabaseServerClient();
+    supabase = await createSupabaseSsrReadOnlyClient();
   } catch (e) {
     const message = e instanceof Error ? e.message : "Nežinoma klaida";
     return (

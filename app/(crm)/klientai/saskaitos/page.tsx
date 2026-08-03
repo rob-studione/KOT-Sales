@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 import { TablePagination } from "@/components/crm/TablePagination";
 import { clampPageIndex0, parsePageIndex0, parsePageSize, showingRange1Based, totalPagesFromCount } from "@/lib/crm/pagination";
@@ -41,7 +41,7 @@ export default async function SaskaitosPage({
 
   let supabase;
   try {
-    supabase = createSupabaseServerClient();
+    supabase = await createSupabaseSsrReadOnlyClient();
   } catch (e) {
     const message = e instanceof Error ? e.message : "Nežinoma klaida";
     return (

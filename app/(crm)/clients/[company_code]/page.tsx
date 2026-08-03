@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { ORPHAN_CLIENT_PATH_SEGMENT } from "@/lib/crm/clientRouting";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export default async function LegacyClientDetailRedirect({
     redirect(qp.toString() ? `/klientai/${encodeURIComponent(segment)}?${qp.toString()}` : `/klientai/${encodeURIComponent(segment)}`);
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseSsrReadOnlyClient();
   const { data, error } = await supabase
     .from("v_client_list_from_invoices")
     .select("client_id")

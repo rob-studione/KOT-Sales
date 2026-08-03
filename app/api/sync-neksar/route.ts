@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   asNumber,
   asString,
@@ -93,7 +93,8 @@ export async function POST(request: Request) {
 
   let supabase;
   try {
-    supabase = createSupabaseServerClient();
+    // Server-only service_role — must not use the public anon key for invoice upserts.
+    supabase = createSupabaseAdminClient();
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: `Supabase: ${message}`, tookMs: Date.now() - startedAt }, { status: 500 });

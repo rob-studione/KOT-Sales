@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { TablePagination } from "@/components/crm/TablePagination";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { displayInvoiceNumberFromRow } from "@/lib/crm/invoiceDisplayNumber";
 import { clampPageIndex0, parsePageIndex0, parsePageSize, showingRange1Based, totalPagesFromCount } from "@/lib/crm/pagination";
 import { displayClientName, formatCompanyCodeDetail, formatDate, formatMoney } from "@/lib/crm/format";
@@ -23,7 +23,7 @@ export default async function ClientDetailPage({
   const requestedPageIndex0 = parsePageIndex0(sp.page);
   const pageSize = parsePageSize(sp.pageSize);
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseSsrReadOnlyClient();
 
   const { data: summary, error: summaryError } =
     segment === ORPHAN_CLIENT_PATH_SEGMENT

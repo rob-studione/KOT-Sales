@@ -4,7 +4,7 @@ import {
   type SalesDashboardPeriod,
   type SalesDashboardRange,
 } from "@/lib/crm/salesAnalyticsDashboard";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import {
   subtractOneCivilDayVilnius,
   vilniusEndUtc,
@@ -22,7 +22,7 @@ export async function SalesAnalyticsBody({
 }) {
   let supabase;
   try {
-    supabase = createSupabaseServerClient();
+    supabase = await createSupabaseSsrReadOnlyClient();
   } catch (e) {
     const message = e instanceof Error ? e.message : "Nežinoma klaida";
     return <p className="text-sm text-red-600">Supabase nekonfigūruotas. {message}</p>;
