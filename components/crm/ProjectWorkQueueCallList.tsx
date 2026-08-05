@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
-import { formatDate, formatDateTimeLt, formatMoney } from "@/lib/crm/format";
+import { formatDate, formatDateTimeLt, formatMoneyExVat } from "@/lib/crm/format";
 import {
   defaultNextActionDateYmdForKanbanColumn,
   kanbanColumnHidesDateFieldInModal,
@@ -480,7 +480,7 @@ function WorkItemCard({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-right text-base font-semibold tabular-nums text-zinc-900">
-              {formatMoney(item.snapshot_revenue)}
+              {formatMoneyExVat(item.snapshot_revenue)}
             </div>
             <p className="text-xs text-zinc-400">{projectResultStatusLabel(item.result_status)}</p>
           </div>

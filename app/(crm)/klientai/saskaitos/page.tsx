@@ -7,7 +7,7 @@ import { clampPageIndex0, parsePageIndex0, parsePageSize, showingRange1Based, to
 import { displayInvoiceNumberFromRow } from "@/lib/crm/invoiceDisplayNumber";
 import { VAT_INVOICE_SERIES_TITLE_ILIKE } from "@/lib/crm/vatInvoiceListFilter";
 import { parseInvoiceSearchInput } from "@/lib/crm/invoiceListSearch";
-import { displayClientName, formatCompanyCodeList, formatDate, formatMoney } from "@/lib/crm/format";
+import { displayClientName, formatCompanyCodeList, formatDate, formatInvoiceMoney, formatMoney } from "@/lib/crm/format";
 import { clientDetailPath } from "@/lib/crm/clientRouting";
 
 export const dynamic = "force-dynamic";
@@ -89,7 +89,7 @@ export default async function SaskaitosPage({
 
   let rowQuery = supabase
     .from("invoices")
-    .select("invoice_id,invoice_date,created_at,amount,company_name,company_code,client_id,invoice_search_display,series_title,series_number,invoice_number")
+    .select("invoice_id,invoice_date,created_at,amount,amount_net,tax_amount,tax_rate,company_name,company_code,client_id,invoice_search_display,series_title,series_number,invoice_number")
     .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
     .not("invoice_number", "ilike", "VK-000IS%")
     .not("invoice_number", "ilike", "VK-000KR%")
@@ -152,7 +152,6 @@ export default async function SaskaitosPage({
           <tbody className="divide-y divide-zinc-100">
             {data.map((r) => {
               const invNo = displayInvoiceNumberFromRow(r);
-              const amount = Number(r.amount ?? 0);
               const date = r.invoice_date ? String(r.invoice_date) : "";
               const clientName = displayClientName(r.company_name, r.company_code);
               const companyCode = String(r.company_code ?? "").trim();
@@ -172,7 +171,14 @@ export default async function SaskaitosPage({
                     )}
                     <div className="text-xs text-zinc-500">{formatCompanyCodeList(companyCode)}</div>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-zinc-900">{formatMoney(amount)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-zinc-900">
+                    {formatInvoiceMoney({
+                      amount: r.amount,
+                      amount_net: (r as { amount_net?: unknown }).amount_net,
+                      tax_amount: (r as { tax_amount?: unknown }).tax_amount,
+                      tax_rate: (r as { tax_rate?: unknown }).tax_rate,
+                    })}
+                  </td>
                 </tr>
               );
             })}

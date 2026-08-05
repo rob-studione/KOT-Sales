@@ -15,7 +15,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, Mail, Phone } from "lucide-react";
-import { formatDate, formatMoney } from "@/lib/crm/format";
+import { formatDate, formatMoneyExVat } from "@/lib/crm/format";
 import { kanbanCardClientTotalEuros, kanbanCardInvoiceBlockText } from "@/lib/crm/kanbanCardClientFooter";
 import {
   followUpDateVsTodayVilnius,
@@ -197,7 +197,7 @@ function KanbanCard({
             </div>
           ) : null}
           <div className="mt-1 space-y-0.5 overflow-visible text-xs text-zinc-500">
-            <div className="tabular-nums">Visa vertė: {formatMoney(kanbanCardClientTotalEuros(item))}</div>
+            <div className="tabular-nums">Visa vertė: {formatMoneyExVat(kanbanCardClientTotalEuros(item))}</div>
             {invBlock.mode === "procurement" ? (
               <div className="tabular-nums">{invBlock.mainText}</div>
             ) : (
@@ -301,7 +301,7 @@ function CardDragPreview({ item, priority }: { item: ProjectWorkItemDto; priorit
       <div className="text-xs font-medium text-zinc-600">{callListPriorityLabel(priority)}</div>
       <div className="mt-0.5 text-sm font-semibold text-zinc-900">{item.client_name_snapshot}</div>
       <div className="space-y-0.5 text-xs text-zinc-600">
-        <div className="tabular-nums">Visa vertė: {formatMoney(kanbanCardClientTotalEuros(item))}</div>
+        <div className="tabular-nums">Visa vertė: {formatMoneyExVat(kanbanCardClientTotalEuros(item))}</div>
         {b.mode === "procurement" ? (
           <div className="tabular-nums text-zinc-500">{b.mainText}</div>
         ) : (

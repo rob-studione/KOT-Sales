@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { useActionState, useCallback, useEffect, useState } from "react";
-import { formatDate, formatMoney } from "@/lib/crm/format";
+import { formatDate, formatMoneyExVat } from "@/lib/crm/format";
 import {
   defaultNextActionDateYmdForKanbanColumn,
   kanbanColumnHidesDateFieldInModal,
@@ -141,11 +141,11 @@ export function WorkItemDetailSheet({
             <p className="mt-1 text-xs text-zinc-500">
               {isProcurementItem ? (
                 <>
-                  {formatMoney(item.snapshot_revenue)} · galioja iki {formatDate(item.snapshot_last_invoice_date)}
+                  {formatMoneyExVat(item.snapshot_revenue)} · galioja iki {formatDate(item.snapshot_last_invoice_date)}
                 </>
               ) : (
                 <>
-                  {formatMoney(item.snapshot_revenue)} · {item.snapshot_order_count} sąsk. · pask.{" "}
+                  {formatMoneyExVat(item.snapshot_revenue)} · {item.snapshot_order_count} sąsk. · pask.{" "}
                   {formatDate(item.snapshot_last_invoice_date)}
                 </>
               )}

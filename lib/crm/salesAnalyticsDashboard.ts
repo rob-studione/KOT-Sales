@@ -19,7 +19,7 @@ async function withTiming<T>(label: string, fn: () => Promise<T>, logs: QueryLog
   }
 }
 
-export type SalesDashboardPeriod = "today" | "week" | "month" | "custom";
+export type SalesDashboardPeriod = "today" | "week" | "month" | "prev_month" | "year" | "all_time" | "custom";
 
 export type SalesDashboardRange = {
   from: string;
@@ -40,9 +40,9 @@ export type SalesDashboardKpi = {
   answeredCalls: number;
   /** Įrašai `project_work_item_activities` su `action_type = commercial` (pasirinktame intervale). */
   commercialActions: number;
-  /** PVM sąskaitų cold suma pardavimų KPI lange (žr. `resolveSalesKpiRange`). */
+  /** PVM sąskaitų cold suma (DB su PVM; UI — be PVM). */
   coldRevenueEur: number;
-  /** PVM sąskaitų returning suma tame pačiame KPI lange. */
+  /** PVM sąskaitų returning suma (DB su PVM; UI — be PVM). */
   returningRevenueEur: number;
   /** Unikalūs klientai su priskirta sąskaita / skambučių skaičius intervale (kaip iki šiol). */
   conversionPercent: number | null;
@@ -85,14 +85,15 @@ export type SalesDashboardData = {
 };
 
 export function parseSalesDashboardPeriod(raw: string | undefined | null): SalesDashboardPeriod {
-  if (raw === "today" || raw === "week" || raw === "month" || raw === "custom") return raw;
+  if (raw === "today" || raw === "week" || raw === "month" || raw === "prev_month" || raw === "year" || raw === "all_time" || raw === "custom") return raw;
   return "today";
 }
 
 export function resolveSalesDashboardRange(
   period: SalesDashboardPeriod,
   customFrom?: string | null,
-  customTo?: string | null
+  customTo?: string | null,
+  allTimeFrom?: string | null
 ): SalesDashboardRange {
   const today = vilniusTodayDateString();
   if (
@@ -113,6 +114,22 @@ export function resolveSalesDashboardRange(
     const first = vilniusFirstDayOfMonthIso(today);
     return { from: first, to: today };
   }
+  if (period === "prev_month") {
+    const [y, m] = today.split("-").map(Number);
+    const prevYear = m === 1 ? y - 1 : y;
+    const prevMonth = m === 1 ? 12 : m - 1;
+    const prevMonthFirst = `${prevYear}-${String(prevMonth).padStart(2, "0")}-01`;
+    const thisMonthFirst = `${y}-${String(m).padStart(2, "0")}-01`;
+    return { from: prevMonthFirst, to: addCivilDaysVilnius(thisMonthFirst, -1) };
+  }
+  if (period === "year") {
+    const [y] = today.split("-").map(Number);
+    return { from: `${y}-01-01`, to: today };
+  }
+  if (period === "all_time") {
+    const from = allTimeFrom && /^\d{4}-\d{2}-\d{2}$/.test(allTimeFrom) ? allTimeFrom : today;
+    return { from, to: today };
+  }
   if (period === "custom") {
     const mon = vilniusMondayOfWeekIso(today);
     return { from: mon, to: today };
@@ -120,16 +137,27 @@ export function resolveSalesDashboardRange(
   return { from: vilniusMondayOfWeekIso(today), to: today };
 }
 
+export async function fetchSalesDashboardFirstActivityDate(supabase: SupabaseClient): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("project_work_item_activities")
+    .select("occurred_at")
+    .order("occurred_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const ymd = String((data as { occurred_at?: string | null }).occurred_at ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
+}
+
 /**
- * KPI „Pardavimai“ langas: `custom` — tas pats kaip pasirinktas dashboard range; kitaip — 30 kalendorinių dienų iki šiandien (Vilnius).
+ * KPI „Pardavimai“ langas: tas pats intervalas kaip dashboard filtro (įskaitant all_time).
  */
 export function resolveSalesKpiRange(
-  period: SalesDashboardPeriod,
+  _period: SalesDashboardPeriod,
   range: SalesDashboardRange,
-  todayIso: string
+  _todayIso: string
 ): SalesDashboardRange {
-  if (period === "custom") return { from: range.from, to: range.to };
-  return { from: addCivilDaysVilnius(todayIso, -29), to: todayIso };
+  return { from: range.from, to: range.to };
 }
 
 function buildEmptyBestCallTimes(): BestCallTimesData {

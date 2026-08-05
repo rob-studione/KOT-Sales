@@ -9,6 +9,43 @@ export function toNumber(value: unknown): number | null {
   return null;
 }
 
+/** Standartinis LT PVM (sąskaitų `amount` / Neksar `total` = su PVM, kai tarifas 21%). */
+export const LT_STANDARD_VAT_DIVISOR = 1.21;
+
+/**
+ * Sąskaitos suma be PVM.
+ * Prioritetas: `amount_net` (Neksar subtotal) → amount−tax_amount → tax_rate=0 — amount
+ * → žinomas tarifas — amount/(1+rate/100) → legacy fallback amount/1.21.
+ */
+export function resolveInvoiceNetAmount(row: {
+  amount?: unknown;
+  amount_net?: unknown;
+  tax_amount?: unknown;
+  tax_rate?: unknown;
+}): number | null {
+  const net = toNumber(row.amount_net);
+  if (net !== null) return net;
+
+  const gross = toNumber(row.amount);
+  if (gross === null) return null;
+
+  const tax = toNumber(row.tax_amount);
+  if (tax !== null) return Math.round((gross - tax) * 100) / 100;
+
+  const rate = toNumber(row.tax_rate);
+  if (rate === 0) return gross;
+  if (rate !== null && rate > 0) {
+    return Math.round((gross / (1 + rate / 100)) * 100) / 100;
+  }
+
+  return Math.round((gross / LT_STANDARD_VAT_DIVISOR) * 100) / 100;
+}
+
+/** @deprecated Naudok `resolveInvoiceNetAmount` kai yra tax laukai; skaičius be konteksto = /1.21 fallback. */
+export function amountExVat(gross: unknown): number | null {
+  return resolveInvoiceNetAmount({ amount: gross });
+}
+
 export function formatMoney(value: unknown): string {
   const n = toNumber(value);
   if (n === null) return "—";
@@ -17,6 +54,20 @@ export function formatMoney(value: unknown): string {
     currency: "EUR",
     maximumFractionDigits: 2,
   }).format(n);
+}
+
+/** Pajamos / sąskaitos UI be PVM (skaičius — legacy /1.21; geriau perduoti invoice row). */
+export function formatMoneyExVat(value: unknown): string {
+  return formatMoney(amountExVat(value));
+}
+
+export function formatInvoiceMoney(row: {
+  amount?: unknown;
+  amount_net?: unknown;
+  tax_amount?: unknown;
+  tax_rate?: unknown;
+}): string {
+  return formatMoney(resolveInvoiceNetAmount(row));
 }
 
 function pad2(n: number): string {

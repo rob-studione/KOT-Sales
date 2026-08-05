@@ -4,8 +4,8 @@ import { VAT_INVOICE_SERIES_TITLE_ILIKE } from "@/lib/crm/vatInvoiceListFilter";
 const BATCH = 1000;
 
 /**
- * Bendra PVM sąskaitų (VK-%) suma, kai RPC `vat_invoices_kpis` neprieinamas.
- * Naudoja tik `select("amount")` be agregatų — suderinama su PostgREST be `amount.sum()`.
+ * Bendra PVM sąskaitų (VK-%) suma. Preferuoja DB net laukus; fallback — `invoice_amount_net` logika RPC’e.
+ * Legacy UI kelias: kai RPC nėra, sumuoja bruto (rekomenduojama naudoti `vat_invoices_kpis`).
  */
 export async function sumVatInvoiceAmounts(supabase: SupabaseClient): Promise<number | null> {
   let from = 0;

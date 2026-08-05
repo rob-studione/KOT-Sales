@@ -8,6 +8,7 @@ import {
   isReturnedToCandidates,
 } from "@/lib/crm/projectBoardConstants";
 import { VAT_INVOICE_SERIES_TITLE_ILIKE } from "@/lib/crm/vatInvoiceListFilter";
+import { resolveInvoiceNetAmount } from "@/lib/crm/format";
 import {
   isoDateInVilnius,
   subtractOneCivilDayVilnius,
@@ -25,7 +26,7 @@ export const PROJECT_ANALYTICS_OUTCOME_LABELS = [
   { id: "neatsiliepe", label: "Neatsiliepė" },
 ] as const;
 
-export type ProjectAnalyticsPeriod = "today" | "week" | "month" | "custom";
+export type ProjectAnalyticsPeriod = "today" | "week" | "month" | "prev_month" | "year" | "all_time" | "custom";
 
 export type ProjectAnalyticsRange = {
   from: string;
@@ -51,9 +52,11 @@ export function calendarDateAddDaysUtc(isoDate: string, delta: number): string {
 export function resolveAnalyticsRange(
   period: ProjectAnalyticsPeriod,
   customFrom?: string | null,
-  customTo?: string | null
+  customTo?: string | null,
+  allTimeFrom?: string | null
 ): ProjectAnalyticsRange {
   const today = calendarDateTodayUtc();
+  const isIsoDate = (v: string | null | undefined): v is string => Boolean(v && /^\d{4}-\d{2}-\d{2}$/.test(v));
   if (period === "custom" && customFrom && customTo && /^\d{4}-\d{2}-\d{2}$/.test(customFrom) && /^\d{4}-\d{2}-\d{2}$/.test(customTo)) {
     return customFrom <= customTo ? { from: customFrom, to: customTo } : { from: customTo, to: customFrom };
   }
@@ -64,7 +67,22 @@ export function resolveAnalyticsRange(
     const first = `${y}-${pad2(m)}-01`;
     return { from: first, to: today };
   }
-  return { from: calendarDateAddDaysUtc(today, -6), to: today };
+  if (period === "prev_month") {
+    const [y, m] = today.split("-").map(Number);
+    const prevYear = m === 1 ? y - 1 : y;
+    const prevMonth = m === 1 ? 12 : m - 1;
+    const prevMonthFirst = `${prevYear}-${pad2(prevMonth)}-01`;
+    const thisMonthFirst = `${y}-${pad2(m)}-01`;
+    return { from: prevMonthFirst, to: calendarDateAddDaysUtc(thisMonthFirst, -1) };
+  }
+  if (period === "year") {
+    const [y] = today.split("-").map(Number);
+    return { from: `${y}-01-01`, to: today };
+  }
+  if (period === "all_time") {
+    return { from: isIsoDate(allTimeFrom) ? allTimeFrom : today, to: today };
+  }
+  return { from: today, to: today };
 }
 
 function rangeToUtcBounds(range: ProjectAnalyticsRange): { startIso: string; endIso: string } {
@@ -271,7 +289,7 @@ export async function fetchProjectRevenueFeed(
 
   const { data: invRows } = await supabase
     .from("invoices")
-    .select("invoice_id,invoice_number,company_code,company_name,client_id,invoice_date,amount")
+    .select("invoice_id,invoice_number,company_code,company_name,client_id,invoice_date,amount,amount_net,tax_amount,tax_rate")
     .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
     .not("invoice_number", "ilike", "VK-000IS%")
     .not("invoice_number", "ilike", "VK-000KR%")
@@ -307,7 +325,13 @@ export async function fetchProjectRevenueFeed(
       if (!invoiceMatchesParts(inv, parts)) continue;
       const invDay = typeof inv.invoice_date === "string" ? inv.invoice_date.slice(0, 10) : String(inv.invoice_date ?? "").slice(0, 10);
       if (!invDay || invDay <= contactDay) continue;
-      const amt = typeof inv.amount === "number" ? inv.amount : Number(inv.amount);
+      const amt =
+        resolveInvoiceNetAmount({
+          amount: inv.amount,
+          amount_net: (inv as { amount_net?: unknown }).amount_net,
+          tax_amount: (inv as { tax_amount?: unknown }).tax_amount,
+          tax_rate: (inv as { tax_rate?: unknown }).tax_rate,
+        }) ?? NaN;
       if (!Number.isFinite(amt)) continue;
 
       const deltaDays = daysBetweenIso(contactDay, invDay);
@@ -532,7 +556,7 @@ export async function fetchProjectAnalytics(
 
   const { data: invRows } = await supabase
     .from("invoices")
-    .select("invoice_id,company_code,client_id,invoice_date,amount")
+    .select("invoice_id,company_code,client_id,invoice_date,amount,amount_net,tax_amount,tax_rate")
     .ilike("series_title", VAT_INVOICE_SERIES_TITLE_ILIKE)
     .gte("invoice_date", range.from)
     .limit(8000);
@@ -556,7 +580,13 @@ export async function fetchProjectAnalytics(
       const invDay =
         typeof inv.invoice_date === "string" ? inv.invoice_date.slice(0, 10) : String(inv.invoice_date ?? "").slice(0, 10);
       if (!invDay || invDay <= contactDay) continue;
-      const amt = typeof inv.amount === "number" ? inv.amount : Number(inv.amount);
+      const amt =
+        resolveInvoiceNetAmount({
+          amount: inv.amount,
+          amount_net: (inv as { amount_net?: unknown }).amount_net,
+          tax_amount: (inv as { tax_amount?: unknown }).tax_amount,
+          tax_rate: (inv as { tax_rate?: unknown }).tax_rate,
+        }) ?? NaN;
       if (!Number.isFinite(amt)) continue;
       invoiceSeen.add(iid);
       clientKeysWithOrder.add(ck);
@@ -625,6 +655,20 @@ export async function fetchProjectOverviewCriticalKpis(
 }
 
 export function parseProjectAnalyticsPeriod(raw: string | undefined | null): ProjectAnalyticsPeriod {
-  if (raw === "today" || raw === "week" || raw === "month" || raw === "custom") return raw;
-  return "week";
+  if (raw === "today" || raw === "week" || raw === "month" || raw === "prev_month" || raw === "year" || raw === "all_time" || raw === "custom") return raw;
+  return "today";
+}
+
+export async function fetchProjectFirstActivityDate(supabase: SupabaseClient, projectId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("project_work_item_activities")
+    .select("occurred_at,project_work_items!inner(project_id)")
+    .eq("project_work_items.project_id", projectId)
+    .order("occurred_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const occurredAt = String((data as { occurred_at?: string | null }).occurred_at ?? "");
+  const ymd = occurredAt.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
 }

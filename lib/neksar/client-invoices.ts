@@ -126,6 +126,10 @@ export type MappedNeksarRow = {
   phone: string | null;
   invoice_date: string;
   amount: number;
+  /** Be PVM (Neksar `subtotal`). */
+  amount_net: number | null;
+  tax_amount: number | null;
+  tax_rate: number | null;
   series_title: string | null;
   series_number: number | null;
   updated_at: string;
@@ -162,6 +166,30 @@ export type NeksarMapResult =
   | { ok: true; row: MappedNeksarRow }
   | { ok: false; reason: NeksarMapSkipReason; invoiceId: string | null; number: string | null };
 
+function roundMoney2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Suma be PVM iš Neksar laukų.
+ * Prioritetas: `subtotal` → `total − taxAmount` → jei `taxRate === 0` — `total`
+ * → jei žinomas tarifas — `total / (1 + rate/100)` → kitaip null (UI/KPI fallback /1.21).
+ */
+export function resolveNeksarAmountNet(opts: {
+  total: number;
+  subtotal: number | null;
+  taxAmount: number | null;
+  taxRate: number | null;
+}): number | null {
+  if (opts.subtotal != null) return roundMoney2(opts.subtotal);
+  if (opts.taxAmount != null) return roundMoney2(opts.total - opts.taxAmount);
+  if (opts.taxRate === 0) return roundMoney2(opts.total);
+  if (opts.taxRate != null && opts.taxRate > 0) {
+    return roundMoney2(opts.total / (1 + opts.taxRate / 100));
+  }
+  return null;
+}
+
 /**
  * Map one Neksar invoice to a `public.invoices` row, applying KOT Sales scope rules:
  * only issued STANDARD invoices, native (not migrated) and EUR.
@@ -191,6 +219,15 @@ export function mapNeksarInvoice(inv: NeksarClientInvoice): NeksarMapResult {
   if (amount == null || !Number.isFinite(amount)) {
     return { ok: false, reason: "missing_total", invoiceId, number };
   }
+
+  const tax_amount = asNumber(inv.taxAmount);
+  const tax_rate = asNumber(inv.taxRate);
+  const amount_net = resolveNeksarAmountNet({
+    total: amount,
+    subtotal: asNumber(inv.subtotal),
+    taxAmount: tax_amount,
+    taxRate: tax_rate,
+  });
 
   const { series_title, series_number } = parseNeksarNumber(number);
 
@@ -238,6 +275,9 @@ export function mapNeksarInvoice(inv: NeksarClientInvoice): NeksarMapResult {
       phone: asString(inv.buyerPhone)?.trim() ?? null,
       invoice_date: invoiceDate,
       amount,
+      amount_net,
+      tax_amount,
+      tax_rate,
       series_title,
       series_number,
       updated_at: new Date().toISOString(),

@@ -25,6 +25,12 @@ export type NeksarClientInvoice = {
 
   currency: string | null;
   total: string | number | null;
+  /** Net before VAT (preferred for CRM display). */
+  subtotal?: string | number | null;
+  taxAmount?: string | number | null;
+  /** Percent, e.g. 21 or 0. */
+  taxRate?: string | number | null;
+  vatClassCode?: string | null;
 
   clientId: string | null;
   clientName: string | null;

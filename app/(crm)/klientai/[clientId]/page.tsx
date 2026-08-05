@@ -4,7 +4,7 @@ import { TablePagination } from "@/components/crm/TablePagination";
 import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { displayInvoiceNumberFromRow } from "@/lib/crm/invoiceDisplayNumber";
 import { clampPageIndex0, parsePageIndex0, parsePageSize, showingRange1Based, totalPagesFromCount } from "@/lib/crm/pagination";
-import { displayClientName, formatCompanyCodeDetail, formatDate, formatMoney } from "@/lib/crm/format";
+import { displayClientName, formatCompanyCodeDetail, formatDate, formatInvoiceMoney } from "@/lib/crm/format";
 import { ORPHAN_CLIENT_PATH_SEGMENT } from "@/lib/crm/clientRouting";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +97,9 @@ export default async function ClientDetailPage({
     series_number?: number | null;
     invoice_date: string;
     amount: unknown;
+    amount_net?: unknown;
+    tax_amount?: unknown;
+    tax_rate?: unknown;
     created_at: string;
   };
 
@@ -106,7 +109,7 @@ export default async function ClientDetailPage({
   if (!invoicesError) {
     let dataQuery = supabase
       .from("invoices")
-      .select("invoice_id,invoice_number,series_title,series_number,invoice_date,amount,created_at")
+      .select("invoice_id,invoice_number,series_title,series_number,invoice_date,amount,amount_net,tax_amount,tax_rate,created_at")
       .order("invoice_date", { ascending: false })
       .order("created_at", { ascending: false });
 
@@ -160,7 +163,14 @@ export default async function ClientDetailPage({
                 <tr key={r.invoice_id}>
                   <td className="px-4 py-3 font-medium text-zinc-900">{displayInvoiceNumberFromRow(r) || "—"}</td>
                   <td className="px-4 py-3 text-zinc-700">{formatDate(r.invoice_date)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-zinc-900">{formatMoney(Number(r.amount ?? 0))}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-zinc-900">
+                    {formatInvoiceMoney({
+                      amount: r.amount,
+                      amount_net: r.amount_net,
+                      tax_amount: r.tax_amount,
+                      tax_rate: r.tax_rate,
+                    })}
+                  </td>
                 </tr>
               ))}
               {invRows.length === 0 ? (

@@ -1,6 +1,7 @@
 import type { SalesDashboardData } from "@/lib/crm/salesAnalyticsDashboard";
 import { formatMoney } from "@/lib/crm/format";
 import { CallsByDayBarChart } from "@/components/crm/CallsByDayBarChart";
+import { InvoicesBreakdownTableClientOnly } from "@/components/crm/InvoicesBreakdownTableClientOnly";
 import { SalesAnalyticsBestCallTimeClient } from "@/components/crm/SalesAnalyticsBestCallTimeClient";
 
 export function SalesAnalyticsDashboardView({
@@ -36,7 +37,7 @@ export function SalesAnalyticsDashboardView({
             sub="skambučiai su atsiliepimo statusu"
           />
           <KpiCard label="Komerciniai" value={String(kpi.commercialActions)} sub="komerciniai įrašai" />
-          <KpiCard label="Konversija" value={conversionDisplay} sub="klientai su sąskaita / skambučiai" />
+          <KpiCard label="Konversija" value={conversionDisplay} sub="klientai su sąskaita / atsiliepė" />
         </div>
       </section>
 
@@ -57,7 +58,8 @@ export function SalesAnalyticsDashboardView({
           Pardavimai
         </h2>
         <p className="mt-1 text-xs text-zinc-500">
-          PVM sąskaitos pagal <span className="font-medium text-zinc-700">invoice_date</span> fiksuotame pardavimų lange: jei viršuje pasirinkta{" "}
+          PVM sąskaitos (sumos <span className="font-medium text-zinc-700">be PVM</span>) pagal{" "}
+          <span className="font-medium text-zinc-700">invoice_date</span> fiksuotame pardavimų lange: jei viršuje pasirinkta{" "}
           <span className="font-medium text-zinc-700">Pasirinkti laikotarpį</span> — naudojamos tos pačios <span className="font-medium text-zinc-700">nuo / iki</span>{" "}
           datos; kitu atveju — <span className="font-medium text-zinc-700">paskutinės 30 kalendorinių dienų</span> iki šiandien (Vilnius). Sąskaita
           įtraukiama, jei su tuo klientu buvo atliktas relevant veiksmas (call/email/meeting) per <span className="font-medium text-zinc-700">365 d.</span> iki sąskaitos datos.
@@ -72,10 +74,10 @@ export function SalesAnalyticsDashboardView({
           {coldInvoices.length > 0 || returningInvoices.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {coldInvoices.length > 0 ? (
-                <InvoicesBreakdownTable className="sm:col-start-1" rows={coldInvoices} title="Cold sąskaitos" />
+                <InvoicesBreakdownTableClientOnly className="sm:col-start-1" rows={coldInvoices} title="Cold sąskaitos" />
               ) : null}
               {returningInvoices.length > 0 ? (
-                <InvoicesBreakdownTable
+                <InvoicesBreakdownTableClientOnly
                   className="sm:col-start-2"
                   rows={returningInvoices}
                   title="Returning sąskaitos"
@@ -111,49 +113,6 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
         {value}
       </div>
       {sub ? <div className="mt-1 text-xs text-zinc-500">{sub}</div> : null}
-    </div>
-  );
-}
-
-function InvoicesBreakdownTable({
-  rows,
-  title,
-  className,
-}: {
-  rows: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
-  title: string;
-  className?: string;
-}) {
-  if (rows.length === 0) return null;
-  return (
-    <div className={className}>
-      <div className="mb-1 text-[11px] font-medium text-zinc-500">{title}</div>
-      <div className="overflow-x-auto rounded-md border border-zinc-200 bg-white">
-        <table className="min-w-full text-[11px]">
-          <thead className="border-b border-zinc-100 bg-zinc-50/80 text-left font-medium uppercase tracking-wide text-zinc-500">
-            <tr>
-              <th className="px-2.5 py-1.5">Sąskaitos Nr.</th>
-              <th className="px-2.5 py-1.5">Įmonė</th>
-              <th className="px-2.5 py-1.5">Data</th>
-              <th className="px-2.5 py-1.5 text-right">Suma</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {rows.map((inv) => (
-              <tr key={`${inv.invoiceNumber}-${inv.date}-${inv.clientKey}`} className="text-zinc-800">
-                <td className="px-2.5 py-1.5 font-medium text-zinc-900">{inv.invoiceNumber}</td>
-                <td className="max-w-[18rem] truncate px-2.5 py-1.5 text-zinc-700">
-                  {inv.companyName?.trim() ? inv.companyName : inv.clientKey}
-                </td>
-                <td className="px-2.5 py-1.5 tabular-nums">{inv.date}</td>
-                <td className="px-2.5 py-1.5 text-right tabular-nums font-semibold text-zinc-900">
-                  {formatMoney(inv.amount)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { displayInvoiceNumberFromRow } from "@/lib/crm/invoiceDisplayNumber";
-import { formatMoney } from "@/lib/crm/format";
+import { formatInvoiceMoney } from "@/lib/crm/format";
 import { parseManualLeadIdFromClientKey } from "@/lib/crm/manualLeadClientKey";
 import type { CandidateExpandDetails, CandidateExpandInvoice } from "@/lib/crm/candidateExpandTypes";
 
@@ -46,7 +46,7 @@ export async function fetchCandidateExpandDetails(
 
   let q = supabase
     .from("invoices")
-    .select("invoice_id,invoice_number,series_title,series_number,invoice_date,amount")
+    .select("invoice_id,invoice_number,series_title,series_number,invoice_date,amount,amount_net,tax_amount,tax_rate")
     .order("invoice_date", { ascending: false })
     .order("invoice_id", { ascending: false })
     .limit(5);
@@ -73,7 +73,12 @@ export async function fetchCandidateExpandDetails(
       typeof row.invoice_date === "string"
         ? row.invoice_date.slice(0, 10)
         : String(row.invoice_date ?? "").slice(0, 10),
-    amount: formatMoney(row.amount),
+    amount: formatInvoiceMoney({
+      amount: row.amount,
+      amount_net: (row as { amount_net?: unknown }).amount_net,
+      tax_amount: (row as { tax_amount?: unknown }).tax_amount,
+      tax_rate: (row as { tax_rate?: unknown }).tax_rate,
+    }),
   }));
 
   return {
