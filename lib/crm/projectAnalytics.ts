@@ -168,6 +168,48 @@ function clientLabelFromInvoiceRow(inv: {
   return "—";
 }
 
+const PROJECT_ACTIVITY_PAGE = 1000;
+const PROJECT_ACTIVITY_MAX_ROWS = 50_000;
+
+/**
+ * Activities for one project via inner join on work items.
+ * Avoids `.in("work_item_id", thousandsOfIds)` which overflows the PostgREST URL (400)
+ * and was silently mapped to empty KPIs on large projects.
+ */
+async function fetchProjectActivitiesByJoin<T extends Record<string, unknown>>(
+  supabase: SupabaseClient,
+  projectId: string,
+  opts: { startIso: string; endIso: string; columns: string }
+): Promise<T[]> {
+  const select = `${opts.columns},project_work_items!inner(project_id)`;
+  const out: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("project_work_item_activities")
+      .select(select)
+      .eq("project_work_items.project_id", projectId)
+      .gte("occurred_at", opts.startIso)
+      .lte("occurred_at", opts.endIso)
+      .order("occurred_at", { ascending: true })
+      .range(from, from + PROJECT_ACTIVITY_PAGE - 1);
+    if (error) {
+      console.error("[projectAnalytics] activities join", error);
+      return out;
+    }
+    const chunk = (data ?? []) as unknown as T[];
+    if (chunk.length === 0) break;
+    out.push(...chunk);
+    if (chunk.length < PROJECT_ACTIVITY_PAGE) break;
+    from += PROJECT_ACTIVITY_PAGE;
+    if (from >= PROJECT_ACTIVITY_MAX_ROWS) {
+      console.error("[projectAnalytics] activities truncated at", PROJECT_ACTIVITY_MAX_ROWS);
+      break;
+    }
+  }
+  return out;
+}
+
 export async function fetchProjectRevenueFeed(
   supabase: SupabaseClient,
   projectId: string,
@@ -188,24 +230,23 @@ export async function fetchProjectRevenueFeed(
     return { rows: [], count: 0, kpi: { directEur: 0, indirectEur: 0, totalEur: 0 } };
   }
 
-  const workIds = workRows.map((r) => String(r.id));
   const clientKeys = [...new Set(workRows.map((r) => String(r.client_key ?? "")))].filter(Boolean);
 
-  const { data: actRows } = await supabase
-    .from("project_work_item_activities")
-    .select("work_item_id,occurred_at,action_type")
-    .in("work_item_id", workIds)
-    .gte("occurred_at", startIso)
-    .lte("occurred_at", endIso)
-    .order("occurred_at", { ascending: true });
+  const actRows = await fetchProjectActivitiesByJoin<{
+    work_item_id?: string;
+    occurred_at?: string;
+    action_type?: string;
+  }>(supabase, projectId, {
+    startIso,
+    endIso,
+    columns: "work_item_id,occurred_at,action_type",
+  });
 
-  const activities: Array<{ work_item_id: string; occurred_at: string; action_type: string }> = (actRows ?? []).map(
-    (r) => ({
-      work_item_id: String(r.work_item_id),
-      occurred_at: String(r.occurred_at ?? ""),
-      action_type: String(r.action_type ?? "").toLowerCase(),
-    })
-  );
+  const activities: Array<{ work_item_id: string; occurred_at: string; action_type: string }> = actRows.map((r) => ({
+    work_item_id: String(r.work_item_id ?? ""),
+    occurred_at: String(r.occurred_at ?? ""),
+    action_type: String(r.action_type ?? "").toLowerCase(),
+  }));
 
   const firstContactByWork = new Map<string, string>();
   for (const a of activities) {
@@ -349,32 +390,36 @@ export async function fetchProjectAnalytics(
     };
   }
 
-  const workIds = workRows.map((r) => String(r.id));
   const clientKeys = [...new Set(workRows.map((r) => String(r.client_key ?? "")))];
 
-  const { data: actRows, error: aErr } = await supabase
-    .from("project_work_item_activities")
-    .select("work_item_id,occurred_at,action_type,call_status,next_action")
-    .in("work_item_id", workIds)
-    .gte("occurred_at", startIso)
-    .lte("occurred_at", endIso)
-    .order("occurred_at", { ascending: true });
+  const actRows = await fetchProjectActivitiesByJoin<{
+    work_item_id?: string;
+    occurred_at?: string;
+    action_type?: string;
+    call_status?: string;
+    next_action?: string;
+  }>(supabase, projectId, {
+    startIso,
+    endIso,
+    columns: "work_item_id,occurred_at,action_type,call_status,next_action",
+  });
 
-  const activities: ActivityRow[] = (aErr ? [] : actRows ?? []).map((r) => ({
-    work_item_id: String(r.work_item_id),
+  const activities: ActivityRow[] = actRows.map((r) => ({
+    work_item_id: String(r.work_item_id ?? ""),
     occurred_at: String(r.occurred_at ?? ""),
     action_type: String(r.action_type ?? "").toLowerCase(),
     call_status: String(r.call_status ?? ""),
     next_action: String(r.next_action ?? ""),
   }));
 
-  const { data: monthActRows, error: monthErr } = await supabase
-    .from("project_work_item_activities")
-    .select("occurred_at,action_type")
-    .in("work_item_id", workIds)
-    .gte("occurred_at", monthStartIso)
-    .lte("occurred_at", monthEndIso)
-    .order("occurred_at", { ascending: true });
+  const monthActRows = await fetchProjectActivitiesByJoin<{
+    occurred_at?: string;
+    action_type?: string;
+  }>(supabase, projectId, {
+    startIso: monthStartIso,
+    endIso: monthEndIso,
+    columns: "occurred_at,action_type",
+  });
 
   let calls = 0;
   let answered = 0;
@@ -404,7 +449,7 @@ export async function fetchProjectAnalytics(
     }
   }
 
-  const monthActivities: Array<{ occurred_at: string; action_type: string }> = (monthErr ? [] : monthActRows ?? []).map((r) => ({
+  const monthActivities: Array<{ occurred_at: string; action_type: string }> = monthActRows.map((r) => ({
     occurred_at: String(r.occurred_at ?? ""),
     action_type: String(r.action_type ?? "").toLowerCase(),
   }));
@@ -547,29 +592,14 @@ export async function fetchProjectOverviewCriticalKpis(
 ): Promise<Pick<ProjectAnalyticsDto, "kpi">> {
   const { startIso, endIso } = rangeToUtcBounds(range);
 
-  const { data: workRows, error: wErr } = await supabase
-    .from("project_work_items")
-    .select("id")
-    .eq("project_id", projectId);
-
-  if (wErr || !workRows?.length) {
-    return { kpi: { calls: 0, answered: 0, notAnswered: 0, emails: 0, commercial: 0, answerRatePercent: null } };
-  }
-
-  const workIds = workRows.map((r) => String((r as any).id ?? "")).filter(Boolean);
-
-  const { data: actRows, error: aErr } = await supabase
-    .from("project_work_item_activities")
-    .select("occurred_at,action_type,call_status")
-    .in("work_item_id", workIds)
-    .gte("occurred_at", startIso)
-    .lte("occurred_at", endIso)
-    .order("occurred_at", { ascending: true });
-
-  const activities: Array<{ action_type: string; call_status: string }> = (aErr ? [] : actRows ?? []).map((r) => ({
-    action_type: String((r as any).action_type ?? "").toLowerCase(),
-    call_status: String((r as any).call_status ?? ""),
-  }));
+  const actRows = await fetchProjectActivitiesByJoin<{
+    action_type?: string;
+    call_status?: string;
+  }>(supabase, projectId, {
+    startIso,
+    endIso,
+    columns: "action_type,call_status",
+  });
 
   let calls = 0;
   let answered = 0;
@@ -577,13 +607,15 @@ export async function fetchProjectOverviewCriticalKpis(
   let emails = 0;
   let commercial = 0;
 
-  for (const a of activities) {
-    if (a.action_type === "email") emails += 1;
-    if (a.action_type === "commercial") commercial += 1;
-    if (a.action_type === "call") {
+  for (const r of actRows) {
+    const action_type = String(r.action_type ?? "").toLowerCase();
+    const call_status = String(r.call_status ?? "");
+    if (action_type === "email") emails += 1;
+    if (action_type === "commercial") commercial += 1;
+    if (action_type === "call") {
       calls += 1;
-      if (isCallAnsweredByStatus(a.call_status)) answered += 1;
-      else if (isCallNotAnsweredByStatus(a.call_status)) notAnswered += 1;
+      if (isCallAnsweredByStatus(call_status)) answered += 1;
+      else if (isCallNotAnsweredByStatus(call_status)) notAnswered += 1;
     }
   }
 
