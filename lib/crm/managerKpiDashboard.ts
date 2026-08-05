@@ -241,6 +241,18 @@ function trendActual(cur: number, prev: number): number | null {
   return Math.round(((cur - prev) / prev) * 1000) / 10;
 }
 
+async function fetchManagerKpiFirstActivityDate(supabase: SupabaseClient): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("project_work_item_activities")
+    .select("occurred_at")
+    .order("occurred_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const ymd = String((data as { occurred_at?: string | null }).occurred_at ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
+}
+
 export async function buildManagerKpiViewModel(
   supabase: SupabaseClient,
   opts: {
@@ -250,7 +262,8 @@ export async function buildManagerKpiViewModel(
     compare: boolean;
   }
 ): Promise<ManagerKpiViewModel> {
-  const range = resolveManagerKpiRange(opts.preset, opts.customFrom, opts.customTo);
+  const allTimeFrom = opts.preset === "all_time" ? await fetchManagerKpiFirstActivityDate(supabase) : null;
+  const range = resolveManagerKpiRange(opts.preset, opts.customFrom, opts.customTo, allTimeFrom);
   const dayCount = calendarDaysInRange(range);
   const workingDayCount = Math.max(0, countWorkingDaysLtIso(range.from, range.to));
   const compareRange = opts.compare ? comparisonRangeForPreset(opts.preset, range, opts.customFrom, opts.customTo) : null;

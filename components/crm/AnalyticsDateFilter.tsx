@@ -1,14 +1,35 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { FormEvent } from "react";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { SalesDashboardPeriod, SalesDashboardRange } from "@/lib/crm/salesAnalyticsDashboard";
+import { CrmIsoDatePicker } from "@/components/crm/CrmIsoDatePicker";
+import { PeriodFilterCalendarIcon } from "@/components/crm/PeriodFilterCalendarIcon";
 
-const BTN =
-  "cursor-pointer rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50";
-const ACTIVE = "border-[#7C4A57] bg-white text-[#7C4A57]";
-const IDLE = "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50";
+type QuickPreset = Exclude<SalesDashboardPeriod, "custom">;
+
+const PRESETS: Array<{ id: QuickPreset; label: string }> = [
+  { id: "today", label: "Šiandien" },
+  { id: "week", label: "Ši savaitė" },
+  { id: "month", label: "Šis mėnuo" },
+  { id: "prev_month", label: "Praėjęs mėnuo" },
+  { id: "year", label: "Šie metai" },
+  { id: "all_time", label: "Visas laikotarpis" },
+];
+
+const PERIOD_LABEL: Record<SalesDashboardPeriod, string> = {
+  today: "Šiandien",
+  week: "Ši savaitė",
+  month: "Šis mėnuo",
+  prev_month: "Praėjęs mėnuo",
+  year: "Šie metai",
+  all_time: "Visas laikotarpis",
+  custom: "Pasirinktas intervalas",
+};
+
+function isIsoDate(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
 
 export function AnalyticsDateFilter({
   period,
@@ -21,10 +42,10 @@ export function AnalyticsDateFilter({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
-  /** Atidarytas „Pasirinkti laikotarpį“ juodraštis be URL keitimo — reload tik po „Taikyti“. */
-  const [customDraftOpen, setCustomDraftOpen] = useState(false);
-
-  const showCustomForm = period === "custom" || customDraftOpen;
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState(range.from);
+  const [to, setTo] = useState(range.to);
 
   function navigate(next: URLSearchParams) {
     const q = next.toString();
@@ -33,13 +54,9 @@ export function AnalyticsDateFilter({
     });
   }
 
-  function setPeriod(p: SalesDashboardPeriod) {
+  function setPeriod(p: QuickPreset) {
     if (isPending) return;
-    if (p === "custom") {
-      setCustomDraftOpen(true);
-      return;
-    }
-    setCustomDraftOpen(false);
+    setOpen(false);
     if (p === period) return;
     const next = new URLSearchParams(searchParams.toString());
     next.set("period", p);
@@ -48,91 +65,115 @@ export function AnalyticsDateFilter({
     navigate(next);
   }
 
-  function applyCustomRange(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  useEffect(() => {
+    setFrom(range.from);
+    setTo(range.to);
+  }, [range.from, range.to]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onPointerDown(e: PointerEvent) {
+      const root = rootRef.current;
+      if (!root) return;
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (!root.contains(target)) setOpen(false);
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  function applyCustomRange() {
     if (isPending) return;
-    const fd = new FormData(e.currentTarget);
-    const from = fd.get("from");
-    const to = fd.get("to");
-    if (typeof from !== "string" || typeof to !== "string") return;
-    if (!from || !to) return;
-    setCustomDraftOpen(false);
+    if (!isIsoDate(from) || !isIsoDate(to)) return;
+    const ordered = from <= to ? { from, to } : { from: to, to: from };
     const next = new URLSearchParams(searchParams.toString());
     next.set("period", "custom");
-    next.set("from", from);
-    next.set("to", to);
+    next.set("from", ordered.from);
+    next.set("to", ordered.to);
+    setOpen(false);
     navigate(next);
   }
 
-  return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={isPending}
-          className={`${BTN} ${period === "today" && !customDraftOpen ? ACTIVE : IDLE}`}
-          onClick={() => setPeriod("today")}
-        >
-          Šiandien
-        </button>
-        <button
-          type="button"
-          disabled={isPending}
-          className={`${BTN} ${period === "week" && !customDraftOpen ? ACTIVE : IDLE}`}
-          onClick={() => setPeriod("week")}
-        >
-          Šią savaitę
-        </button>
-        <button
-          type="button"
-          disabled={isPending}
-          className={`${BTN} ${period === "month" && !customDraftOpen ? ACTIVE : IDLE}`}
-          onClick={() => setPeriod("month")}
-        >
-          Šį mėnesį
-        </button>
-        <button
-          type="button"
-          disabled={isPending}
-          className={`${BTN} ${period === "custom" || customDraftOpen ? ACTIVE : IDLE}`}
-          onClick={() => setPeriod("custom")}
-        >
-          Pasirinkti laikotarpį
-        </button>
-      </div>
+  const applyDisabled = !isIsoDate(from) || !isIsoDate(to) || isPending;
 
-      {showCustomForm ? (
-        <form
-          key={`${range.from}-${range.to}-${period}`}
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={applyCustomRange}
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+      <div ref={rootRef} className="relative">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 shadow-sm shadow-black/5 hover:bg-zinc-50"
         >
-          <input type="hidden" name="period" value="custom" />
-          <label className="flex items-center gap-1.5 text-xs text-zinc-600">
-            Nuo
-            <input
-              type="date"
-              name="from"
-              required
-              defaultValue={range.from}
-              className="rounded-md border border-zinc-200 px-2 py-1 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
-            />
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-zinc-600">
-            Iki
-            <input
-              type="date"
-              name="to"
-              required
-              defaultValue={range.to}
-              className="rounded-md border border-zinc-200 px-2 py-1 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
-            />
-          </label>
-          <button type="submit" className={`${BTN} ${IDLE}`} disabled={isPending}>
-            Taikyti
-          </button>
-        </form>
-      ) : null}
+          <PeriodFilterCalendarIcon className="shrink-0 text-zinc-400" />
+          {PERIOD_LABEL[period]}
+          <span className={`text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
+        </button>
+
+        {open ? (
+          <div className="absolute right-0 z-20 mt-2 w-[22rem] rounded-xl border border-zinc-200 bg-white p-3 shadow-xl shadow-black/10 sm:left-full sm:right-auto sm:ml-2 sm:mt-0 sm:top-0">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Laikotarpis</div>
+            <div className="grid grid-cols-2 gap-2">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPeriod(p.id)}
+                  className={
+                    period === p.id
+                      ? "rounded-md border border-[#7C4A57] bg-white px-2.5 py-2 text-left text-sm font-medium text-[#7C4A57]"
+                      : "rounded-md border border-zinc-200 bg-white px-2.5 py-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                  }
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 border-t border-zinc-100 pt-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Pasirinktas intervalas</div>
+              <div className="flex items-center gap-2">
+                <CrmIsoDatePicker
+                  name="from_local"
+                  value={from}
+                  onValueChange={setFrom}
+                  ariaLabel="Nuo"
+                  inputClassName="h-9 w-full rounded-md border border-zinc-200 px-2 py-1 pr-8 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
+                  buttonClassName="absolute right-1 top-0 inline-flex h-9 w-7 items-center justify-center text-zinc-400 hover:text-zinc-700"
+                />
+                <span className="text-zinc-400">–</span>
+                <CrmIsoDatePicker
+                  name="to_local"
+                  value={to}
+                  onValueChange={setTo}
+                  ariaLabel="Iki"
+                  inputClassName="h-9 w-full rounded-md border border-zinc-200 px-2 py-1 pr-8 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
+                  buttonClassName="absolute right-1 top-0 inline-flex h-9 w-7 items-center justify-center text-zinc-400 hover:text-zinc-700"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={applyDisabled}
+                onClick={applyCustomRange}
+                className="mt-2 h-9 rounded-md bg-[#7C4A57] px-3 text-sm font-medium text-white hover:bg-[#693948] disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500"
+              >
+                Taikyti
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <p className="text-xs text-zinc-500 sm:text-right">
         Rodoma: <span className="font-medium text-zinc-700">{range.from}</span> —{" "}

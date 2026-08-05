@@ -3,12 +3,18 @@ import { CrmAnalyticsHeader } from "@/components/crm/CrmAnalyticsHeader";
 import { CrmContentContainer } from "@/components/crm/CrmContentContainer";
 import { LostQaAnalyticsFilters } from "@/components/crm/LostQaAnalyticsFilters";
 import { displayAssignedAgentFromMessages } from "@/lib/crm/lostQa/agentDisplay";
+import {
+  parseManagerKpiPreset,
+  resolveManagerKpiRange,
+  type ManagerKpiPreset,
+} from "@/lib/crm/managerKpiPeriods";
 import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import {
   LOST_PRIMARY_REASON_LABEL_LT,
   lostPrimaryReasonLabelLtOrDefault,
 } from "@/lib/crm/lostQa/reasonLabelLt";
 import type { LostPrimaryReason } from "@/lib/crm/lostQaDb";
+import { vilniusTodayDateString } from "@/lib/crm/vilniusTime";
 
 export const dynamic = "force-dynamic";
 
@@ -90,8 +96,9 @@ function n(v: unknown): number {
   return Number.isFinite(x) ? x : 0;
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+function normalizeIsoDate(raw: string | undefined, fallback: string): string {
+  const v = (raw ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : fallback;
 }
 
 function shiftDays(iso: string, delta: number): string {
@@ -100,9 +107,49 @@ function shiftDays(iso: string, delta: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function normalizeIsoDate(raw: string | undefined, fallback: string): string {
-  const v = (raw ?? "").trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : fallback;
+/** Naujas `period=` + senų bookmark'ų (`preset`/`mode`/`date`) mapinimas. */
+function parseLostQaPeriod(sp: {
+  [key: string]: string | string[] | undefined;
+}): {
+  period: ManagerKpiPreset;
+  customFrom: string | null;
+  customTo: string | null;
+} {
+  const today = vilniusTodayDateString();
+  const periodRaw = typeof sp.period === "string" ? sp.period : undefined;
+  if (periodRaw) {
+    const period = parseManagerKpiPreset(periodRaw);
+    return {
+      period,
+      customFrom: typeof sp.from === "string" ? sp.from : null,
+      customTo: typeof sp.to === "string" ? sp.to : null,
+    };
+  }
+
+  const presetRaw = typeof sp.preset === "string" ? sp.preset : undefined;
+  const mode = typeof sp.mode === "string" && sp.mode === "range" ? "range" : "day";
+  const date = normalizeIsoDate(typeof sp.date === "string" ? sp.date : undefined, today);
+  let from = normalizeIsoDate(typeof sp.from === "string" ? sp.from : undefined, shiftDays(today, -6));
+  let to = normalizeIsoDate(typeof sp.to === "string" ? sp.to : undefined, today);
+
+  if (presetRaw === "today") return { period: "today", customFrom: null, customTo: null };
+  if (presetRaw === "yesterday") {
+    const y = shiftDays(today, -1);
+    return { period: "custom", customFrom: y, customTo: y };
+  }
+  if (presetRaw === "last7") {
+    return { period: "custom", customFrom: shiftDays(today, -6), customTo: today };
+  }
+  if (presetRaw === "last30") {
+    return { period: "custom", customFrom: shiftDays(today, -29), customTo: today };
+  }
+  if (presetRaw === "custom") {
+    if (mode === "day") return { period: "custom", customFrom: date, customTo: date };
+    if (from > to) [from, to] = [to, from];
+    return { period: "custom", customFrom: from, customTo: to };
+  }
+
+  return { period: "today", customFrom: null, customTo: null };
 }
 
 function mergeTopReasons(rows: DailySummaryRow[]): TopReasonRow[] {
@@ -223,62 +270,38 @@ export default async function LostQaDailySummaryPage({
   }));
 
   const mailbox = typeof sp.mailbox === "string" ? sp.mailbox : "all";
-  const mode = typeof sp.mode === "string" && sp.mode === "range" ? "range" : "day";
-  const today = todayIso();
-  const presetRaw = typeof sp.preset === "string" ? sp.preset : undefined;
-  const preset =
-    presetRaw === "today" || presetRaw === "yesterday" || presetRaw === "last7" || presetRaw === "last30" || presetRaw === "custom"
-      ? presetRaw
-      : mode === "day"
-        ? "today"
-        : "last7";
+  const { period, customFrom, customTo } = parseLostQaPeriod(sp);
 
-  let date = normalizeIsoDate(typeof sp.date === "string" ? sp.date : undefined, today);
-  let from = normalizeIsoDate(typeof sp.from === "string" ? sp.from : undefined, shiftDays(today, -6));
-  let to = normalizeIsoDate(typeof sp.to === "string" ? sp.to : undefined, today);
-
-  if (mode === "day") {
-    if (preset === "today") date = today;
-    if (preset === "yesterday") date = shiftDays(today, -1);
-  } else {
-    if (preset === "last7") {
-      from = shiftDays(today, -6);
-      to = today;
-    }
-    if (preset === "last30") {
-      from = shiftDays(today, -29);
-      to = today;
-    }
-    if (from > to) [from, to] = [to, from];
-  }
-
-  let effectiveRows: DailySummaryRow[] = [];
-  if (mode === "day") {
-    let q = supabase.from("lost_daily_summaries").select("*").eq("summary_date", date);
-    if (mailbox !== "all") {
-      q = q.eq("mailbox_id", mailbox);
-    }
-    const { data, error } = await q.order("mailbox_id", { ascending: true, nullsFirst: false });
-    if (error) throw error;
-    const raw = (data as DailySummaryRow[] | null) ?? [];
-    effectiveRows = mailbox === "all" ? selectRowsForAllMailboxesView(raw) : raw;
-  } else {
-    let q = supabase
+  let allTimeFrom: string | null = null;
+  if (period === "all_time") {
+    const { data: firstRow } = await supabase
       .from("lost_daily_summaries")
-      .select("*")
-      .gte("summary_date", from)
-      .lte("summary_date", to)
-      .order("summary_date", { ascending: true });
-    if (mailbox !== "all") {
-      q = q.eq("mailbox_id", mailbox);
-    }
-    const { data, error } = await q;
-    if (error) throw error;
-    const raw = (data as DailySummaryRow[] | null) ?? [];
-    effectiveRows = mailbox === "all" ? selectRowsForAllMailboxesView(raw) : raw;
+      .select("summary_date")
+      .order("summary_date", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const ymd = String((firstRow as { summary_date?: string } | null)?.summary_date ?? "").slice(0, 10);
+    allTimeFrom = /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
   }
 
-  const selectedLabel = mode === "day" ? `Data: ${date}` : `Intervalas: ${from} – ${to}`;
+  const range = resolveManagerKpiRange(period, customFrom, customTo, allTimeFrom);
+  const { from, to } = range;
+
+  let q = supabase
+    .from("lost_daily_summaries")
+    .select("*")
+    .gte("summary_date", from)
+    .lte("summary_date", to)
+    .order("summary_date", { ascending: true });
+  if (mailbox !== "all") {
+    q = q.eq("mailbox_id", mailbox);
+  }
+  const { data, error } = await q;
+  if (error) throw error;
+  const raw = (data as DailySummaryRow[] | null) ?? [];
+  const effectiveRows = mailbox === "all" ? selectRowsForAllMailboxesView(raw) : raw;
+
+  const selectedLabel = from === to ? `Data: ${from}` : `Intervalas: ${from} – ${to}`;
 
   const topReasons = mergeTopReasons(effectiveRows);
   const actionPoints = mergeActionPoints(effectiveRows);
@@ -327,8 +350,8 @@ export default async function LostQaDailySummaryPage({
 
   const focusedSummary = topReason
     ? `Didžiausia problema – ${reasonLabelLt(topReason.reason).toLowerCase()} (${topReason.count} iš ${summaryMetrics.total_lost_count} atvejų).`
-    : mode === "day"
-      ? `${date} neturėjome Lost QA suvestinės.`
+    : from === to
+      ? `${from} neturėjome Lost QA suvestinės.`
       : `Per laikotarpį nuo ${from} iki ${to} neturėjome Lost QA suvestinių.`;
 
   const topManagers = new Map<string, { label: string; count: number }>();
@@ -351,7 +374,13 @@ export default async function LostQaDailySummaryPage({
           </span>
         }
         tabs={
-          <LostQaAnalyticsFilters mailboxOptions={mailboxOptions} mailbox={mailbox} mode={mode} preset={preset} date={date} from={from} to={to} />
+          <LostQaAnalyticsFilters
+            mailboxOptions={mailboxOptions}
+            mailbox={mailbox}
+            period={period}
+            from={from}
+            to={to}
+          />
         }
       />
 
@@ -359,7 +388,9 @@ export default async function LostQaDailySummaryPage({
         <section className="rounded-lg border border-gray-200 bg-white p-6">
           <h3 className="text-base font-semibold text-gray-900">Nėra duomenų</h3>
           <p className="mt-2 text-sm text-gray-600">
-            {mode === "day" ? `Pasirinktai datai (${date}) neradome suvestinės.` : `Pasirinktame laikotarpyje nuo ${from} iki ${to} neradome suvestinių.`}
+            {from === to
+              ? `Pasirinktai datai (${from}) neradome suvestinės.`
+              : `Pasirinktame laikotarpyje nuo ${from} iki ${to} neradome suvestinių.`}
           </p>
         </section>
       ) : null}

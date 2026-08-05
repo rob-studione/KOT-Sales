@@ -1,8 +1,9 @@
 import { Suspense } from "react";
-import { AnalyticsDateFilter } from "@/components/crm/AnalyticsDateFilter";
+import { AnalyticsDateFilterClientOnly } from "@/components/crm/AnalyticsDateFilterClientOnly";
 import { SalesAnalyticsBody } from "@/components/crm/SalesAnalyticsBody";
 import { SalesAnalyticsSkeleton } from "@/components/crm/SalesAnalyticsSkeleton";
-import { parseSalesDashboardPeriod, resolveSalesDashboardRange } from "@/lib/crm/salesAnalyticsDashboard";
+import { fetchSalesDashboardFirstActivityDate, parseSalesDashboardPeriod, resolveSalesDashboardRange } from "@/lib/crm/salesAnalyticsDashboard";
+import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 
 export const dynamic = "force-dynamic";
 
@@ -12,15 +13,25 @@ export default async function DashboardPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const sp = await searchParams;
-  const period = parseSalesDashboardPeriod(typeof sp.period === "string" ? sp.period : undefined);
+  // Tik /dashboard: be `period` query — „Visas laikotarpis“ (kitur parse default lieka today).
+  const period = parseSalesDashboardPeriod(typeof sp.period === "string" ? sp.period : "all_time");
   const from = typeof sp.from === "string" ? sp.from : undefined;
   const to = typeof sp.to === "string" ? sp.to : undefined;
-  const range = resolveSalesDashboardRange(period, from, to);
+  let allTimeFrom: string | null = null;
+  if (period === "all_time") {
+    try {
+      const supabase = await createSupabaseSsrReadOnlyClient();
+      allTimeFrom = await fetchSalesDashboardFirstActivityDate(supabase);
+    } catch {
+      allTimeFrom = null;
+    }
+  }
+  const range = resolveSalesDashboardRange(period, from, to, allTimeFrom);
 
   return (
     <div className="space-y-8">
       <Suspense fallback={<p className="text-sm text-zinc-500">Įkeliama…</p>}>
-        <AnalyticsDateFilter period={period} range={range} />
+        <AnalyticsDateFilterClientOnly period={period} range={range} />
       </Suspense>
       <Suspense fallback={<SalesAnalyticsSkeleton />}>
         <SalesAnalyticsBody period={period} range={range} />
@@ -28,4 +39,3 @@ export default async function DashboardPage({
     </div>
   );
 }
-

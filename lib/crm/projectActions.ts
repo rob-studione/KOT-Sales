@@ -158,6 +158,7 @@ function parseAutomaticCreateForm(formData: FormData): {
   minOrderCount: number;
   inactivityDays: number;
   sort: ProjectSortOption;
+  requireBusinessId: boolean;
   ownerUserId: string;
 } | { error: string } {
   const name = String(formData.get("name") ?? "").trim();
@@ -167,6 +168,7 @@ function parseAutomaticCreateForm(formData: FormData): {
   const minRaw = String(formData.get("min_order_count") ?? "1").trim();
   const inactivityRaw = String(formData.get("inactivity_days") ?? "90").trim();
   const sort = parseProjectSortOption(String(formData.get("sort_option") ?? ""));
+  const requireBusinessId = String(formData.get("candidates_require_business_id") ?? "").trim() === "1";
   const ownerUserId = String(formData.get("owner_user_id") ?? "").trim();
 
   if (!name) return { error: "Įveskite projekto pavadinimą." };
@@ -180,7 +182,7 @@ function parseAutomaticCreateForm(formData: FormData): {
     return { error: "Pasirinkite atsakingą asmenį." };
   }
 
-  return { name, description, dateFrom, dateTo, minOrderCount, inactivityDays, sort, ownerUserId };
+  return { name, description, dateFrom, dateTo, minOrderCount, inactivityDays, sort, requireBusinessId, ownerUserId };
 }
 
 function parseManualCreateForm(formData: FormData): { name: string; description: string; ownerUserId: string } | { error: string } {
@@ -246,7 +248,8 @@ export async function previewProjectSnapshot(formData: FormData): Promise<Projec
     parsed.dateTo,
     parsed.minOrderCount,
     parsed.inactivityDays,
-    null
+    null,
+    parsed.requireBusinessId
   );
   if (!loaded.ok) return { ok: false, error: loaded.error };
 
@@ -400,6 +403,7 @@ export async function createProjectFromForm(
       min_order_count: parsed.minOrderCount,
       inactivity_days: parsed.inactivityDays,
       sort_option: parsed.sort,
+      candidates_require_business_id: parsed.requireBusinessId,
       status: "active",
       created_by: defaultProjectActor(),
       owner_user_id: parsed.ownerUserId,
@@ -455,6 +459,7 @@ type AutomaticRulesInput = {
   minOrderCount: number;
   inactivityDays: number;
   sort: ProjectSortOption;
+  requireBusinessId: boolean;
 };
 
 function parseAutomaticRulesForm(formData: FormData): AutomaticRulesInput | { error: string } {
@@ -463,6 +468,7 @@ function parseAutomaticRulesForm(formData: FormData): AutomaticRulesInput | { er
   const minRaw = String(formData.get("min_order_count") ?? "1").trim();
   const inactivityRaw = String(formData.get("inactivity_days") ?? "90").trim();
   const sort = parseProjectSortOption(String(formData.get("sort_option") ?? ""));
+  const requireBusinessId = String(formData.get("candidates_require_business_id") ?? "").trim() === "1";
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
     return { error: "Pasirinkite datas (nuo / iki)." };
@@ -470,7 +476,7 @@ function parseAutomaticRulesForm(formData: FormData): AutomaticRulesInput | { er
   if (dateFrom > dateTo) return { error: "Data „nuo“ negali būti vėlesnė už „iki“." };
   const minOrderCount = Math.max(1, parseInt(minRaw, 10) || 1);
   const inactivityDays = Math.min(3650, Math.max(1, parseInt(inactivityRaw, 10) || 90));
-  return { dateFrom, dateTo, minOrderCount, inactivityDays, sort };
+  return { dateFrom, dateTo, minOrderCount, inactivityDays, sort, requireBusinessId };
 }
 
 export async function updateAutomaticProjectRulesAction(
@@ -505,6 +511,7 @@ export async function updateAutomaticProjectRulesAction(
       min_order_count: parsed.minOrderCount,
       inactivity_days: parsed.inactivityDays,
       sort_option: parsed.sort,
+      candidates_require_business_id: parsed.requireBusinessId,
     })
     .eq("id", projectId);
   if (error) return { ok: false, error: error.message ?? "Nepavyko išsaugoti taisyklių." };
@@ -1286,7 +1293,7 @@ export async function pickClientFromProject(formData: FormData): Promise<PickCli
   const tProj = Date.now();
   const { data: proj, error: projErr } = await supabase
     .from("projects")
-    .select("id,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option,project_type")
+    .select("id,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option,project_type,candidates_require_business_id")
     .eq("id", projectId)
     .single();
   const projectLoadMs = Date.now() - tProj;
@@ -1563,6 +1570,7 @@ export async function pickClientFromProject(formData: FormData): Promise<PickCli
     min_order_count: Number(pr.min_order_count ?? 1),
     inactivity_days: pr.inactivity_days == null ? null : Number(pr.inactivity_days),
     sort_option: String(pr.sort_option ?? ""),
+    candidates_require_business_id: Boolean(pr.candidates_require_business_id),
     project_type: projectTypeFromDbRow(proj),
   };
 
@@ -1585,6 +1593,7 @@ export async function pickClientFromProject(formData: FormData): Promise<PickCli
     Number(pr.min_order_count ?? 1),
     Number(pr.inactivity_days ?? 90),
     clientKey,
+    Boolean(pr.candidates_require_business_id),
   );
   rpcMatchMs += Date.now() - tRpc;
 

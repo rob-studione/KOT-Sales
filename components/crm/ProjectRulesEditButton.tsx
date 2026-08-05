@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { projectSortLabel, type ProjectSortOption } from "@/lib/crm/projectSnapshot";
 import { updateAutomaticProjectRulesAction } from "@/lib/crm/projectActions";
+import { CrmIsoDatePicker } from "@/components/crm/CrmIsoDatePicker";
 
 export function ProjectRulesEditButton({
   projectId,
@@ -19,6 +20,7 @@ export function ProjectRulesEditButton({
     minOrderCount: number;
     inactivityDays: number;
     sortOption: ProjectSortOption;
+    candidatesRequireBusinessId: boolean;
   };
   children?: React.ReactNode;
   triggerClassName?: string;
@@ -72,22 +74,24 @@ export function ProjectRulesEditButton({
           >
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-zinc-700">Data nuo</span>
-              <input
+              <CrmIsoDatePicker
                 name="date_from"
-                type="date"
                 required
                 defaultValue={initial.dateFrom}
-                className="rounded-md border border-zinc-200 px-3 py-2"
+                ariaLabel="Data nuo"
+                inputClassName="h-10 w-full rounded-md border border-zinc-200 px-3 py-2 pr-10 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
+                buttonClassName="absolute right-2 top-0 inline-flex h-10 w-8 items-center justify-center text-zinc-400 hover:text-zinc-700"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-zinc-700">Data iki</span>
-              <input
+              <CrmIsoDatePicker
                 name="date_to"
-                type="date"
                 required
                 defaultValue={initial.dateTo}
-                className="rounded-md border border-zinc-200 px-3 py-2"
+                ariaLabel="Data iki"
+                inputClassName="h-10 w-full rounded-md border border-zinc-200 px-3 py-2 pr-10 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
+                buttonClassName="absolute right-2 top-0 inline-flex h-10 w-8 items-center justify-center text-zinc-400 hover:text-zinc-700"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
@@ -122,6 +126,16 @@ export function ProjectRulesEditButton({
                 <option value="last_invoice_desc">{projectSortLabel("last_invoice_desc")}</option>
                 <option value="order_count_desc">{projectSortLabel("order_count_desc")}</option>
               </select>
+            </label>
+            <label className="flex items-start gap-2 rounded-md border border-zinc-200 bg-zinc-50/80 px-3 py-2 text-sm sm:col-span-2">
+              <input
+                name="candidates_require_business_id"
+                type="checkbox"
+                value="1"
+                defaultChecked={initial.candidatesRequireBusinessId}
+                className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-[#7C4A57] focus:ring-[#7C4A57]"
+              />
+              <span className="text-zinc-700">Tik verslo klientai (įmonės kodas arba PVM kodas).</span>
             </label>
 
             {error ? <p className="text-sm text-red-600 sm:col-span-2">{error}</p> : null}

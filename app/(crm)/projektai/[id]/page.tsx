@@ -8,6 +8,7 @@ import { defaultProjectActor } from "@/lib/crm/projectEnv";
 import { fetchSortedCandidatesForProject } from "@/lib/crm/projectCandidateQuery";
 import { fetchExcludedAutoCandidatesPage } from "@/lib/crm/projectCandidateExclusions";
 import {
+  fetchProjectFirstActivityDate,
   fetchProjectAnalytics,
   parseProjectAnalyticsPeriod,
   resolveAnalyticsRange,
@@ -108,6 +109,7 @@ type ProjectRow = {
   created_by: string | null;
   owner_user_id: string | null;
   procurement_notify_days_before?: number | null;
+  candidates_require_business_id?: boolean | null;
 };
 
 export default async function ProjektasDetailPage({
@@ -155,7 +157,6 @@ export default async function ProjektasDetailPage({
   const period = parseProjectAnalyticsPeriod(typeof sp.period === "string" ? sp.period : undefined);
   const customFrom = typeof sp.from === "string" ? sp.from : undefined;
   const customTo = typeof sp.to === "string" ? sp.to : undefined;
-  const analyticsRange = resolveAnalyticsRange(period, customFrom, customTo);
 
   const qOpts = {
     period,
@@ -173,7 +174,7 @@ export default async function ProjektasDetailPage({
   }
 
   const projectSelect =
-    "id,name,description,project_type,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option,status,created_at,created_by,owner_user_id,procurement_notify_days_before";
+    "id,name,description,project_type,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option,status,created_at,created_by,owner_user_id,procurement_notify_days_before,candidates_require_business_id";
   const projectT0 = 0;
   roundTripCount += 1;
   const { data: project, error: pErr } = await supabase
@@ -210,6 +211,8 @@ export default async function ProjektasDetailPage({
   }
 
   const p = project as ProjectRow;
+  const allTimeFrom = period === "all_time" ? await fetchProjectFirstActivityDate(supabase, id) : null;
+  const analyticsRange = resolveAnalyticsRange(period, customFrom, customTo, allTimeFrom);
   const sort = parseProjectSortOption(p.sort_option);
   const inactivityDays = Number(p.inactivity_days ?? 90);
   const currentCrm = await getCurrentCrmUser();
@@ -976,6 +979,7 @@ export default async function ProjektasDetailPage({
                       minOrderCount: Number(p.min_order_count ?? 1),
                       inactivityDays: Number(p.inactivity_days ?? 90),
                       sortOption: sort,
+                      candidatesRequireBusinessId: Boolean(p.candidates_require_business_id),
                     }}
                     triggerAriaLabel="Redaguoti taisykles"
                     triggerClassName="ml-2 inline-flex items-center text-gray-400 hover:text-[#7C4A57] cursor-pointer"

@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
-import { formatMoney } from "@/lib/crm/format";
+import { formatMoneyExVat } from "@/lib/crm/format";
 import { projectSortLabel } from "@/lib/crm/projectSnapshot";
 import { ProjectCandidateCallList } from "@/components/crm/ProjectCandidateCallList";
+import { CrmIsoDatePicker } from "@/components/crm/CrmIsoDatePicker";
 import {
   createProjectFromForm,
   previewProjectSnapshot,
@@ -142,22 +143,22 @@ export function ProjectCreateForm({ users }: { users: CrmUser[] }) {
           <>
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-zinc-700">Data nuo</span>
-              <input
+              <CrmIsoDatePicker
                 name="date_from"
-                type="date"
                 required
-                lang="lt"
-                className="rounded-md border border-zinc-200 px-2 py-1.5 text-sm"
+                ariaLabel="Data nuo"
+                inputClassName="h-9 w-full rounded-md border border-zinc-200 px-2 py-1.5 pr-9 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
+                buttonClassName="absolute right-1 top-0 inline-flex h-9 w-8 items-center justify-center text-zinc-400 hover:text-zinc-700"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-zinc-700">Data iki</span>
-              <input
+              <CrmIsoDatePicker
                 name="date_to"
-                type="date"
                 required
-                lang="lt"
-                className="rounded-md border border-zinc-200 px-2 py-1.5 text-sm"
+                ariaLabel="Data iki"
+                inputClassName="h-9 w-full rounded-md border border-zinc-200 px-2 py-1.5 pr-9 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
+                buttonClassName="absolute right-1 top-0 inline-flex h-9 w-8 items-center justify-center text-zinc-400 hover:text-zinc-700"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
@@ -191,6 +192,15 @@ export function ProjectCreateForm({ users }: { users: CrmUser[] }) {
                 <option value="last_invoice_desc">{projectSortLabel("last_invoice_desc")}</option>
                 <option value="order_count_desc">{projectSortLabel("order_count_desc")}</option>
               </select>
+            </label>
+            <label className="flex items-start gap-2 rounded-md border border-zinc-200 bg-zinc-50/80 px-3 py-2 text-sm sm:col-span-2">
+              <input
+                name="candidates_require_business_id"
+                type="checkbox"
+                value="1"
+                className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-[#7C4A57] focus:ring-[#7C4A57]"
+              />
+              <span className="text-zinc-700">Tik verslo klientai (įmonės kodas arba PVM kodas).</span>
             </label>
           </>
         ) : null}
@@ -293,7 +303,7 @@ export function ProjectCreateForm({ users }: { users: CrmUser[] }) {
             </li>
             <li>
               Bendra apyvarta istoriniame intervale (dabartiniai kandidatai):{" "}
-              <span className="font-semibold">{formatMoney(preview.totalRevenue)}</span>
+              <span className="font-semibold">{formatMoneyExVat(preview.totalRevenue)}</span>
             </li>
           </ul>
           {preview.previewRows.length > 0 ? (

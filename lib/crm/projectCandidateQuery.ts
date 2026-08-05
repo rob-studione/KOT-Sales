@@ -13,7 +13,8 @@ export async function rpcMatchProjectCandidates(
   dateTo: string,
   minOrderCount: number,
   inactivityDays: number,
-  projectId: string | null
+  projectId: string | null,
+  requireBusinessId: boolean = false
 ): Promise<{ ok: true; rows: SnapshotCandidateRow[] } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("match_project_candidates", {
     p_date_from: dateFrom,
@@ -21,6 +22,7 @@ export async function rpcMatchProjectCandidates(
     p_min_orders: minOrderCount,
     p_inactivity_days: inactivityDays,
     p_project_id: projectId,
+    p_require_business_id: requireBusinessId,
   });
 
   if (error) {
@@ -47,6 +49,7 @@ export type ProjectRulesRow = {
   min_order_count: number;
   inactivity_days: number | null;
   sort_option: string;
+  candidates_require_business_id?: boolean | null;
 };
 
 export async function fetchSortedCandidatesForProject(
@@ -64,7 +67,8 @@ export async function fetchSortedCandidatesForProject(
     String(p.filter_date_to).slice(0, 10),
     Number(p.min_order_count ?? 1),
     Number(p.inactivity_days ?? 90),
-    p.id
+    p.id,
+    Boolean(p.candidates_require_business_id)
   );
   if (!loaded.ok) return loaded;
   const sort = parseProjectSortOption(String(p.sort_option ?? ""));
@@ -80,6 +84,7 @@ export async function rpcMatchProjectCandidateForPick(
   minOrderCount: number,
   inactivityDays: number,
   clientKey: string,
+  requireBusinessId: boolean = false
 ): Promise<{ ok: true; row: SnapshotCandidateRow | null } | { ok: false; error: string }> {
   const ck = String(clientKey ?? "").trim();
   if (!ck) return { ok: true, row: null };
@@ -91,6 +96,7 @@ export async function rpcMatchProjectCandidateForPick(
     p_min_orders: minOrderCount,
     p_inactivity_days: inactivityDays,
     p_client_key: ck,
+    p_require_business_id: requireBusinessId,
   });
 
   if (error) {

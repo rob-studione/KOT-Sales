@@ -6,7 +6,7 @@ import {
   vilniusTodayDateString,
 } from "@/lib/crm/vilniusTime";
 
-export type ManagerKpiPreset = "today" | "week" | "month" | "custom";
+export type ManagerKpiPreset = "today" | "week" | "month" | "prev_month" | "year" | "all_time" | "custom";
 
 export type ManagerKpiDateRange = { from: string; to: string };
 
@@ -15,6 +15,9 @@ export function parseManagerKpiPreset(raw: string | undefined | null): ManagerKp
   if (raw === "today" || raw === "yesterday") return "today";
   if (raw === "week" || raw === "last_week") return "week";
   if (raw === "month" || raw === "last_month") return "month";
+  if (raw === "prev_month") return "prev_month";
+  if (raw === "year") return "year";
+  if (raw === "all_time") return "all_time";
   if (raw === "custom") return "custom";
   return "today";
 }
@@ -30,7 +33,8 @@ function lastMonthRange(todayIso: string): ManagerKpiDateRange {
 export function resolveManagerKpiRange(
   preset: ManagerKpiPreset,
   customFrom?: string | null,
-  customTo?: string | null
+  customTo?: string | null,
+  allTimeFrom?: string | null
 ): ManagerKpiDateRange {
   const today = vilniusTodayDateString();
 
@@ -46,6 +50,21 @@ export function resolveManagerKpiRange(
   if (preset === "month") {
     const first = vilniusFirstDayOfMonthIso(today);
     return { from: first, to: today };
+  }
+  if (preset === "prev_month") {
+    return lastMonthRange(today);
+  }
+  if (preset === "year") {
+    const [y] = today.split("-").map(Number);
+    return { from: `${y}-01-01`, to: today };
+  }
+  if (preset === "all_time") {
+    const from = allTimeFrom && /^\d{4}-\d{2}-\d{2}$/.test(allTimeFrom) ? allTimeFrom : today;
+    return { from, to: today };
+  }
+  if (preset === "custom") {
+    const mon = vilniusMondayOfWeekIso(today);
+    return { from: mon, to: today };
   }
   return { from: today, to: today };
 }
@@ -63,7 +82,7 @@ export function previousPeriodSameLength(range: ManagerKpiDateRange): ManagerKpi
   return { from: prevFrom, to: prevTo };
 }
 
-/** Šiandien → vakar; ši savaitė → praeita savaitė (atitinkama trukmė); šis mėnuo → praeitas kalendorinis mėnuo; custom → ankst. toks pat ilgis. */
+/** Šiandien → vakar; ši savaitė → praeita savaitė; šis mėnuo → praeitas mėnuo; kt. → toks pat ilgis. */
 export function comparisonRangeForPreset(
   preset: ManagerKpiPreset,
   current: ManagerKpiDateRange,
@@ -89,8 +108,22 @@ export function comparisonRangeForPreset(
   if (preset === "month") {
     return lastMonthRange(today);
   }
-  if (preset === "custom") {
-    return previousPeriodSameLength(current);
+  if (preset === "prev_month") {
+    const prev = lastMonthRange(today);
+    const beforePrevLast = subtractOneCivilDayVilnius(prev.from);
+    const beforePrevFirst = vilniusFirstDayOfMonthIso(beforePrevLast);
+    return { from: beforePrevFirst, to: beforePrevLast };
+  }
+  if (preset === "year") {
+    const [y] = today.split("-").map(Number);
+    const thisYearFrom = `${y}-01-01`;
+    const span = eachDayInclusive(thisYearFrom, today).length;
+    const prevYearEnd = `${y - 1}-12-31`;
+    let prevFrom = prevYearEnd;
+    for (let i = 1; i < span; i++) {
+      prevFrom = subtractOneCivilDayVilnius(prevFrom);
+    }
+    return { from: prevFrom, to: prevYearEnd };
   }
   return previousPeriodSameLength(current);
 }
@@ -104,6 +137,12 @@ export function managerKpiCompareShortLabel(preset: ManagerKpiPreset): string {
       return "praeita savaitė";
     case "month":
       return "praeitas mėnuo";
+    case "prev_month":
+      return "užpraėjęs mėnuo";
+    case "year":
+      return "praėję metai (ta pati trukmė)";
+    case "all_time":
+      return "ankstesnis laikotarpis";
     case "custom":
       return "ankstesnis laikotarpis";
   }

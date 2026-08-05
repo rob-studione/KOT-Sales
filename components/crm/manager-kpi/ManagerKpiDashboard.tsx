@@ -1,19 +1,38 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDate } from "@/lib/crm/format";
 import type { ManagerKpiTableRow, ManagerKpiViewModel } from "@/lib/crm/managerKpiDashboard";
 import { managerKpiCompareShortLabel, type ManagerKpiPreset } from "@/lib/crm/managerKpiPeriods";
 import { ManagerKpiSettingsDrawer } from "@/components/crm/manager-kpi/ManagerKpiSettingsDrawer";
+import { CrmIsoDatePicker } from "@/components/crm/CrmIsoDatePicker";
+import { PeriodFilterCalendarIcon } from "@/components/crm/PeriodFilterCalendarIcon";
 
-const PRESETS: { id: ManagerKpiPreset; label: string }[] = [
+type QuickPreset = Exclude<ManagerKpiPreset, "custom">;
+
+const PRESETS: { id: QuickPreset; label: string }[] = [
   { id: "today", label: "Šiandien" },
   { id: "week", label: "Ši savaitė" },
   { id: "month", label: "Šis mėnuo" },
-  { id: "custom", label: "Pasirinkti" },
+  { id: "prev_month", label: "Praėjęs mėnuo" },
+  { id: "year", label: "Šie metai" },
+  { id: "all_time", label: "Visas laikotarpis" },
 ];
+
+const PERIOD_LABEL: Record<ManagerKpiPreset, string> = {
+  today: "Šiandien",
+  week: "Ši savaitė",
+  month: "Šis mėnuo",
+  prev_month: "Praėjęs mėnuo",
+  year: "Šie metai",
+  all_time: "Visas laikotarpis",
+  custom: "Pasirinktas intervalas",
+};
+
+function isIsoDate(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
 
 function compareCaptionLine(model: ManagerKpiViewModel): string {
   const label = managerKpiCompareShortLabel(model.preset);
@@ -159,6 +178,8 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
   const [chartMetric, setChartMetric] = useState<"calls" | "answered" | "commercial">("calls");
   const [customFrom, setCustomFrom] = useState(model.range.from);
   const [customTo, setCustomTo] = useState(model.range.to);
+  const periodRootRef = useRef<HTMLDivElement | null>(null);
+  const [periodOpen, setPeriodOpen] = useState(false);
 
   const compareOn = model.compareEnabled;
 
@@ -168,8 +189,52 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
       if (v === undefined || v === "") q.delete(k);
       else q.set(k, v);
     }
-    return `/analitika/vadybininku-kpi?${q.toString()}`;
+    return `/analitika/kpi?${q.toString()}`;
   }
+
+  useEffect(() => {
+    setCustomFrom(model.range.from);
+    setCustomTo(model.range.to);
+  }, [model.range.from, model.range.to]);
+
+  useEffect(() => {
+    if (!periodOpen) return;
+
+    function onPointerDown(e: PointerEvent) {
+      const root = periodRootRef.current;
+      if (!root) return;
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (!root.contains(target)) setPeriodOpen(false);
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setPeriodOpen(false);
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [periodOpen]);
+
+  function setPeriod(p: QuickPreset) {
+    setPeriodOpen(false);
+    if (p === model.preset) return;
+    router.push(buildHref({ period: p, from: undefined, to: undefined }));
+  }
+
+  function applyCustomRange() {
+    if (!isIsoDate(customFrom) || !isIsoDate(customTo)) return;
+    const ordered =
+      customFrom <= customTo ? { from: customFrom, to: customTo } : { from: customTo, to: customFrom };
+    setPeriodOpen(false);
+    router.push(buildHref({ period: "custom", from: ordered.from, to: ordered.to }));
+  }
+
+  const applyCustomDisabled = !isIsoDate(customFrom) || !isIsoDate(customTo);
 
   const sortedRows = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1;
@@ -249,24 +314,73 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
           ) : null}
         </div>
         <div className="flex w-full min-w-0 flex-col gap-3 lg:max-w-none lg:items-end">
-          <div className="flex w-full flex-wrap items-center justify-end gap-x-1 gap-y-2 sm:gap-x-1.5">
-            {PRESETS.map((p) => (
-              <Link
-                key={p.id}
-                href={buildHref({
-                  period: p.id,
-                  ...(p.id !== "custom" ? { from: undefined, to: undefined } : {}),
-                })}
-                className={
-                  model.preset === p.id
-                    ? "shrink-0 rounded-lg border border-[#7C4A57] bg-white px-2.5 py-1.5 text-sm font-medium text-[#7C4A57] sm:px-3"
-                    : "shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 sm:px-3"
-                }
+          <div className="flex w-full flex-wrap items-center justify-end gap-x-2 gap-y-2">
+            <div ref={periodRootRef} className="relative">
+              <button
+                type="button"
+                aria-expanded={periodOpen}
+                onClick={() => setPeriodOpen((v) => !v)}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 shadow-sm shadow-black/5 hover:bg-zinc-50"
               >
-                {p.label}
-              </Link>
-            ))}
-            <span className="hidden h-4 w-px shrink-0 bg-zinc-200 sm:block" aria-hidden />
+                <PeriodFilterCalendarIcon className="shrink-0 text-zinc-400" />
+                {PERIOD_LABEL[model.preset]}
+                <span className={`text-zinc-400 transition-transform ${periodOpen ? "rotate-180" : ""}`}>▾</span>
+              </button>
+
+              {periodOpen ? (
+                <div className="absolute right-0 z-20 mt-2 w-[22rem] rounded-xl border border-zinc-200 bg-white p-3 shadow-xl shadow-black/10 sm:left-auto">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Laikotarpis</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setPeriod(p.id)}
+                        className={
+                          model.preset === p.id
+                            ? "rounded-md border border-[#7C4A57] bg-white px-2.5 py-2 text-left text-sm font-medium text-[#7C4A57]"
+                            : "rounded-md border border-zinc-200 bg-white px-2.5 py-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                        }
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 border-t border-zinc-100 pt-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Pasirinktas intervalas</div>
+                    <div className="flex items-center gap-2">
+                      <CrmIsoDatePicker
+                        name="from_local"
+                        value={customFrom}
+                        onValueChange={setCustomFrom}
+                        ariaLabel="Nuo"
+                        inputClassName="h-9 w-full rounded-md border border-zinc-200 px-2 py-1 pr-8 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
+                        buttonClassName="absolute right-1 top-0 inline-flex h-9 w-7 items-center justify-center text-zinc-400 hover:text-zinc-700"
+                      />
+                      <span className="text-zinc-400">–</span>
+                      <CrmIsoDatePicker
+                        name="to_local"
+                        value={customTo}
+                        onValueChange={setCustomTo}
+                        ariaLabel="Iki"
+                        inputClassName="h-9 w-full rounded-md border border-zinc-200 px-2 py-1 pr-8 text-sm text-zinc-900 outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
+                        buttonClassName="absolute right-1 top-0 inline-flex h-9 w-7 items-center justify-center text-zinc-400 hover:text-zinc-700"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={applyCustomDisabled}
+                      onClick={applyCustomRange}
+                      className="mt-2 h-9 rounded-md bg-[#7C4A57] px-3 text-sm font-medium text-white hover:bg-[#693948] disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500"
+                    >
+                      Taikyti
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
             <label className="flex max-w-[min(100%,18rem)] shrink cursor-pointer items-center gap-2 text-sm text-zinc-700 sm:max-w-none">
               <input
                 type="checkbox"
@@ -286,42 +400,6 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
               KPI nustatymai
             </button>
           </div>
-          {model.preset === "custom" ? (
-            <form
-              className="flex flex-wrap items-end justify-end gap-2"
-              action="/analitika/vadybininku-kpi"
-              method="get"
-            >
-              <input type="hidden" name="period" value="custom" />
-              {compareOn ? <input type="hidden" name="compare" value="1" /> : null}
-              <label className="text-xs text-zinc-500">
-                Nuo
-                <input
-                  name="from"
-                  type="date"
-                  className="ml-1 rounded-md border border-zinc-200 px-2 py-1 text-sm outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
-                  defaultValue={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                />
-              </label>
-              <label className="text-xs text-zinc-500">
-                Iki
-                <input
-                  name="to"
-                  type="date"
-                  className="ml-1 rounded-md border border-zinc-200 px-2 py-1 text-sm outline-none focus:border-[#7C4A57] focus:ring-2 focus:ring-[#7C4A57]/10"
-                  defaultValue={customTo}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                />
-              </label>
-              <button
-                type="submit"
-                className="rounded-lg bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-200"
-              >
-                Taikyti
-              </button>
-            </form>
-          ) : null}
         </div>
       </div>
 
