@@ -232,6 +232,59 @@ export async function fetchSortedCandidatesForProject(
   return { ok: true, rows: sortSnapshotCandidates(loaded.rows, sort) };
 }
 
+/**
+ * Pigus unikalių auto-kandidatų skaičius sidebarui (limit=1, grąžina total_count).
+ * Manual / procurement → 0.
+ */
+export async function fetchAutomaticProjectCandidateCount(
+  supabase: SupabaseClient,
+  p: ProjectRulesRow
+): Promise<number> {
+  const t = projectTypeFromDbRow(p) ?? p.project_type;
+  if (isManualProjectType(t) || isProcurementProjectType(t)) return 0;
+  if (!p.filter_date_from || !p.filter_date_to) return 0;
+
+  const page = await rpcMatchProjectCandidatesPage(supabase, {
+    dateFrom: String(p.filter_date_from).slice(0, 10),
+    dateTo: String(p.filter_date_to).slice(0, 10),
+    minOrderCount: Number(p.min_order_count ?? 1),
+    inactivityDays: Number(p.inactivity_days ?? 90),
+    projectId: p.id,
+    requireBusinessId: Boolean(p.candidates_require_business_id),
+    sort: parseProjectSortOption(String(p.sort_option ?? "")),
+    limit: 1,
+    offset: 0,
+    search: null,
+  });
+  if (!page.ok) return 0;
+  return page.data.totalCount;
+}
+
+/** Parallel counts for sidebar; skips non-automatic. */
+export async function fetchSidebarAutomaticCandidateCounts(
+  supabase: SupabaseClient,
+  projects: ProjectRulesRow[]
+): Promise<Record<string, number>> {
+  const auto = projects.filter((p) => {
+    const t = projectTypeFromDbRow(p) ?? p.project_type;
+    return !isManualProjectType(t) && !isProcurementProjectType(t);
+  });
+  if (auto.length === 0) return {};
+
+  const entries = await Promise.all(
+    auto.map(async (p) => {
+      const n = await fetchAutomaticProjectCandidateCount(supabase, p);
+      return [p.id, n] as const;
+    })
+  );
+
+  const out: Record<string, number> = {};
+  for (const [id, n] of entries) {
+    if (n > 0) out[id] = n;
+  }
+  return out;
+}
+
 /** Vieno kliento pick: DB filtruoja pagal `p_client_key` (žymiai pigiau nei pilnas sąrašas). */
 export async function rpcMatchProjectCandidateForPick(
   supabase: SupabaseClient,

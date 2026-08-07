@@ -6,6 +6,11 @@ import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { fetchPublicBuildInfo, formatDeploymentUpdatedAt, getPublicBuildInfo } from "@/lib/buildInfo";
 import { CRM_SIDEBAR_BG, CRM_SIDEBAR_WIDTH_PX } from "@/lib/crm/crmShellLayout";
+import {
+  fetchSidebarAutomaticCandidateCounts,
+  type ProjectRulesRow,
+} from "@/lib/crm/projectCandidateQuery";
+import { effectiveProjectType } from "@/lib/crm/projectType";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   BarChart3,
@@ -35,7 +40,14 @@ type NavChild = {
   adminOnly?: boolean;
   separatorBefore?: boolean;
   aiBadge?: boolean;
+  /** Unikalių auto-kandidatų skaičius (tik automatic projektai; 0 → nerodyti). */
+  badgeCount?: number;
 };
+
+function formatSidebarBadgeCount(n: number): string {
+  if (n > 999) return "999+";
+  return String(n);
+}
 
 const analitikaChildren: NavChild[] = [
   { href: "/analitika/kpi", label: "Vadybininkų KPI", adminOnly: true },
@@ -246,7 +258,13 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
     return null;
   }, [buildInfo.buildDateIso, buildInfo.deploymentCreatedAt]);
 
-  const [activeProjects, setActiveProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [activeProjects, setActiveProjects] = useState<Array<{ id: string; name: string; rules?: ProjectRulesRow }>>([]);
+  const [candidateCounts, setCandidateCounts] = useState<Record<string, number>>({});
+
+  const kandidataiProjectId = useMemo(() => {
+    const m = pathname.match(/^\/projektai\/([^/]+)\/kandidatai(?:\/|$)/);
+    return m?.[1] ?? "";
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,50 +272,80 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
       try {
         const supabase = createSupabaseBrowserClient();
         const base = supabase.from("projects");
+        const fullSelect =
+          "id,name,status,deleted_at,created_at,sort_order,project_type,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option,candidates_require_business_id";
         const first = await base
-          .select("id,name,status,deleted_at,created_at,sort_order")
+          .select(fullSelect)
           .eq("status", "active")
           .order("sort_order", { ascending: true, nullsFirst: false })
           .order("created_at", { ascending: false });
 
-        let data: Array<{ id: string; name: string | null }> = [];
+        let rows: Record<string, unknown>[] = [];
         if (first.error) {
           const msg = String(first.error.message ?? "");
           const missingDeletedAt =
             msg.includes("deleted_at") && (msg.includes("does not exist") || msg.includes("column") || msg.includes("42703"));
           const missingSortOrder =
             msg.includes("sort_order") && (msg.includes("does not exist") || msg.includes("column") || msg.includes("42703"));
+          const missingTypeOrFilters =
+            (msg.includes("project_type") ||
+              msg.includes("filter_date") ||
+              msg.includes("candidates_require_business_id")) &&
+            (msg.includes("does not exist") || msg.includes("column") || msg.includes("42703"));
 
-          if (missingSortOrder) {
+          if (missingSortOrder || missingTypeOrFilters) {
             const retry = await base
-              .select("id,name,status,deleted_at,created_at")
+              .select(
+                "id,name,status,deleted_at,created_at,project_type,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option"
+              )
               .eq("status", "active")
               .order("created_at", { ascending: false });
-            if (retry.error) return;
-            const rows = (retry.data ?? []) as Array<{ id?: unknown; name?: unknown; deleted_at?: unknown }>;
-            data = rows.filter((r) => r.deleted_at == null) as Array<{ id: string; name: string | null }>;
+            if (retry.error) {
+              const basic = await base
+                .select("id,name,status,deleted_at,created_at")
+                .eq("status", "active")
+                .order("created_at", { ascending: false });
+              if (basic.error) return;
+              rows = ((basic.data ?? []) as Record<string, unknown>[]).filter((r) => r.deleted_at == null);
+            } else {
+              rows = ((retry.data ?? []) as Record<string, unknown>[]).filter((r) => r.deleted_at == null);
+            }
           } else if (missingDeletedAt) {
             const retry = await base
-              .select("id,name,status,created_at,sort_order")
+              .select(
+                "id,name,status,created_at,sort_order,project_type,filter_date_from,filter_date_to,min_order_count,inactivity_days,sort_option,candidates_require_business_id"
+              )
               .eq("status", "active")
               .order("sort_order", { ascending: true, nullsFirst: false })
               .order("created_at", { ascending: false });
             if (retry.error) return;
-            data = (retry.data ?? []) as Array<{ id: string; name: string | null }>;
+            rows = (retry.data ?? []) as Record<string, unknown>[];
           } else {
             return;
           }
         } else {
-          const rows = (first.data ?? []) as Array<{ id: string; name: string | null; deleted_at?: unknown }>;
-          data = rows.filter((r) => r.deleted_at == null).map((r) => ({ id: r.id, name: r.name ?? null }));
+          rows = ((first.data ?? []) as Record<string, unknown>[]).filter((r) => r.deleted_at == null);
         }
 
-        const items = (data ?? [])
-          .map((r) => ({
-            id: String(r.id ?? ""),
-            name: String(r.name ?? "").trim(),
-          }))
-          .filter((p) => Boolean(p.id) && Boolean(p.name));
+        const items = rows
+          .map((r) => {
+            const id = String(r.id ?? "");
+            const name = String(r.name ?? "").trim();
+            if (!id || !name) return null;
+            const rules: ProjectRulesRow = {
+              id,
+              project_type: r.project_type != null ? String(r.project_type) : null,
+              filter_date_from: String(r.filter_date_from ?? "").slice(0, 10),
+              filter_date_to: String(r.filter_date_to ?? "").slice(0, 10),
+              min_order_count: Number(r.min_order_count ?? 1),
+              inactivity_days: r.inactivity_days == null ? 90 : Number(r.inactivity_days),
+              sort_option: String(r.sort_option ?? ""),
+              candidates_require_business_id:
+                r.candidates_require_business_id == null ? false : Boolean(r.candidates_require_business_id),
+            };
+            return { id, name, rules };
+          })
+          .filter((p): p is { id: string; name: string; rules: ProjectRulesRow } => p != null);
 
         if (!cancelled) setActiveProjects(items);
       } catch {
@@ -315,9 +363,41 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function runCounts() {
+      const autoRules = activeProjects
+        .map((p) => p.rules)
+        .filter((r): r is ProjectRulesRow => Boolean(r))
+        .filter((r) => effectiveProjectType(r.project_type) === "automatic")
+        .filter((r) => Boolean(r.filter_date_from) && Boolean(r.filter_date_to));
+      if (autoRules.length === 0) {
+        if (!cancelled) setCandidateCounts({});
+        return;
+      }
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const counts = await fetchSidebarAutomaticCandidateCounts(supabase, autoRules);
+        if (!cancelled) setCandidateCounts(counts);
+      } catch {
+        // Ignore count failures in sidebar.
+      }
+    }
+    runCounts();
+    return () => {
+      cancelled = true;
+    };
+    // kandidataiProjectId: refresh after opening/leaving Kandidatai (pick clears pool).
+  }, [activeProjects, kandidataiProjectId]);
+
   const projektaiChildren: NavChild[] = useMemo(
-    () => activeProjects.map((p) => ({ href: `/projektai/${p.id}`, label: p.name })),
-    [activeProjects]
+    () =>
+      activeProjects.map((p) => ({
+        href: `/projektai/${p.id}`,
+        label: p.name,
+        badgeCount: candidateCounts[p.id],
+      })),
+    [activeProjects, candidateCounts]
   );
 
   const sections: {
@@ -491,7 +571,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                       id === "irankiai" ? "pl-3" : "pl-1",
                     ].join(" ")}
                   >
-                      {children.map(({ href, label: childLabel, separatorBefore, aiBadge }) => {
+                      {children.map(({ href, label: childLabel, separatorBefore, aiBadge, badgeCount }) => {
                         const active =
                           id === "klientai"
                             ? klientaiLinkActive(pathname, href)
@@ -499,6 +579,7 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                               ? projektaiLinkActive(pathname, href)
                               : linkActive(pathname, href);
                         const icon = id === "nustatymai" ? settingsIconForHref(href) : iconForHref(href);
+                        const showBadge = id === "projektai" && typeof badgeCount === "number" && badgeCount > 0;
                         return (
                           <Fragment key={href}>
                             {separatorBefore ? (
@@ -510,10 +591,18 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                               {id === "projektai" ? (
                                 <Link
                                   href={href}
-                                  className={`${submenuItemBase} ${active ? itemActive : itemInactive} relative`}
+                                  className={`${submenuItemBase} ${active ? itemActive : itemInactive} relative min-w-0`}
                                 >
                                   <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden />
                                   <ProjectSidebarLabel text={childLabel} />
+                                  {showBadge ? (
+                                    <span
+                                      className="ml-auto shrink-0 rounded-md bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-white"
+                                      title={`${badgeCount} kandidatų`}
+                                    >
+                                      {formatSidebarBadgeCount(badgeCount!)}
+                                    </span>
+                                  ) : null}
                                 </Link>
                               ) : (
                                 <Link href={href} className={`${submenuItemBase} ${active ? itemActive : itemInactive}`}>
