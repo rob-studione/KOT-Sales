@@ -27,8 +27,8 @@ jobs:
             echo "Missing SUPABASE_PROJECT_REF or SUPABASE_DB_PASSWORD secret." >&2
             exit 1
           fi
-          # Bypass `supabase link` (Management API api-keys parse bug). Direct DB URL for migrations.
-          # URL-encode password for special characters.
+          # Bypass `supabase link` (Management API api-keys SchemaError).
+          # Use pooler session mode — direct db.*.supabase.co often blocked from GHA (IPv4).
           ENC_PASS=$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')
-          DB_URL="postgresql://postgres:${ENC_PASS}@db.${SUPABASE_PROJECT_REF}.supabase.co:5432/postgres"
+          DB_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${ENC_PASS}@aws-1-eu-central-1.pooler.supabase.com:5432/postgres"
           supabase db push --db-url "$DB_URL"
