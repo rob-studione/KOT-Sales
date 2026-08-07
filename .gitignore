@@ -51,6 +51,7 @@ backup.sql
 scripts/crm/
 /tmp_*.sql
 supabase/.temp/
+/analize/
 
 # generated at build time (do not commit)
 public/build-info.json
