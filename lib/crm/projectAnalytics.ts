@@ -455,23 +455,44 @@ async function fetchProjectRevenueFeedLegacy(
 export async function fetchProjectAnalytics(
   supabase: SupabaseClient,
   projectId: string,
-  range: ProjectAnalyticsRange
-): Promise<ProjectAnalyticsDto> {
+  range: ProjectAnalyticsRange,
+  opts?: { includeRevenueRows?: boolean }
+): Promise<ProjectAnalyticsDto & { revenueRows?: ProjectRevenueRow[] }> {
   const emptyOutcomes = Object.fromEntries(
     PROJECT_ANALYTICS_OUTCOME_LABELS.map((o) => [o.id, 0])
   ) as ProjectAnalyticsDto["outcomes"];
+  const includeRows = Boolean(opts?.includeRevenueRows);
 
-  const overview = await rpcProjectOverviewAnalytics(supabase, projectId, range);
+  const [overview, revenueRpc] = await Promise.all([
+    rpcProjectOverviewAnalytics(supabase, projectId, range),
+    rpcProjectRevenueFeed(supabase, projectId, range, includeRows),
+  ]);
+
   if (overview.ok) {
     let generatedClients = 0;
     let generatedEur = 0;
-    const revenueRpc = await rpcProjectRevenueFeed(supabase, projectId, range, false);
+    let revenueRows: ProjectRevenueRow[] | undefined;
+
     if (revenueRpc.ok) {
       generatedClients = revenueRpc.data.clientsCount;
       generatedEur = revenueRpc.data.totalEur;
+      if (includeRows) revenueRows = revenueRpc.data.rows;
     } else {
       console.warn("[projectAnalytics] generated revenue RPC fallback:", revenueRpc.error);
       const legacy = await fetchProjectAnalyticsLegacy(supabase, projectId, range);
+      if (!includeRows) {
+        return {
+          ...legacy,
+          kpi: overview.data.kpi,
+          monthRange: overview.data.monthRange,
+          monthCallsTrend: overview.data.monthCallsTrend,
+          work: overview.data.work,
+          trend: [],
+          outcomes: emptyOutcomes,
+          outcomesOther: 0,
+        };
+      }
+      const feedLegacy = await fetchProjectRevenueFeedLegacy(supabase, projectId, range);
       return {
         ...legacy,
         kpi: overview.data.kpi,
@@ -481,6 +502,11 @@ export async function fetchProjectAnalytics(
         trend: [],
         outcomes: emptyOutcomes,
         outcomesOther: 0,
+        generated: {
+          clientsCount: feedLegacy.count > 0 ? new Set(feedLegacy.rows.map((r) => r.client_label)).size : legacy.generated.clientsCount,
+          totalEur: feedLegacy.kpi.totalEur || legacy.generated.totalEur,
+        },
+        revenueRows: feedLegacy.rows,
       };
     }
 
@@ -494,11 +520,15 @@ export async function fetchProjectAnalytics(
       outcomesOther: 0,
       work: overview.data.work,
       generated: { clientsCount: generatedClients, totalEur: generatedEur },
+      ...(includeRows ? { revenueRows: revenueRows ?? [] } : {}),
     };
   }
 
   console.warn("[projectAnalytics] project_overview_analytics fallback:", overview.error);
-  return fetchProjectAnalyticsLegacy(supabase, projectId, range);
+  const legacy = await fetchProjectAnalyticsLegacy(supabase, projectId, range);
+  if (!includeRows) return legacy;
+  const feed = await fetchProjectRevenueFeed(supabase, projectId, range);
+  return { ...legacy, revenueRows: feed.rows };
 }
 
 type ProjectOverviewAnalyticsRpc = {
@@ -851,6 +881,9 @@ export async function fetchProjectOverviewCriticalKpis(
   closedEmail: number;
   /** Uždaryta su „Išsiųstas komercinis“ pasirinktame periode (`work_updated_at`). */
   closedCommercial: number;
+  /** Current calendar month trend — same overview RPC (no second round-trip). */
+  monthRange: ProjectAnalyticsRange;
+  monthCallsTrend: ProjectAnalyticsDto["monthCallsTrend"];
 }> {
   const [overview, closed] = await Promise.all([
     rpcProjectOverviewAnalytics(supabase, projectId, range),
@@ -858,7 +891,12 @@ export async function fetchProjectOverviewCriticalKpis(
   ]);
 
   if (overview.ok) {
-    return { kpi: overview.data.kpi, ...closed };
+    return {
+      kpi: overview.data.kpi,
+      ...closed,
+      monthRange: overview.data.monthRange,
+      monthCallsTrend: overview.data.monthCallsTrend,
+    };
   }
 
   console.warn("[projectAnalytics] critical KPIs overview RPC fallback:", overview.error);
@@ -892,10 +930,13 @@ export async function fetchProjectOverviewCriticalKpis(
   }
 
   const answerRatePercent = calls > 0 ? Math.round((answered / calls) * 1000) / 10 : null;
+  const month = await fetchProjectMonthCallsTrend(supabase, projectId);
 
   return {
     kpi: { calls, answered, notAnswered, emails, commercial, answerRatePercent },
     ...closed,
+    monthRange: month.monthRange,
+    monthCallsTrend: month.monthCallsTrend,
   };
 }
 

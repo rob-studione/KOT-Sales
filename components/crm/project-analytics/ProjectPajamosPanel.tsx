@@ -4,7 +4,6 @@ import { formatDate, formatMoney } from "@/lib/crm/format";
 import {
   fetchProjectAnalytics,
   fetchProjectFirstActivityDate,
-  fetchProjectRevenueFeed,
   resolveAnalyticsRange,
   type ProjectAnalyticsPeriod,
 } from "@/lib/crm/projectAnalytics";
@@ -29,7 +28,7 @@ const PAJAMOS_PERIOD_KEYS = {
   to: "salesTo",
 } as const;
 
-/** Skirtukas „Pajamos“: Pardavimai KPI + sąskaitų išklotinė (dashboard stiliumi). */
+/** Skirtukas „Pajamos“: KPI + sąskaitų išklotinė — vienas revenue_feed (su rows) + overview lygiagrečiai. */
 export async function ProjectPajamosPanel({
   projectId,
   period,
@@ -45,10 +44,7 @@ export async function ProjectPajamosPanel({
   const allTimeFrom = period === "all_time" ? await fetchProjectFirstActivityDate(supabase, projectId) : null;
   const range = resolveAnalyticsRange(period, from, to, allTimeFrom);
 
-  const [data, feed] = await Promise.all([
-    fetchProjectAnalytics(supabase, projectId, range),
-    fetchProjectRevenueFeed(supabase, projectId, range),
-  ]);
+  const data = await fetchProjectAnalytics(supabase, projectId, range, { includeRevenueRows: true });
 
   const { generated, kpi } = data;
   const directRevenue = generated.totalEur;
@@ -68,7 +64,7 @@ export async function ProjectPajamosPanel({
     </p>
   );
 
-  const invoiceRows: InvoiceBreakdownRow[] = feed.rows.map((r) => ({
+  const invoiceRows: InvoiceBreakdownRow[] = (data.revenueRows ?? []).map((r) => ({
     invoiceNumber: r.invoice_number?.trim() ? r.invoice_number : "—",
     date: r.invoice_date,
     amount: r.amount_eur,

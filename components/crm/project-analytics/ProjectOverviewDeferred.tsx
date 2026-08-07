@@ -22,7 +22,10 @@ function KpiCard({ label, value, sub }: { label: string; value: string | number;
   );
 }
 
-/** Mėnesio skambučių grafikas (nepriklauso nuo pardavimų periodo). */
+/**
+ * @deprecated Mėnesio grafikas įtrauktas į `ProjectOverviewCritical` (vienas overview RPC).
+ * Palikta export'ui, jei kas importuotų seną kelią.
+ */
 export async function ProjectOverviewMonthCallsChart({ projectId }: { projectId: string }) {
   const supabase = await createSupabaseSsrReadOnlyClient();
   const { monthRange, monthCallsTrend } = await fetchProjectMonthCallsTrend(supabase, projectId);
@@ -53,6 +56,7 @@ export async function ProjectOverviewSalesSection({
   const allTimeFrom =
     salesPeriod === "all_time" ? await fetchProjectFirstActivityDate(supabase, projectId) : null;
   const salesRange = resolveAnalyticsRange(salesPeriod, salesFrom, salesTo, allTimeFrom);
+  // overview ∥ revenue_feed(summary) — viename fetchProjectAnalytics
   const data = await fetchProjectAnalytics(supabase, projectId, salesRange);
   const { generated, kpi } = data;
 

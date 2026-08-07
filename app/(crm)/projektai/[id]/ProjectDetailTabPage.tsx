@@ -31,7 +31,6 @@ import { CompletedWorkItemsToolbar } from "@/components/crm/CompletedWorkItemsTo
 import { ProcurementAnalyticsView } from "@/components/crm/project-analytics/ProcurementAnalyticsView";
 import { ProjectOverviewCritical } from "@/components/crm/project-analytics/ProjectOverviewCritical";
 import {
-  ProjectOverviewMonthCallsChart,
   ProjectOverviewSalesSection,
   ProjectOverviewSalesSectionFallback,
 } from "@/components/crm/project-analytics/ProjectOverviewDeferred";
@@ -825,7 +824,7 @@ export async function ProjectDetailTabPage({
       {tab === "apzvalga" && !isProcurement ? (
         <div className="mt-6" role="tabpanel">
           <CrmTableContainer>
-            <Suspense fallback={null}>
+            <Suspense fallback={<ProjectOverviewSkeleton />}>
               <ProjectOverviewCritical
                 key={`ov-${period}-${analyticsRange.from}-${analyticsRange.to}`}
                 projectId={id}
@@ -834,9 +833,6 @@ export async function ProjectDetailTabPage({
               />
             </Suspense>
             <div className="mt-8 space-y-8">
-              <Suspense fallback={<ProjectOverviewSkeleton />}>
-                <ProjectOverviewMonthCallsChart projectId={id} />
-              </Suspense>
               <section className="overflow-visible rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm">
                 <Suspense
                   fallback={
