@@ -63,9 +63,45 @@ export function normalizeCompanyNameForMatch(raw: string): string {
     .replace(/\s+/g, " ");
 }
 
+/** Per bendri žodžiai — nenaudoti kaip vienintelio match rakto (pvz. „Logistics“). */
+const GENERIC_NAME_TOKENS = new Set([
+  "as",
+  "ltd",
+  "llc",
+  "inc",
+  "co",
+  "company",
+  "group",
+  "holding",
+  "holdings",
+  "solutions",
+  "services",
+  "service",
+  "consulting",
+  "trading",
+  "international",
+  "global",
+  "baltic",
+  "lithuania",
+  "lietuva",
+  "logistics",
+  "transport",
+  "auto",
+  "tech",
+  "technology",
+  "technologies",
+  "industry",
+  "industrija",
+  "centras",
+]);
+
 function significantNameToken(normalized: string): string | null {
-  const parts = normalized.split(" ").filter((p) => p.length >= 3);
-  if (parts.length === 0) return null;
+  const parts = normalized.split(" ").filter((p) => p.length >= 3 && !GENERIC_NAME_TOKENS.has(p));
+  if (parts.length === 0) {
+    const fallback = normalized.split(" ").filter((p) => p.length >= 4);
+    if (fallback.length === 0) return null;
+    return fallback.sort((a, b) => b.length - a.length)[0] ?? null;
+  }
   return parts.sort((a, b) => b.length - a.length)[0] ?? null;
 }
 
@@ -286,14 +322,18 @@ async function findNameSuggestions(
   companyName: string
 ): Promise<Array<Omit<ExistingClientMatch, "project_history">>> {
   const normalized = normalizeCompanyNameForMatch(companyName);
+  if (normalized.length < 3) return [];
+
+  // DB kandidatai pagal išskirtinį žodį; galutinis filtras — tik beveik tikslus pavadinimas.
   const token = significantNameToken(normalized);
-  if (!token || token.length < 3) return [];
+  const queryNeedle = token && token.length >= 3 ? token : normalized;
+  if (queryNeedle.length < 3) return [];
 
   const { data: rows, error } = await supabase
     .from("v_client_list_from_invoices")
     .select(VIEW_SELECT)
-    .ilike("company_name", `%${token}%`)
-    .limit(25);
+    .ilike("company_name", `%${queryNeedle}%`)
+    .limit(40);
 
   if (error || !rows?.length) {
     if (error) console.error("[findMatchingExistingClient] name suggestions", error);
@@ -305,15 +345,14 @@ async function findNameSuggestions(
     const r = raw as ViewRow;
     const n = normalizeCompanyNameForMatch(String(r.company_name ?? ""));
     if (!n) continue;
-    let score = 0;
-    if (n === normalized) score = 100;
-    else if (n.includes(normalized) || normalized.includes(n)) score = 80;
-    else if (n.split(" ").includes(token)) score = 50;
-    else continue;
-    scored.push({ row: r, score });
+    // Tik tikslus normalizuotas sutapimas (UAB/kabutės jau nuimtos).
+    // Nebesileidžiame bendro žodžio („Logistics“) ar silpno contains.
+    if (n === normalized) {
+      scored.push({ row: r, score: 100 });
+    }
   }
 
-  scored.sort((a, b) => b.score - a.score || a.row.company_name!.localeCompare(b.row.company_name!));
+  scored.sort((a, b) => a.row.company_name!.localeCompare(b.row.company_name!));
 
   const seen = new Set<string>();
   const out: Array<Omit<ExistingClientMatch, "project_history">> = [];
