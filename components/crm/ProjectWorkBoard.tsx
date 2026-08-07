@@ -346,6 +346,15 @@ export function ProjectWorkBoard({
   const [pendingMove, setPendingMove] = useState<PendingKanbanMove | null>(null);
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const wi = new URLSearchParams(window.location.search).get("wi")?.trim() ?? "";
+    if (!wi) return;
+    if (items.some((i) => i.id === wi)) {
+      setDetailItemId(wi);
+    }
+  }, [items]);
+
   const boardItems = useMemo(() => items.filter((i) => isWorkItemOnKanbanBoard(i)), [items]);
   const prios = useMemo(() => boardItems.map((w) => w.snapshot_priority), [boardItems]);
 

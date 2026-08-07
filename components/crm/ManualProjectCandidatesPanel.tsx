@@ -74,6 +74,58 @@ function isDuplicateResult(
   return r.ok === false && "duplicate" in r && r.duplicate === true && "match" in r;
 }
 
+function isSuggestionsResult(
+  r: CreateManualProjectLeadActionResult
+): r is { ok: false; nameSuggestions: true; suggestions: ExistingClientMatch[] } {
+  return r.ok === false && "nameSuggestions" in r && r.nameSuggestions === true && Array.isArray(r.suggestions);
+}
+
+function matchReasonLabel(reason: ExistingClientMatch["match_reason"]): string {
+  switch (reason) {
+    case "company_code":
+      return "įmonės kodą";
+    case "vat_code":
+      return "PVM kodą";
+    case "client_id":
+      return "kliento ID";
+    case "email":
+      return "el. paštą";
+    case "name":
+      return "pavadinimą";
+    default:
+      return "duomenis";
+  }
+}
+
+function ClientMatchHistoryList({ history }: { history: ExistingClientMatch["project_history"] }) {
+  if (!history.length) {
+    return <p className="mt-3 text-xs text-zinc-500">Kituose projektuose dar nebuvo paimtas į darbą.</p>;
+  }
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Buvo projektuose</p>
+      <ul className="mt-1.5 space-y-2">
+        {history.map((h) => (
+          <li key={`${h.project_id}-${h.work_item_id}`} className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+              <Link href={h.href} className="font-medium text-[#7C4A57] hover:underline" target="_blank" rel="noreferrer">
+                {h.project_name}
+              </Link>
+              <span className="tabular-nums text-xs text-zinc-500">
+                {formatDate(h.last_activity_at ?? h.picked_at)}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-zinc-600">
+              {h.result_label}
+              {h.last_action_summary ? ` · ${h.last_action_summary}` : null}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Vienas CSV stulpelis gali būti priskirtas tik vienam target laukui. */
 function applyCsvColumnMapping(
   prev: ManualCsvImportMapping,
@@ -134,6 +186,7 @@ export function ManualProjectCandidatesPanel({
   const invalidDialogRef = useRef<HTMLDialogElement>(null);
   const [pendingInvalidLeadId, setPendingInvalidLeadId] = useState<string | null>(null);
   const [duplicateMatch, setDuplicateMatch] = useState<ExistingClientMatch | null>(null);
+  const [nameSuggestions, setNameSuggestions] = useState<ExistingClientMatch[] | null>(null);
   const [linkPending, setLinkPending] = useState(false);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const importCloseBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -178,6 +231,7 @@ export function ManualProjectCandidatesPanel({
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         if (duplicateMatch) setDuplicateMatch(null);
+        else if (nameSuggestions) setNameSuggestions(null);
         else setOpen(false);
       }
     }
@@ -186,7 +240,7 @@ export function ManualProjectCandidatesPanel({
       window.clearTimeout(t);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, duplicateMatch]);
+  }, [open, duplicateMatch, nameSuggestions]);
 
   useEffect(() => {
     if (!importOpen) return;
@@ -640,7 +694,7 @@ export function ManualProjectCandidatesPanel({
           <div
             className="absolute inset-0"
             aria-hidden
-            onClick={() => !pending && !duplicateMatch && setOpen(false)}
+            onClick={() => !pending && !duplicateMatch && !nameSuggestions && setOpen(false)}
           />
           <div
             role="dialog"
@@ -655,7 +709,7 @@ export function ManualProjectCandidatesPanel({
               <button
                 ref={closeBtnRef}
                 type="button"
-                disabled={pending || duplicateMatch != null}
+                disabled={pending || duplicateMatch != null || nameSuggestions != null}
                 onClick={() => setOpen(false)}
                 className="rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
                 aria-label="Uždaryti"
@@ -679,9 +733,14 @@ export function ManualProjectCandidatesPanel({
                     form.reset();
                     setOpen(false);
                     setDuplicateMatch(null);
+                    setNameSuggestions(null);
                     router.refresh();
                   } else if (isDuplicateResult(r)) {
+                    setNameSuggestions(null);
                     setDuplicateMatch(r.match);
+                  } else if (isSuggestionsResult(r)) {
+                    setDuplicateMatch(null);
+                    setNameSuggestions(r.suggestions);
                   } else {
                     setError(r.error);
                   }
@@ -748,14 +807,15 @@ export function ManualProjectCandidatesPanel({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="dup-title"
-                className="relative w-full max-w-md rounded-xl border border-zinc-200 bg-white p-5 shadow-xl"
+                className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 shadow-xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <h3 id="dup-title" className="text-base font-semibold text-zinc-900">
-                  Rastas galimai sutampantis klientas
+                  Klientas jau yra CRM
                 </h3>
                 <p className="mt-2 text-sm text-zinc-600">
-                  CRM jau turi įrašą pagal įmonės kodą arba el. paštą. Galite prijungti šį klientą prie projekto arba vis tiek sukurti naują rankinį leadą.
+                  Rastas pagal {matchReasonLabel(duplicateMatch.match_reason)}. Naujo leado nekuriame — pridėkite esamą
+                  klientą į šį projektą.
                 </p>
                 <ul className="mt-3 space-y-1 rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
                   <li>
@@ -768,6 +828,12 @@ export function ManualProjectCandidatesPanel({
                       {duplicateMatch.company_code}
                     </li>
                   ) : null}
+                  {duplicateMatch.vat_code ? (
+                    <li>
+                      <span className="text-zinc-500">PVM: </span>
+                      {duplicateMatch.vat_code}
+                    </li>
+                  ) : null}
                   {duplicateMatch.email ? (
                     <li>
                       <span className="text-zinc-500">El. paštas: </span>
@@ -775,6 +841,7 @@ export function ManualProjectCandidatesPanel({
                     </li>
                   ) : null}
                 </ul>
+                <ClientMatchHistoryList history={duplicateMatch.project_history} />
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                   <button
                     type="button"
@@ -783,34 +850,6 @@ export function ManualProjectCandidatesPanel({
                     className="rounded-lg border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
                   >
                     Atšaukti
-                  </button>
-                  <button
-                    type="button"
-                    disabled={linkPending || pending}
-                    onClick={() => {
-                      const form = formRef.current;
-                      if (!form) return;
-                      const fd = new FormData(form);
-                      fd.set("project_id", projectId);
-                      fd.set("force_new_lead", "1");
-                      startTransition(async () => {
-                        setError(null);
-                        const r = await createManualProjectLeadAction(fd);
-                        if (r.ok) {
-                          form.reset();
-                          setDuplicateMatch(null);
-                          setOpen(false);
-                          router.refresh();
-                        } else if (isDuplicateResult(r)) {
-                          setDuplicateMatch(r.match);
-                        } else {
-                          setError(r.error);
-                        }
-                      });
-                    }}
-                    className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
-                  >
-                    Vis tiek kurti naują kandidatą
                   </button>
                   <button
                     type="button"
@@ -835,6 +874,108 @@ export function ManualProjectCandidatesPanel({
                     className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
                   >
                     {linkPending ? "Jungiama…" : "Pridėti esamą klientą į projektą"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {nameSuggestions && nameSuggestions.length > 0 ? (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+              role="presentation"
+              onClick={(e) => e.target === e.currentTarget && !linkPending && !pending && setNameSuggestions(null)}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="sug-title"
+                className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 id="sug-title" className="text-base font-semibold text-zinc-900">
+                  Panašūs klientai CRM
+                </h3>
+                <p className="mt-2 text-sm text-zinc-600">
+                  Pagal pavadinimą rasta galimų sutapimų. Galite pridėti esamą arba vis tiek sukurti naują kandidatą.
+                </p>
+                <ul className="mt-3 space-y-3">
+                  {nameSuggestions.map((s) => (
+                    <li key={s.client_key} className="rounded-lg border border-zinc-200 p-3">
+                      <div className="text-sm font-medium text-zinc-900">{s.company_name}</div>
+                      <div className="mt-0.5 space-x-2 text-xs text-zinc-500">
+                        {s.company_code ? <span>Kodas: {s.company_code}</span> : null}
+                        {s.email ? <span>{s.email}</span> : null}
+                      </div>
+                      <ClientMatchHistoryList history={s.project_history} />
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          disabled={linkPending || pending}
+                          onClick={async () => {
+                            setLinkPending(true);
+                            setError(null);
+                            try {
+                              const r = await linkExistingClientToManualProjectAction(projectId, s.client_key);
+                              if (r.ok) {
+                                setNameSuggestions(null);
+                                setOpen(false);
+                                formRef.current?.reset();
+                                router.refresh();
+                              } else {
+                                setError(r.error);
+                              }
+                            } finally {
+                              setLinkPending(false);
+                            }
+                          }}
+                          className="rounded-lg bg-[#7C4A57] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
+                        >
+                          {linkPending ? "Jungiama…" : "Pridėti šį"}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                  <button
+                    type="button"
+                    disabled={linkPending || pending}
+                    onClick={() => setNameSuggestions(null)}
+                    className="rounded-lg border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                  >
+                    Atšaukti
+                  </button>
+                  <button
+                    type="button"
+                    disabled={linkPending || pending}
+                    onClick={() => {
+                      const form = formRef.current;
+                      if (!form) return;
+                      const fd = new FormData(form);
+                      fd.set("project_id", projectId);
+                      fd.set("force_new_lead", "1");
+                      startTransition(async () => {
+                        setError(null);
+                        const r = await createManualProjectLeadAction(fd);
+                        if (r.ok) {
+                          form.reset();
+                          setNameSuggestions(null);
+                          setOpen(false);
+                          router.refresh();
+                        } else if (isDuplicateResult(r)) {
+                          setNameSuggestions(null);
+                          setDuplicateMatch(r.match);
+                        } else if (isSuggestionsResult(r)) {
+                          setNameSuggestions(r.suggestions);
+                        } else {
+                          setError(r.error);
+                        }
+                      });
+                    }}
+                    className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
+                  >
+                    Vis tiek kurti naują kandidatą
                   </button>
                 </div>
               </div>

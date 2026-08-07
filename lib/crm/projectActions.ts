@@ -26,7 +26,10 @@ import {
 } from "@/lib/crm/projectBoardConstants";
 import { parseCompletionResult } from "@/lib/crm/projectCompletion";
 import { crmUserExists, isValidUuid, messageForCrmUserExistsFailure } from "@/lib/crm/crmUsers";
-import { findMatchingExistingClient, type ExistingClientMatch } from "@/lib/crm/findMatchingExistingClient";
+import {
+  findClientMatches,
+  type ExistingClientMatch,
+} from "@/lib/crm/findMatchingExistingClient";
 import { isManualProjectType, isProcurementProjectType, projectTypeFromDbRow } from "@/lib/crm/projectType";
 import {
   mapProcurementCsvRows,
@@ -524,7 +527,8 @@ export async function updateAutomaticProjectRulesAction(
 export type CreateManualProjectLeadActionResult =
   | { ok: true }
   | { ok: false; error: string }
-  | { ok: false; duplicate: true; match: ExistingClientMatch };
+  | { ok: false; duplicate: true; match: ExistingClientMatch }
+  | { ok: false; nameSuggestions: true; suggestions: ExistingClientMatch[] };
 
 export async function createManualProjectLeadAction(formData: FormData): Promise<CreateManualProjectLeadActionResult> {
   const projectId = String(formData.get("project_id") ?? "").trim();
@@ -565,14 +569,19 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
     return { ok: false, error: "Rankiniai kandidatai galimi tik rankiniu projektu." };
   }
 
-  if (!forceNewLead) {
-    const match = await findMatchingExistingClient(supabase, {
-      companyCode: companyCode,
-      email: email,
-    });
-    if (match) {
-      return { ok: false, duplicate: true, match };
-    }
+  const matchResult = await findClientMatches(supabase, {
+    companyCode,
+    email,
+    companyName,
+  });
+
+  if (matchResult.kind === "strong") {
+    // Stiprus match: neleidžiame force create — tik prijungti esamą.
+    return { ok: false, duplicate: true, match: matchResult.match };
+  }
+
+  if (!forceNewLead && matchResult.kind === "suggestions") {
+    return { ok: false, nameSuggestions: true, suggestions: matchResult.suggestions };
   }
 
   const { error } = await supabase.from("project_manual_leads").insert({
