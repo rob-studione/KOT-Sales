@@ -84,6 +84,9 @@ export type SalesDashboardProjectRevenue = {
 export type SalesDashboardData = {
   range: SalesDashboardRange;
   period: SalesDashboardPeriod;
+  /** Pardavimų filtro periodas (gali skirtis nuo veiklos). */
+  salesPeriod: SalesDashboardPeriod;
+  salesRange: SalesDashboardRange;
   kpi: SalesDashboardKpi;
   trend: SalesDashboardTrendDay[];
   /** Pajamos pagal projektą (bendra suma; detalės — projekto Pajamose). */
@@ -158,13 +161,24 @@ export async function fetchSalesDashboardFirstActivityDate(supabase: SupabaseCli
 }
 
 /**
- * KPI „Pardavimai“ langas: tas pats intervalas kaip dashboard filtro (įskaitant all_time).
+ * KPI „Pardavimai“ langas: pagal nutylėjimą = veiklos intervalas;
+ * jei perduotas atskiras sales range — naudojamas jis (pvz. all_time finansams).
  */
 export function resolveSalesKpiRange(
   _period: SalesDashboardPeriod,
   range: SalesDashboardRange,
-  _todayIso: string
+  _todayIso: string,
+  salesRangeOverride?: SalesDashboardRange | null
 ): SalesDashboardRange {
+  if (
+    salesRangeOverride &&
+    /^\d{4}-\d{2}-\d{2}$/.test(salesRangeOverride.from) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(salesRangeOverride.to)
+  ) {
+    return salesRangeOverride.from <= salesRangeOverride.to
+      ? salesRangeOverride
+      : { from: salesRangeOverride.to, to: salesRangeOverride.from };
+  }
   return { from: range.from, to: range.to };
 }
 
@@ -212,14 +226,19 @@ function asFiniteNumber(v: unknown, fallback = 0): number {
 export async function fetchSalesDashboard(
   supabase: SupabaseClient,
   period: SalesDashboardPeriod,
-  range: SalesDashboardRange
+  range: SalesDashboardRange,
+  opts?: {
+    salesPeriod?: SalesDashboardPeriod;
+    salesRange?: SalesDashboardRange | null;
+  }
 ): Promise<SalesDashboardData> {
   const warnings: string[] = [];
   const logs: QueryLog[] = [];
   const t0 = performance.now();
 
   const todayIso = vilniusTodayDateString();
-  const salesRange = resolveSalesKpiRange(period, range, todayIso);
+  const salesPeriod = opts?.salesPeriod ?? period;
+  const salesRange = resolveSalesKpiRange(period, range, todayIso, opts?.salesRange ?? null);
 
   const data = await withTiming(
     "dashboard_sales_analytics_v1",
@@ -244,6 +263,8 @@ export async function fetchSalesDashboard(
   const out: SalesDashboardData = {
     range,
     period,
+    salesPeriod,
+    salesRange,
     kpi: {
       calls: asFiniteNumber(k.calls, 0),
       answeredCalls: asFiniteNumber(k.answeredCalls, 0),

@@ -1,10 +1,11 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
-import type { SalesDashboardData } from "@/lib/crm/salesAnalyticsDashboard";
+import type { SalesDashboardData, SalesDashboardPeriod, SalesDashboardRange } from "@/lib/crm/salesAnalyticsDashboard";
 import { formatMoney } from "@/lib/crm/format";
 import { CallsByDayBarChart } from "@/components/crm/CallsByDayBarChart";
 import { SalesAnalyticsBestCallTimeClient } from "@/components/crm/SalesAnalyticsBestCallTimeClient";
 
-export function SalesAnalyticsDashboardView({
+export function SalesAnalyticsActivityView({
   data,
   monthCallsTrend,
   monthRange,
@@ -13,19 +14,8 @@ export function SalesAnalyticsDashboardView({
   monthCallsTrend: Array<{ date: string; calls: number }>;
   monthRange: { from: string; to: string };
 }) {
-  const { kpi, warnings, bestCallTimes, projectRevenues, period, range } = data;
-
-  const coldDisplay = kpi.coldRevenueEur === 0 ? "—" : formatMoney(kpi.coldRevenueEur);
-  const returningDisplay = kpi.returningRevenueEur === 0 ? "—" : formatMoney(kpi.returningRevenueEur);
-  const conversionDisplay =
-    kpi.conversionPercent === null ? "—" : `${kpi.conversionPercent}%`;
-
-  const pajamosQs = new URLSearchParams();
-  pajamosQs.set("salesPeriod", period === "custom" ? "custom" : period);
-  if (period === "custom") {
-    pajamosQs.set("salesFrom", range.from);
-    pajamosQs.set("salesTo", range.to);
-  }
+  const { kpi, warnings, bestCallTimes } = data;
+  const conversionDisplay = kpi.conversionPercent === null ? "—" : `${kpi.conversionPercent}%`;
 
   return (
     <div className="space-y-10">
@@ -60,46 +50,6 @@ export function SalesAnalyticsDashboardView({
         </div>
       </section>
 
-      <section aria-labelledby="revenue-heading" className="border-t border-zinc-200/80 pt-10">
-        <h2 id="revenue-heading" className="text-sm font-semibold text-zinc-900">
-          Pardavimai
-        </h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          PVM sąskaitos (sumos <span className="font-medium text-zinc-700">be PVM</span>) pagal{" "}
-          <span className="font-medium text-zinc-700">invoice_date</span>. Cold / Returning — jei per 365 d. iki sąskaitos
-          buvo call / email / meeting / commercial. Po kiekviena KPI kortele — to tipo pajamos pagal projektą; detalės —
-          projekto Pajamose.
-        </p>
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-3">
-            <KpiCard label="Cold pajamos (€, KPI langas)" value={coldDisplay} />
-            <ProjectRevenueColumn
-              title="Pajamos pagal projektą"
-              emptyLabel="Nėra cold pajamų šiame lange"
-              pajamosQs={pajamosQs}
-              rows={projectRevenues
-                .filter((r) => r.coldEur > 0)
-                .map((r) => ({ projectId: r.projectId, projectName: r.projectName, amountEur: r.coldEur }))}
-            />
-          </div>
-          <div className="space-y-3">
-            <KpiCard label="Returning pajamos (€, KPI langas)" value={returningDisplay} />
-            <ProjectRevenueColumn
-              title="Pajamos pagal projektą"
-              emptyLabel="Nėra returning pajamų šiame lange"
-              pajamosQs={pajamosQs}
-              rows={projectRevenues
-                .filter((r) => r.returningEur > 0)
-                .map((r) => ({
-                  projectId: r.projectId,
-                  projectName: r.projectName,
-                  amountEur: r.returningEur,
-                }))}
-            />
-          </div>
-        </div>
-      </section>
-
       {warnings.length > 0 ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <div className="font-medium">Įspėjimai</div>
@@ -112,6 +62,96 @@ export function SalesAnalyticsDashboardView({
       ) : null}
     </div>
   );
+}
+
+export function SalesAnalyticsSalesView({
+  data,
+  salesPeriodHeader,
+}: {
+  data: SalesDashboardData;
+  salesPeriodHeader?: ReactNode;
+}) {
+  const { kpi, projectRevenues, salesPeriod, salesRange } = data;
+
+  const coldDisplay = kpi.coldRevenueEur === 0 ? "—" : formatMoney(kpi.coldRevenueEur);
+  const returningDisplay = kpi.returningRevenueEur === 0 ? "—" : formatMoney(kpi.returningRevenueEur);
+
+  const pajamosQs = buildPajamosQs(salesPeriod, salesRange);
+
+  return (
+    <section aria-labelledby="revenue-heading" className="border-t border-zinc-200/80 pt-10">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <h2 id="revenue-heading" className="text-sm font-semibold text-zinc-900">
+            Pardavimai
+          </h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            PVM sąskaitos (sumos <span className="font-medium text-zinc-700">be PVM</span>) pagal{" "}
+            <span className="font-medium text-zinc-700">invoice_date</span>. Cold / Returning — jei per 365 d. iki sąskaitos
+            buvo call / email / meeting / commercial. Po kiekviena KPI kortele — to tipo pajamos pagal projektą; detalės —
+            projekto Pajamose.
+          </p>
+        </div>
+        {salesPeriodHeader ? <div className="relative z-20 w-full sm:w-auto lg:shrink-0">{salesPeriodHeader}</div> : null}
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-3">
+          <KpiCard label="Cold pajamos (€, KPI langas)" value={coldDisplay} />
+          <ProjectRevenueColumn
+            title="Pajamos pagal projektą"
+            emptyLabel="Nėra cold pajamų šiame lange"
+            pajamosQs={pajamosQs}
+            rows={projectRevenues
+              .filter((r) => r.coldEur > 0)
+              .map((r) => ({ projectId: r.projectId, projectName: r.projectName, amountEur: r.coldEur }))}
+          />
+        </div>
+        <div className="space-y-3">
+          <KpiCard label="Returning pajamos (€, KPI langas)" value={returningDisplay} />
+          <ProjectRevenueColumn
+            title="Pajamos pagal projektą"
+            emptyLabel="Nėra returning pajamų šiame lange"
+            pajamosQs={pajamosQs}
+            rows={projectRevenues
+              .filter((r) => r.returningEur > 0)
+              .map((r) => ({
+                projectId: r.projectId,
+                projectName: r.projectName,
+                amountEur: r.returningEur,
+              }))}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** @deprecated — naudokite Activity + Sales view atskirai. */
+export function SalesAnalyticsDashboardView({
+  data,
+  monthCallsTrend,
+  monthRange,
+}: {
+  data: SalesDashboardData;
+  monthCallsTrend: Array<{ date: string; calls: number }>;
+  monthRange: { from: string; to: string };
+}) {
+  return (
+    <div className="space-y-10">
+      <SalesAnalyticsActivityView data={data} monthCallsTrend={monthCallsTrend} monthRange={monthRange} />
+      <SalesAnalyticsSalesView data={data} />
+    </div>
+  );
+}
+
+function buildPajamosQs(period: SalesDashboardPeriod, range: SalesDashboardRange): URLSearchParams {
+  const pajamosQs = new URLSearchParams();
+  pajamosQs.set("salesPeriod", period === "custom" ? "custom" : period);
+  if (period === "custom") {
+    pajamosQs.set("salesFrom", range.from);
+    pajamosQs.set("salesTo", range.to);
+  }
+  return pajamosQs;
 }
 
 function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {

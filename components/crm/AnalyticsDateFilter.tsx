@@ -8,6 +8,18 @@ import { PeriodFilterCalendarIcon } from "@/components/crm/PeriodFilterCalendarI
 
 type QuickPreset = Exclude<SalesDashboardPeriod, "custom">;
 
+export type AnalyticsDateFilterParamKeys = {
+  period: string;
+  from: string;
+  to: string;
+};
+
+const DEFAULT_PARAM_KEYS: AnalyticsDateFilterParamKeys = {
+  period: "period",
+  from: "from",
+  to: "to",
+};
+
 const PRESETS: Array<{ id: QuickPreset; label: string }> = [
   { id: "today", label: "Šiandien" },
   { id: "week", label: "Ši savaitė" },
@@ -34,9 +46,13 @@ function isIsoDate(s: string): boolean {
 export function AnalyticsDateFilter({
   period,
   range,
+  paramKeys = DEFAULT_PARAM_KEYS,
+  heading = "Laikotarpis",
 }: {
   period: SalesDashboardPeriod;
   range: SalesDashboardRange;
+  paramKeys?: AnalyticsDateFilterParamKeys;
+  heading?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -59,9 +75,9 @@ export function AnalyticsDateFilter({
     setOpen(false);
     if (p === period) return;
     const next = new URLSearchParams(searchParams.toString());
-    next.set("period", p);
-    next.delete("from");
-    next.delete("to");
+    next.set(paramKeys.period, p);
+    next.delete(paramKeys.from);
+    next.delete(paramKeys.to);
     navigate(next);
   }
 
@@ -98,9 +114,9 @@ export function AnalyticsDateFilter({
     if (!isIsoDate(from) || !isIsoDate(to)) return;
     const ordered = from <= to ? { from, to } : { from: to, to: from };
     const next = new URLSearchParams(searchParams.toString());
-    next.set("period", "custom");
-    next.set("from", ordered.from);
-    next.set("to", ordered.to);
+    next.set(paramKeys.period, "custom");
+    next.set(paramKeys.from, ordered.from);
+    next.set(paramKeys.to, ordered.to);
     setOpen(false);
     navigate(next);
   }
@@ -123,7 +139,7 @@ export function AnalyticsDateFilter({
 
         {open ? (
           <div className="absolute right-0 z-20 mt-2 w-[22rem] rounded-xl border border-zinc-200 bg-white p-3 shadow-xl shadow-black/10 sm:left-full sm:right-auto sm:ml-2 sm:mt-0 sm:top-0">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Laikotarpis</div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">{heading}</div>
             <div className="grid grid-cols-2 gap-2">
               {PRESETS.map((p) => (
                 <button

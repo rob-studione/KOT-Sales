@@ -2,6 +2,7 @@
 
 import nextDynamic from "next/dynamic";
 import type { SalesDashboardPeriod, SalesDashboardRange } from "@/lib/crm/salesAnalyticsDashboard";
+import type { AnalyticsDateFilterParamKeys } from "@/components/crm/AnalyticsDateFilter";
 
 const AnalyticsDateFilterInner = nextDynamic(
   () => import("@/components/crm/AnalyticsDateFilter").then((m) => m.AnalyticsDateFilter),
@@ -19,9 +20,13 @@ const AnalyticsDateFilterInner = nextDynamic(
 export function AnalyticsDateFilterClientOnly({
   period,
   range,
+  paramKeys,
+  heading = "Laikotarpis",
 }: {
   period: SalesDashboardPeriod;
   range: SalesDashboardRange;
+  paramKeys?: AnalyticsDateFilterParamKeys;
+  heading?: string;
 }) {
-  return <AnalyticsDateFilterInner period={period} range={range} />;
+  return <AnalyticsDateFilterInner period={period} range={range} paramKeys={paramKeys} heading={heading} />;
 }
