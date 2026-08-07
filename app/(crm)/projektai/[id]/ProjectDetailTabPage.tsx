@@ -135,7 +135,7 @@ export async function ProjectDetailTabPage({
   tab: ProjectDetailTab;
   searchParams: ProjectDetailTabPageSearchParams;
 }) {
-  const perfT0 = 0;
+  const perfT0 = Date.now();
   const perf: Record<string, number> = {};
   let roundTripCount = 0;
   const markMs = (k: string, ms: number) => {
@@ -902,9 +902,11 @@ export async function ProjectDetailTabPage({
       ? await fetchProcurementDashboardAnalytics(supabase, id, p.created_at, analyticsRange)
       : null;
 
+  const totalServerMs = Date.now() - perfT0;
+
   if (process.env.CRM_PERF_LOG === "1") {
     console.info("[CRM perf] /projektai/[id]/[tab] SSR", {
-      totalServerMs: 0 - perfT0,
+      totalServerMs,
       candidatesRpcMs: perf.candidatesRpcMs ?? 0,
       revenueFeedMs: perf.revenueFeedMs ?? 0,
       procurementMs: perf.procurementMs ?? 0,
@@ -914,7 +916,7 @@ export async function ProjectDetailTabPage({
   }
 
   const serverPerfForClient = {
-    totalServerMs: 0 - perfT0,
+    totalServerMs,
     candidatesRpcMs: perf.candidatesRpcMs ?? 0,
     revenueFeedMs: perf.revenueFeedMs ?? 0,
     procurementMs: perf.procurementMs ?? 0,

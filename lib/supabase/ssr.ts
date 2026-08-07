@@ -1,6 +1,7 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 function env(name: string): string {
   const v = process.env[name]?.trim();
@@ -12,11 +13,27 @@ function env(name: string): string {
  * @supabase/ssr uses skipAutoInitialize: the JWT is not attached until
  * getUser()/getSession()/getClaims() runs on that client instance.
  * Without this, PostgREST calls use the anon key as the role.
+ *
+ * Cached per RSC request so layout + page + Suspense children share one Auth round-trip.
  */
-async function attachSession(client: SupabaseClient): Promise<SupabaseClient> {
-  await client.auth.getUser();
-  return client;
-}
+export const getSsrAuth = cache(async (): Promise<{
+  client: SupabaseClient;
+  user: User | null;
+}> => {
+  const cookieStore = await cookies();
+  const client = createServerClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll() {
+        // no-op: Server Components cannot mutate cookies during render
+      },
+    },
+  });
+  const { data } = await client.auth.getUser();
+  return { client, user: data.user ?? null };
+});
 
 /** Cookie-based Supabase client for Server Components / Server Actions. */
 export async function createSupabaseSsrClient() {
@@ -33,7 +50,8 @@ export async function createSupabaseSsrClient() {
       },
     },
   });
-  return attachSession(client);
+  await client.auth.getUser();
+  return client;
 }
 
 /**
@@ -42,17 +60,6 @@ export async function createSupabaseSsrClient() {
  * (which would crash in a Server Component render).
  */
 export async function createSupabaseSsrReadOnlyClient() {
-  const cookieStore = await cookies();
-  const client = createServerClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll();
-      },
-      setAll() {
-        // no-op: Server Components cannot mutate cookies during render
-      },
-    },
-  });
-  return attachSession(client);
+  const { client } = await getSsrAuth();
+  return client;
 }
-

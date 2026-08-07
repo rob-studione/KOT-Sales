@@ -21,7 +21,7 @@ export default async function ProjektaiListPage({
 }: {
   searchParams: Promise<{ status?: string | string[]; q?: string | string[] }>;
 }) {
-  const perfT0 = 0;
+  const perfT0 = Date.now();
   const sp = await searchParams;
   const statusRaw = typeof sp.status === "string" ? sp.status : undefined;
   const statusFilter = parseStatusFilter(statusRaw);
@@ -181,7 +181,7 @@ export default async function ProjektaiListPage({
   }
 
   if (process.env.CRM_PERF_LOG === "1") {
-    const totalServerMs = 0 - perfT0;
+    const totalServerMs = Date.now() - perfT0;
     if (loadPath === "rpc") {
       console.info("[CRM perf] /projektai SSR", {
         loadPath,

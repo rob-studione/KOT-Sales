@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
-import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
+import { createSupabaseSsrReadOnlyClient, getSsrAuth } from "@/lib/supabase/ssr";
 import { formatDate } from "@/lib/crm/format";
 import { loadProjectDetailCore } from "@/lib/crm/projectDetailLoad";
 import { projectSortLabel, parseProjectSortOption } from "@/lib/crm/projectSnapshot";
@@ -61,13 +61,13 @@ export default async function ProjektasDetailLayout({
 
   let procurementNotificationsForUser: CrmNotificationRow[] = [];
   if (isProcurement) {
-    const { data: auth } = await supabase.auth.getUser();
-    if (auth.user) {
+    const { user: authUser } = await getSsrAuth();
+    if (authUser) {
       const { data: pn } = await supabase
         .from("notifications")
         .select("id,user_id,project_id,contract_id,type,message,is_read,created_at")
         .eq("project_id", id)
-        .eq("user_id", auth.user.id)
+        .eq("user_id", authUser.id)
         .order("created_at", { ascending: false })
         .limit(20);
       procurementNotificationsForUser = (pn ?? []) as CrmNotificationRow[];

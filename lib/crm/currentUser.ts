@@ -1,7 +1,8 @@
 import "server-only";
 
+import { cache } from "react";
 import { redirect } from "next/navigation";
-import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
+import { getSsrAuth } from "@/lib/supabase/ssr";
 import type { UserRole } from "@/lib/crm/roles";
 import type { CrmUserStatus } from "@/lib/crm/accountActions";
 
@@ -16,12 +17,11 @@ export type CurrentCrmUser = {
   avatar_url: string | null;
 };
 
-export async function getCurrentCrmUser(): Promise<CurrentCrmUser | null> {
-  const supabase = await createSupabaseSsrReadOnlyClient();
-  const { data: userData, error: userErr } = await supabase.auth.getUser();
-  if (userErr || !userData.user) return null;
+/** Cached per RSC request — shares Auth session with `createSupabaseSsrReadOnlyClient`. */
+export const getCurrentCrmUser = cache(async function getCurrentCrmUser(): Promise<CurrentCrmUser | null> {
+  const { client: supabase, user: authUser } = await getSsrAuth();
+  if (!authUser) return null;
 
-  const authUser = userData.user;
   const { data: crmUser, error: crmErr } = await supabase
     .from("crm_users")
     .select("id,email,role,first_name,last_name,phone,status,avatar_url")
@@ -47,7 +47,7 @@ export async function getCurrentCrmUser(): Promise<CurrentCrmUser | null> {
     status: String((crmUser as any).status ?? "active") as CrmUserStatus,
     avatar_url: (crmUser as any).avatar_url == null ? null : String((crmUser as any).avatar_url),
   };
-}
+});
 
 type RequireAdminMode = "throw" | "redirect";
 
