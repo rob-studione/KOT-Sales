@@ -42,16 +42,13 @@ import {
 import { ProjectOverviewSkeleton } from "@/components/crm/project-analytics/ProjectOverviewSkeleton";
 import { Suspense } from "react";
 import {
-  normalizeActivityRow,
-  type ProjectWorkItemActivityDto,
-} from "@/lib/crm/projectWorkItemActivityDto";
-import {
   fetchManualProjectCandidatesPage,
   type ManualCandidatePageRow,
 } from "@/lib/crm/projectManualLeads";
 import { fetchCompletedWorkItemsPage } from "@/lib/crm/projectCompletedWorkItems";
 import {
-  PROJECT_WORK_ITEM_ACTIVITY_SELECT,
+  enrichDarbasWorkItems,
+  loadActivitiesByWorkItemIds,
   PROJECT_WORK_ITEM_CLOSED_STATUSES,
   PROJECT_WORK_ITEM_COMPLETED_TAB_STATUSES,
   recentWorkUpdatedSinceIso,
@@ -59,6 +56,7 @@ import {
 import { isProjectWorkItemClosed } from "@/lib/crm/projectBoardConstants";
 import { isUžbaigtaSameDayCompletionOnDarbas, vilniusTodayDateString } from "@/lib/crm/projectWorkBoardDoneDate";
 import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
+import type { ProjectWorkItemActivityDto } from "@/lib/crm/projectWorkItemActivityDto";
 import {
   isMissingWorkItemSourceColumnsError,
   PROJECT_WORK_ITEMS_SELECT_LEGACY,
@@ -636,130 +634,15 @@ export async function ProjectDetailTabPage({
   let workItemsAll: ProjectWorkItemDto[] = workRaw.map(mapWorkRow);
 
   const todayVilniusEarly = vilniusTodayDateString();
-  const activitiesByWorkItemId: Record<string, ProjectWorkItemActivityDto[]> = {};
-
-  async function loadActivitiesForIds(ids: string[]) {
-    if (ids.length === 0) return;
-    const chunks: string[][] = [];
-    for (let i = 0; i < ids.length; i += 200) {
-      chunks.push(ids.slice(i, i + 200));
-    }
-    roundTripCount += chunks.length;
-    const results = await Promise.all(
-      chunks.map((part) =>
-        supabase
-          .from("project_work_item_activities")
-          .select(PROJECT_WORK_ITEM_ACTIVITY_SELECT)
-          .in("work_item_id", part)
-          .order("occurred_at", { ascending: true })
-      )
-    );
-    for (const { data: actRows, error: actErr } of results) {
-      if (actErr || !actRows) continue;
-      for (const r of actRows) {
-        const a = normalizeActivityRow(r as Record<string, unknown>);
-        if (!activitiesByWorkItemId[a.work_item_id]) activitiesByWorkItemId[a.work_item_id] = [];
-        activitiesByWorkItemId[a.work_item_id]!.push(a);
-      }
-    }
-  }
+  let activitiesByWorkItemId: Record<string, ProjectWorkItemActivityDto[]> = {};
 
   if (tab === "darbas") {
-    await loadActivitiesForIds(workItemsAll.map((w) => w.id));
-
-    const liveByKey = new Map<
-      string,
-      {
-        total_revenue: number;
-        last_invoice_date: string | null;
-        email: string | null;
-        phone: string | null;
-        invoice_number: string | null;
-      }
-    >();
-    const revenueKeys = Array.from(
-      new Set(
-        workItemsAll
-          .filter((w) => (w.source_type === "auto" || w.source_type === "linked_client") && w.client_key.trim() !== "")
-          .map((w) => w.client_key)
-      )
-    );
-    const keyChunks: string[][] = [];
-    for (let i = 0; i < revenueKeys.length; i += 200) {
-      keyChunks.push(revenueKeys.slice(i, i + 200));
-    }
-    roundTripCount += keyChunks.length * 2;
-    const liveResults = await Promise.all(
-      keyChunks.map(async (part) => {
-        const [{ data }, { data: recentInv }] = await Promise.all([
-          supabase
-            .from("v_client_list_from_invoices")
-            .select("client_key,total_revenue,last_invoice_date,email,phone")
-            .in("client_key", part),
-          supabase.rpc("recent_invoices_for_clients", { p_codes: part }),
-        ]);
-        return { data, recentInv };
-      })
-    );
-    for (const { data, recentInv } of liveResults) {
-      for (const r of (data ?? []) as Array<{
-        client_key?: unknown;
-        total_revenue?: unknown;
-        last_invoice_date?: unknown;
-        email?: unknown;
-        phone?: unknown;
-      }>) {
-        const ck = String(r.client_key ?? "").trim();
-        if (!ck) continue;
-        const total = Number(r.total_revenue ?? 0);
-        const lastRaw = r.last_invoice_date;
-        const last =
-          lastRaw == null || lastRaw === ""
-            ? null
-            : typeof lastRaw === "string"
-              ? lastRaw.slice(0, 10)
-              : String(lastRaw).slice(0, 10);
-        const em = r.email != null && String(r.email).trim() !== "" ? String(r.email).trim() : null;
-        const ph = r.phone != null && String(r.phone).trim() !== "" ? String(r.phone).trim() : null;
-        liveByKey.set(ck, {
-          total_revenue: Number.isFinite(total) ? total : 0,
-          last_invoice_date: last,
-          email: em,
-          phone: ph,
-          invoice_number: null,
-        });
-      }
-      const firstLatestNumForKey = new Set<string>();
-      for (const row of (recentInv ?? []) as Array<{
-        client_key?: unknown;
-        invoice_number?: unknown;
-      }>) {
-        const ck = String(row.client_key ?? "").trim();
-        if (!ck || firstLatestNumForKey.has(ck)) continue;
-        firstLatestNumForKey.add(ck);
-        const entry = liveByKey.get(ck);
-        if (!entry) continue;
-        entry.invoice_number =
-          row.invoice_number != null && String(row.invoice_number).trim() !== ""
-            ? String(row.invoice_number).trim()
-            : null;
-      }
-    }
-    if (liveByKey.size > 0) {
-      workItemsAll = workItemsAll.map((w) => {
-        if (w.source_type !== "auto" && w.source_type !== "linked_client") return w;
-        const row = liveByKey.get(w.client_key);
-        if (!row) return w;
-        return {
-          ...w,
-          client_live_all_time_revenue: row.total_revenue,
-          client_live_last_invoice_date: row.last_invoice_date,
-          client_last_invoice_number: row.invoice_number,
-          client_invoice_email: row.email,
-          client_invoice_phone: row.phone,
-        };
-      });
-    }
+    const enriched = await enrichDarbasWorkItems(supabase, workItemsAll);
+    workItemsAll = enriched.workItems;
+    activitiesByWorkItemId = enriched.activitiesByWorkItemId;
+    markMs("activitiesMs", enriched.timings.activitiesMs);
+    markMs("kanbanClientLiveLookupMs", enriched.timings.liveMs);
+    markMs("darbasEnrichParallelMs", enriched.timings.parallelMs);
   }
 
   // Display fix: show live (all-time) revenue in Kanban/list even for older picked items.
@@ -885,7 +768,10 @@ export async function ProjectDetailTabPage({
       completedWorkItemsEmptyProject = !count || count === 0;
     }
 
-    await loadActivitiesForIds(pagedCompletedWorkItems.map((w) => w.id));
+    activitiesByWorkItemId = await loadActivitiesByWorkItemIds(
+      supabase,
+      pagedCompletedWorkItems.map((w) => w.id)
+    );
   }
 
   const { completedPage: _omitKontatsuota, ...projectLinkForKontaktuotaList } = projectLinkOpts;
@@ -913,6 +799,9 @@ export async function ProjectDetailTabPage({
       candidatesRpcMs: perf.candidatesRpcMs ?? 0,
       revenueFeedMs: perf.revenueFeedMs ?? 0,
       procurementMs: perf.procurementMs ?? 0,
+      activitiesMs: perf.activitiesMs ?? 0,
+      kanbanClientLiveLookupMs: perf.kanbanClientLiveLookupMs ?? 0,
+      darbasEnrichParallelMs: perf.darbasEnrichParallelMs ?? 0,
       roundTripCount,
       tab,
     });
@@ -923,6 +812,8 @@ export async function ProjectDetailTabPage({
     candidatesRpcMs: perf.candidatesRpcMs ?? 0,
     revenueFeedMs: perf.revenueFeedMs ?? 0,
     procurementMs: perf.procurementMs ?? 0,
+    activitiesMs: perf.activitiesMs ?? 0,
+    kanbanClientLiveLookupMs: perf.kanbanClientLiveLookupMs ?? 0,
     roundTripCount,
     tab,
   } as const;
