@@ -28,7 +28,9 @@ import { parseCompletionResult } from "@/lib/crm/projectCompletion";
 import { crmUserExists, isValidUuid, messageForCrmUserExistsFailure } from "@/lib/crm/crmUsers";
 import {
   findClientMatches,
+  findExistingManualLeadInProject,
   type ExistingClientMatch,
+  type ExistingProjectLeadMatch,
 } from "@/lib/crm/findMatchingExistingClient";
 import { isManualProjectType, isProcurementProjectType, projectTypeFromDbRow } from "@/lib/crm/projectType";
 import {
@@ -528,7 +530,8 @@ export type CreateManualProjectLeadActionResult =
   | { ok: true }
   | { ok: false; error: string }
   | { ok: false; duplicate: true; match: ExistingClientMatch }
-  | { ok: false; nameSuggestions: true; suggestions: ExistingClientMatch[] };
+  | { ok: false; nameSuggestions: true; suggestions: ExistingClientMatch[] }
+  | { ok: false; existingProjectLead: true; lead: ExistingProjectLeadMatch };
 
 export async function createManualProjectLeadAction(formData: FormData): Promise<CreateManualProjectLeadActionResult> {
   const projectId = String(formData.get("project_id") ?? "").trim();
@@ -567,6 +570,16 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
   }
   if (!isManualProjectType(projectTypeFromDbRow(proj))) {
     return { ok: false, error: "Rankiniai kandidatai galimi tik rankiniu projektu." };
+  }
+
+  // Pirma: ar jau yra aktyvus leadas šiame projekte (net be sąskaitų CRM).
+  const existingLead = await findExistingManualLeadInProject(supabase, projectId, {
+    companyCode,
+    email,
+    companyName,
+  });
+  if (existingLead) {
+    return { ok: false, existingProjectLead: true, lead: existingLead };
   }
 
   const matchResult = await findClientMatches(supabase, {

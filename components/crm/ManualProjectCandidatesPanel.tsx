@@ -18,7 +18,7 @@ import {
 } from "@/lib/crm/projectActions";
 import { ProjectCandidatePickForm } from "@/components/crm/ProjectCandidatePickForm";
 import { formatDate, formatDateTimeLt, formatMoney } from "@/lib/crm/format";
-import type { ExistingClientMatch } from "@/lib/crm/findMatchingExistingClient";
+import type { ExistingClientMatch, ExistingProjectLeadMatch } from "@/lib/crm/findMatchingExistingClient";
 import type {
   ManualCandidatePageRow,
   ProjectManualLeadRow,
@@ -78,6 +78,12 @@ function isSuggestionsResult(
   r: CreateManualProjectLeadActionResult
 ): r is { ok: false; nameSuggestions: true; suggestions: ExistingClientMatch[] } {
   return r.ok === false && "nameSuggestions" in r && r.nameSuggestions === true && Array.isArray(r.suggestions);
+}
+
+function isExistingProjectLeadResult(
+  r: CreateManualProjectLeadActionResult
+): r is { ok: false; existingProjectLead: true; lead: ExistingProjectLeadMatch } {
+  return r.ok === false && "existingProjectLead" in r && r.existingProjectLead === true && "lead" in r;
 }
 
 function matchReasonLabel(reason: ExistingClientMatch["match_reason"]): string {
@@ -187,6 +193,7 @@ export function ManualProjectCandidatesPanel({
   const [pendingInvalidLeadId, setPendingInvalidLeadId] = useState<string | null>(null);
   const [duplicateMatch, setDuplicateMatch] = useState<ExistingClientMatch | null>(null);
   const [nameSuggestions, setNameSuggestions] = useState<ExistingClientMatch[] | null>(null);
+  const [existingProjectLead, setExistingProjectLead] = useState<ExistingProjectLeadMatch | null>(null);
   const [linkPending, setLinkPending] = useState(false);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const importCloseBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -232,6 +239,7 @@ export function ManualProjectCandidatesPanel({
       if (e.key === "Escape") {
         if (duplicateMatch) setDuplicateMatch(null);
         else if (nameSuggestions) setNameSuggestions(null);
+        else if (existingProjectLead) setExistingProjectLead(null);
         else setOpen(false);
       }
     }
@@ -240,7 +248,7 @@ export function ManualProjectCandidatesPanel({
       window.clearTimeout(t);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, duplicateMatch, nameSuggestions]);
+  }, [open, duplicateMatch, nameSuggestions, existingProjectLead]);
 
   useEffect(() => {
     if (!importOpen) return;
@@ -694,7 +702,7 @@ export function ManualProjectCandidatesPanel({
           <div
             className="absolute inset-0"
             aria-hidden
-            onClick={() => !pending && !duplicateMatch && !nameSuggestions && setOpen(false)}
+            onClick={() => !pending && !duplicateMatch && !nameSuggestions && !existingProjectLead && setOpen(false)}
           />
           <div
             role="dialog"
@@ -709,7 +717,7 @@ export function ManualProjectCandidatesPanel({
               <button
                 ref={closeBtnRef}
                 type="button"
-                disabled={pending || duplicateMatch != null || nameSuggestions != null}
+                disabled={pending || duplicateMatch != null || nameSuggestions != null || existingProjectLead != null}
                 onClick={() => setOpen(false)}
                 className="rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
                 aria-label="Uždaryti"
@@ -734,12 +742,19 @@ export function ManualProjectCandidatesPanel({
                     setOpen(false);
                     setDuplicateMatch(null);
                     setNameSuggestions(null);
+                    setExistingProjectLead(null);
                     router.refresh();
+                  } else if (isExistingProjectLeadResult(r)) {
+                    setDuplicateMatch(null);
+                    setNameSuggestions(null);
+                    setExistingProjectLead(r.lead);
                   } else if (isDuplicateResult(r)) {
                     setNameSuggestions(null);
+                    setExistingProjectLead(null);
                     setDuplicateMatch(r.match);
                   } else if (isSuggestionsResult(r)) {
                     setDuplicateMatch(null);
+                    setExistingProjectLead(null);
                     setNameSuggestions(r.suggestions);
                   } else {
                     setError(r.error);
@@ -796,6 +811,57 @@ export function ManualProjectCandidatesPanel({
               </div>
             </form>
           </div>
+
+          {existingProjectLead ? (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+              role="presentation"
+              onClick={(e) => e.target === e.currentTarget && setExistingProjectLead(null)}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="existing-lead-title"
+                className="relative w-full max-w-md rounded-xl border border-zinc-200 bg-white p-5 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 id="existing-lead-title" className="text-base font-semibold text-zinc-900">
+                  Kandidatas jau yra šiame projekte
+                </h3>
+                <p className="mt-2 text-sm text-zinc-600">
+                  Rastas pagal {matchReasonLabel(existingProjectLead.match_reason)}. Naujo leado nekuriame — naudokite
+                  esamą kandidatą sąraše.
+                </p>
+                <ul className="mt-3 space-y-1 rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+                  <li>
+                    <span className="text-zinc-500">Pavadinimas: </span>
+                    {existingProjectLead.company_name}
+                  </li>
+                  {existingProjectLead.company_code ? (
+                    <li>
+                      <span className="text-zinc-500">Įm. kodas: </span>
+                      {existingProjectLead.company_code}
+                    </li>
+                  ) : null}
+                  {existingProjectLead.email ? (
+                    <li>
+                      <span className="text-zinc-500">El. paštas: </span>
+                      {existingProjectLead.email}
+                    </li>
+                  ) : null}
+                </ul>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setExistingProjectLead(null)}
+                    className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948]"
+                  >
+                    Supratau
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {duplicateMatch ? (
             <div
@@ -961,8 +1027,12 @@ export function ManualProjectCandidatesPanel({
                         if (r.ok) {
                           form.reset();
                           setNameSuggestions(null);
+                          setExistingProjectLead(null);
                           setOpen(false);
                           router.refresh();
+                        } else if (isExistingProjectLeadResult(r)) {
+                          setNameSuggestions(null);
+                          setExistingProjectLead(r.lead);
                         } else if (isDuplicateResult(r)) {
                           setNameSuggestions(null);
                           setDuplicateMatch(r.match);

@@ -332,6 +332,102 @@ export type FindClientMatchResult =
   | { kind: "suggestions"; suggestions: ExistingClientMatch[] }
   | { kind: "none" };
 
+export type ExistingProjectLeadMatch = {
+  id: string;
+  company_name: string;
+  company_code: string | null;
+  email: string | null;
+  status: string;
+  match_reason: MatchReason;
+};
+
+type ManualLeadRow = {
+  id: string;
+  company_name: string | null;
+  company_code: string | null;
+  email: string | null;
+  status: string | null;
+};
+
+function normalizeLeadRow(r: ManualLeadRow, match_reason: MatchReason): ExistingProjectLeadMatch {
+  return {
+    id: String(r.id),
+    company_name: String(r.company_name ?? "").trim() || "—",
+    company_code: r.company_code != null && String(r.company_code).trim() !== "" ? String(r.company_code).trim() : null,
+    email: r.email != null && String(r.email).trim() !== "" ? String(r.email).trim() : null,
+    status: String(r.status ?? "active").trim() || "active",
+    match_reason,
+  };
+}
+
+/**
+ * Aktyvus rankinis leadas tame pačiame projekte (kodas / el. paštas / normalizuotas pavadinimas).
+ * Naujo leadо nekuriame — vartotojas turi naudoti esamą kandidatą.
+ */
+export async function findExistingManualLeadInProject(
+  supabase: SupabaseClient,
+  projectId: string,
+  input: { companyCode: string | null; email: string | null; companyName: string | null }
+): Promise<ExistingProjectLeadMatch | null> {
+  const pid = String(projectId ?? "").trim();
+  if (!pid) return null;
+
+  const codeRaw = input.companyCode?.trim() ?? "";
+  const emailRaw = input.email?.trim() ?? "";
+  const nameRaw = input.companyName?.trim() ?? "";
+
+  if (codeRaw) {
+    const { data, error } = await supabase
+      .from("project_manual_leads")
+      .select("id,company_name,company_code,email,status")
+      .eq("project_id", pid)
+      .eq("status", "active")
+      .eq("company_code", codeRaw)
+      .limit(1)
+      .maybeSingle();
+    if (!error && data) return normalizeLeadRow(data as ManualLeadRow, "company_code");
+  }
+
+  if (emailRaw) {
+    const { data: rows, error } = await supabase
+      .from("project_manual_leads")
+      .select("id,company_name,company_code,email,status")
+      .eq("project_id", pid)
+      .eq("status", "active")
+      .ilike("email", emailRaw)
+      .limit(5);
+    if (!error && rows?.length) {
+      const exact =
+        rows.find((r) => String((r as ManualLeadRow).email ?? "").trim().toLowerCase() === emailRaw.toLowerCase()) ??
+        rows[0];
+      return normalizeLeadRow(exact as ManualLeadRow, "email");
+    }
+  }
+
+  if (nameRaw) {
+    const normalized = normalizeCompanyNameForMatch(nameRaw);
+    const token = significantNameToken(normalized);
+    if (normalized && token) {
+      const { data: rows, error } = await supabase
+        .from("project_manual_leads")
+        .select("id,company_name,company_code,email,status")
+        .eq("project_id", pid)
+        .eq("status", "active")
+        .ilike("company_name", `%${token}%`)
+        .limit(40);
+      if (!error && rows?.length) {
+        const exact = rows.find((raw) => {
+          const n = normalizeCompanyNameForMatch(String((raw as ManualLeadRow).company_name ?? ""));
+          return n === normalized;
+        });
+        if (exact) return normalizeLeadRow(exact as ManualLeadRow, "name");
+      }
+    }
+  }
+
+  return null;
+}
+
 /**
  * Stiprus match (kodas / VAT / client_id / el. paštas) → vienas klientas, force create neleidžiamas.
  * Silpnas (pavadinimas) → pasiūlymai, galima kurti naują.
