@@ -67,47 +67,36 @@ export function SalesAnalyticsDashboardView({
         <p className="mt-1 text-xs text-zinc-500">
           PVM sąskaitos (sumos <span className="font-medium text-zinc-700">be PVM</span>) pagal{" "}
           <span className="font-medium text-zinc-700">invoice_date</span>. Cold / Returning — jei per 365 d. iki sąskaitos
-          buvo call / email / meeting / commercial. Žemiau — pajamos pagal projektą; detalės — projekto Pajamose.
+          buvo call / email / meeting / commercial. Po kiekviena KPI kortele — to tipo pajamos pagal projektą; detalės —
+          projekto Pajamose.
         </p>
-        <div className="mt-4 space-y-3">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-3">
             <KpiCard label="Cold pajamos (€, KPI langas)" value={coldDisplay} />
-            <KpiCard label="Returning pajamos (€, KPI langas)" value={returningDisplay} />
+            <ProjectRevenueColumn
+              title="Pajamos pagal projektą"
+              emptyLabel="Nėra cold pajamų šiame lange"
+              pajamosQs={pajamosQs}
+              rows={projectRevenues
+                .filter((r) => r.coldEur > 0)
+                .map((r) => ({ projectId: r.projectId, projectName: r.projectName, amountEur: r.coldEur }))}
+            />
           </div>
-
-          {projectRevenues.length > 0 ? (
-            <div className="overflow-hidden rounded-md border border-zinc-200 bg-white">
-              <div className="border-b border-zinc-100 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                Pajamos pagal projektą
-              </div>
-              <ul className="divide-y divide-zinc-100">
-                {projectRevenues.map((row) => (
-                  <li key={row.projectId}>
-                    <Link
-                      href={`/projektai/${row.projectId}/pajamos?${pajamosQs.toString()}`}
-                      className="block px-3 py-2.5 transition-colors hover:bg-zinc-50"
-                    >
-                      <div className="truncate text-[13px] font-medium text-zinc-900">{row.projectName}</div>
-                      <div className="mt-1.5 grid grid-cols-2 gap-3 text-[12px]">
-                        <div>
-                          <div className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">Cold</div>
-                          <div className="mt-0.5 tabular-nums font-semibold text-zinc-900">
-                            {row.coldEur === 0 ? "—" : formatMoney(row.coldEur)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">Returning</div>
-                          <div className="mt-0.5 tabular-nums font-semibold text-zinc-900">
-                            {row.returningEur === 0 ? "—" : formatMoney(row.returningEur)}
-                          </div>
-                        </div>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          <div className="space-y-3">
+            <KpiCard label="Returning pajamos (€, KPI langas)" value={returningDisplay} />
+            <ProjectRevenueColumn
+              title="Pajamos pagal projektą"
+              emptyLabel="Nėra returning pajamų šiame lange"
+              pajamosQs={pajamosQs}
+              rows={projectRevenues
+                .filter((r) => r.returningEur > 0)
+                .map((r) => ({
+                  projectId: r.projectId,
+                  projectName: r.projectName,
+                  amountEur: r.returningEur,
+                }))}
+            />
+          </div>
         </div>
       </section>
 
@@ -136,6 +125,45 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
         {value}
       </div>
       {sub ? <div className="mt-1 text-xs text-zinc-500">{sub}</div> : null}
+    </div>
+  );
+}
+
+function ProjectRevenueColumn({
+  title,
+  emptyLabel,
+  pajamosQs,
+  rows,
+}: {
+  title: string;
+  emptyLabel: string;
+  pajamosQs: URLSearchParams;
+  rows: Array<{ projectId: string; projectName: string; amountEur: number }>;
+}) {
+  return (
+    <div className="overflow-hidden rounded-md border border-zinc-200 bg-white">
+      <div className="border-b border-zinc-100 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+        {title}
+      </div>
+      {rows.length === 0 ? (
+        <div className="px-3 py-2.5 text-[12px] text-zinc-400">{emptyLabel}</div>
+      ) : (
+        <ul className="divide-y divide-zinc-100">
+          {rows.map((row) => (
+            <li key={row.projectId}>
+              <Link
+                href={`/projektai/${row.projectId}/pajamos?${pajamosQs.toString()}`}
+                className="flex items-baseline justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-zinc-50"
+              >
+                <span className="min-w-0 truncate text-[13px] font-medium text-zinc-900">{row.projectName}</span>
+                <span className="shrink-0 tabular-nums text-[13px] font-semibold text-zinc-900">
+                  {formatMoney(row.amountEur)}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
