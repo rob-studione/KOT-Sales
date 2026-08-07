@@ -16,16 +16,19 @@ jobs:
         with:
           version: latest
 
-      - name: Login and link Supabase project
+      - name: Push migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          supabase login --token "$SUPABASE_ACCESS_TOKEN"
-          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
-
-      - name: Push migrations
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: supabase db push
+          set -euo pipefail
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ] || [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "Missing SUPABASE_PROJECT_REF or SUPABASE_DB_PASSWORD secret." >&2
+            exit 1
+          fi
+          # Bypass `supabase link` (Management API api-keys parse bug). Direct DB URL for migrations.
+          # URL-encode password for special characters.
+          ENC_PASS=$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')
+          DB_URL="postgresql://postgres:${ENC_PASS}@db.${SUPABASE_PROJECT_REF}.supabase.co:5432/postgres"
+          supabase db push --db-url "$DB_URL"
