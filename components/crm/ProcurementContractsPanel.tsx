@@ -178,9 +178,10 @@ export function ProcurementContractsPanel({
   const [filterDraftTo, setFilterDraftTo] = useState("");
 
   const [searchDraft, setSearchDraft] = useState(() => sp.get("q") ?? "");
+  const urlSearchQ = sp.get("q") ?? "";
   useEffect(() => {
-    setSearchDraft(sp.get("q") ?? "");
-  }, [sp]);
+    setSearchDraft(urlSearchQ);
+  }, [urlSearchQ]);
 
   const sortBy = sp.get("sortBy") ?? "";
   const sortDir = sp.get("sortDir") ?? "";
@@ -235,6 +236,18 @@ export function ProcurementContractsPanel({
     next.delete("page");
     router.replace(`${pagination.basePath}?${next.toString()}`);
   }
+
+  useEffect(() => {
+    const currentQ = urlSearchQ.trim();
+    const draftQ = searchDraft.trim();
+    if (draftQ === currentQ) return;
+    const t = setTimeout(() => {
+      const params = new URLSearchParams(sp.toString());
+      setParam(params, "q", searchDraft);
+      replaceWithParams(params);
+    }, 280);
+    return () => clearTimeout(t);
+  }, [searchDraft, urlSearchQ, sp, pagination.basePath, router]);
 
   const activeFilters = useMemo(() => {
     const org = (sp.get("org") ?? "").trim();
@@ -478,9 +491,15 @@ export function ProcurementContractsPanel({
                 onChange={(e) => setSearchDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
+                    e.preventDefault();
                     const params = new URLSearchParams(sp.toString());
                     setParam(params, "q", searchDraft);
+                    params.delete("page");
                     replaceWithParams(params);
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setSearchDraft("");
                   }
                 }}
                 placeholder="Paieška: organizacija / objektas / tiekėjas…"

@@ -253,86 +253,142 @@ async function fetchManagerKpiFirstActivityDate(supabase: SupabaseClient): Promi
   return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
 }
 
-export async function buildManagerKpiViewModel(
+type ManagerKpiRpcUser = UserAgg & {
+  userId: string;
+  prevCalls: number;
+  prevAnswered: number;
+  prevNotAnswered: number;
+  prevCommercial: number;
+};
+
+type ManagerKpiRpcPayload = {
+  firstActivityDate: string | null;
+  users: ManagerKpiRpcUser[];
+  chart: ManagerKpiChartPoint[];
+  team: UserAgg & {
+    prevCalls: number;
+    prevAnswered: number;
+    prevNotAnswered: number;
+    prevCommercial: number;
+  };
+};
+
+async function rpcManagerKpiDashboard(
   supabase: SupabaseClient,
-  opts: {
-    preset: ManagerKpiPreset;
-    customFrom?: string | null;
-    customTo?: string | null;
-    compare: boolean;
-  }
-): Promise<ManagerKpiViewModel> {
-  const allTimeFrom = opts.preset === "all_time" ? await fetchManagerKpiFirstActivityDate(supabase) : null;
-  const range = resolveManagerKpiRange(opts.preset, opts.customFrom, opts.customTo, allTimeFrom);
-  const dayCount = calendarDaysInRange(range);
-  const workingDayCount = Math.max(0, countWorkingDaysLtIso(range.from, range.to));
-  const compareRange = opts.compare ? comparisonRangeForPreset(opts.preset, range, opts.customFrom, opts.customTo) : null;
+  range: ManagerKpiDateRange,
+  compareRange: ManagerKpiDateRange | null
+): Promise<{ ok: true; data: ManagerKpiRpcPayload } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("manager_kpi_dashboard_v1", {
+    p_from: range.from,
+    p_to: range.to,
+    p_compare_from: compareRange?.from ?? null,
+    p_compare_to: compareRange?.to ?? null,
+  });
 
-  const warnings: string[] = [];
-
-  const [{ rows: curActs, truncated }, prevActsPack, usersRes, targetsRes] = await Promise.all([
-    fetchActivitiesWindow(supabase, range),
-    compareRange ? fetchActivitiesWindow(supabase, compareRange) : Promise.resolve({ rows: [] as ActivityRow[], truncated: false }),
-    supabase
-      .from("crm_users")
-      .select("id,name,email,role,status,is_kpi_tracked")
-      .eq("status", "active")
-      .eq("is_kpi_tracked", true)
-      .order("name", { ascending: true }),
-    supabase.from("crm_user_kpi_targets").select("user_id,daily_call_target,daily_answered_target,daily_commercial_target"),
-  ]);
-
-  if (truncated) {
-    warnings.push(
-      `Veiklos įrašai apkirpti po ${MAX_ACTIVITY_ROWS.toLocaleString("lt-LT")} eilučių. Skaičiai gali būti ne pilni.`
-    );
+  if (error) {
+    return { ok: false, error: String(error.message ?? "") };
   }
 
-  if (targetsRes.error) {
-    const msg = targetsRes.error.message ?? "Nepavyko nuskaityti KPI tikslų (crm_user_kpi_targets).";
-    if (msg.includes("Could not find the table") || msg.includes("crm_user_kpi_targets")) {
-      warnings.push("Nerasta lentelė `crm_user_kpi_targets` (migracija nepritaikyta). KPI tikslai imami pagal numatytuosius (default).");
-    } else {
-      warnings.push(`Nepavyko nuskaityti KPI tikslų: ${msg}`);
-    }
-  }
+  const payload = (data ?? {}) as {
+    firstActivityDate?: unknown;
+    users?: unknown;
+    chart?: unknown;
+    team?: {
+      calls?: unknown;
+      answered?: unknown;
+      notAnswered?: unknown;
+      commercial?: unknown;
+      prevCalls?: unknown;
+      prevAnswered?: unknown;
+      prevNotAnswered?: unknown;
+      prevCommercial?: unknown;
+    };
+  };
 
-  const users = (usersRes.data ?? []) as Array<{ id: string; name: string | null; email: string | null; role: string }>;
-  const targetByUser = new Map<string, ManagerKpiUserTargets>();
-  for (const r of targetsRes.data ?? []) {
-    const uid = String((r as { user_id?: string }).user_id ?? "");
-    if (!uid) continue;
-    targetByUser.set(uid, {
-      user_id: uid,
-      daily_call_target: Number((r as { daily_call_target?: number }).daily_call_target ?? MANAGER_KPI_DEFAULTS.daily_call_target),
-      daily_answered_target: Number(
-        (r as { daily_answered_target?: number }).daily_answered_target ?? MANAGER_KPI_DEFAULTS.daily_answered_target
-      ),
-      daily_commercial_target: Number(
-        (r as { daily_commercial_target?: number }).daily_commercial_target ?? MANAGER_KPI_DEFAULTS.daily_commercial_target
-      ),
-    });
-  }
+  const num = (v: unknown) => {
+    const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+    return Number.isFinite(n) ? n : 0;
+  };
+  const int = (v: unknown) => Math.max(0, Math.trunc(num(v)));
 
-  const workIds = curActs.map((a) => a.work_item_id);
-  const prevIds = compareRange ? prevActsPack.rows.map((a) => a.work_item_id) : [];
-  const assignedTo = await loadAssignedToMap(supabase, [...workIds, ...prevIds]);
+  const usersRaw = Array.isArray(payload.users) ? (payload.users as Array<Record<string, unknown>>) : [];
+  const chartRaw = Array.isArray(payload.chart) ? (payload.chart as Array<Record<string, unknown>>) : [];
+  const firstRaw = payload.firstActivityDate == null ? null : String(payload.firstActivityDate).slice(0, 10);
 
-  const kpiTrackedUserIds = new Set(users.map((u) => u.id));
-  const curAgg = aggregateAssigned(curActs, assignedTo, kpiTrackedUserIds);
-  const prevAgg = compareRange ? aggregateAssigned(prevActsPack.rows, assignedTo, kpiTrackedUserIds) : null;
-  warnings.push(...curAgg.warnings);
+  return {
+    ok: true,
+    data: {
+      firstActivityDate: firstRaw && /^\d{4}-\d{2}-\d{2}$/.test(firstRaw) ? firstRaw : null,
+      users: usersRaw
+        .map((u) => ({
+          userId: String(u.userId ?? ""),
+          calls: int(u.calls),
+          answered: int(u.answered),
+          notAnswered: int(u.notAnswered),
+          commercial: int(u.commercial),
+          prevCalls: int(u.prevCalls),
+          prevAnswered: int(u.prevAnswered),
+          prevNotAnswered: int(u.prevNotAnswered),
+          prevCommercial: int(u.prevCommercial),
+        }))
+        .filter((u) => u.userId.length > 0),
+      chart: chartRaw
+        .map((c) => ({
+          date: String(c.date ?? "").slice(0, 10),
+          calls: int(c.calls),
+          answered: int(c.answered),
+          commercial: int(c.commercial),
+        }))
+        .filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.date)),
+      team: {
+        calls: int(payload.team?.calls),
+        answered: int(payload.team?.answered),
+        notAnswered: int(payload.team?.notAnswered),
+        commercial: int(payload.team?.commercial),
+        prevCalls: int(payload.team?.prevCalls),
+        prevAnswered: int(payload.team?.prevAnswered),
+        prevNotAnswered: int(payload.team?.prevNotAnswered),
+        prevCommercial: int(payload.team?.prevCommercial),
+      },
+    },
+  };
+}
 
-  const prevByUser = prevAgg?.byUser ?? new Map<string, UserAgg>();
+function assembleViewModel(args: {
+  preset: ManagerKpiPreset;
+  range: ManagerKpiDateRange;
+  compareRange: ManagerKpiDateRange | null;
+  compareEnabled: boolean;
+  dayCount: number;
+  workingDayCount: number;
+  truncated: boolean;
+  warnings: string[];
+  users: Array<{ id: string; name: string | null; email: string | null }>;
+  targetByUser: Map<string, ManagerKpiUserTargets>;
+  curByUser: Map<string, UserAgg>;
+  prevByUser: Map<string, UserAgg>;
+  teamAgg: UserAgg;
+  teamPrev: UserAgg;
+  byDay: Map<string, DayAgg>;
+}): ManagerKpiViewModel {
+  const {
+    preset,
+    range,
+    compareRange,
+    compareEnabled,
+    dayCount,
+    workingDayCount,
+    truncated,
+    warnings,
+    users,
+    targetByUser,
+    curByUser,
+    prevByUser,
+    teamAgg,
+    teamPrev,
+    byDay,
+  } = args;
 
-  /** Komandos suvestinė: skambučiai tik `action_type=call` su ne null `performed_by`; komerciniai – coalesce(performed_by, assigned_to). */
-  const teamAgg = emptyAgg();
-  for (const a of curAgg.byUser.values()) {
-    teamAgg.calls += a.calls;
-    teamAgg.answered += a.answered;
-    teamAgg.notAnswered += a.notAnswered;
-    teamAgg.commercial += a.commercial;
-  }
   const teamAnswerRate = teamAgg.calls > 0 ? Math.round((teamAgg.answered / teamAgg.calls) * 1000) / 10 : null;
 
   let teamCallsTarget = 0;
@@ -348,15 +404,6 @@ export async function buildManagerKpiViewModel(
     teamAnsweredTarget += t.daily_answered_target * workingDayCount;
   }
 
-  const teamPrev = emptyAgg();
-  if (prevAgg) {
-    for (const a of prevByUser.values()) {
-      teamPrev.calls += a.calls;
-      teamPrev.answered += a.answered;
-      teamPrev.notAnswered += a.notAnswered;
-      teamPrev.commercial += a.commercial;
-    }
-  }
   const prevTeamAnswerRate = teamPrev.calls > 0 ? teamPrev.answered / teamPrev.calls : null;
   const curTeamAnswerRate = teamAgg.calls > 0 ? teamAgg.answered / teamAgg.calls : null;
   const trendAnswerRatePP =
@@ -380,7 +427,7 @@ export async function buildManagerKpiViewModel(
   };
 
   const rows: ManagerKpiTableRow[] = users.map((u) => {
-    const a = curAgg.byUser.get(u.id) ?? emptyAgg();
+    const a = curByUser.get(u.id) ?? emptyAgg();
     const p = prevByUser.get(u.id) ?? emptyAgg();
     const t = targetByUser.get(u.id) ?? {
       user_id: u.id,
@@ -417,7 +464,7 @@ export async function buildManagerKpiViewModel(
 
   const days = eachDayInclusive(range.from, range.to);
   const chart: ManagerKpiChartPoint[] = days.map((d) => {
-    const x = curAgg.byDay.get(d) ?? { calls: 0, answered: 0, commercial: 0 };
+    const x = byDay.get(d) ?? { calls: 0, answered: 0, commercial: 0 };
     return { date: d, calls: x.calls, answered: x.answered, commercial: x.commercial };
   });
 
@@ -433,10 +480,10 @@ export async function buildManagerKpiViewModel(
   });
 
   return {
-    preset: opts.preset,
+    preset,
     range,
     compareRange,
-    compareEnabled: opts.compare,
+    compareEnabled,
     dayCount,
     workingDayCount,
     truncated,
@@ -446,4 +493,173 @@ export async function buildManagerKpiViewModel(
     targets: targetsList,
     warnings,
   };
+}
+
+export async function buildManagerKpiViewModel(
+  supabase: SupabaseClient,
+  opts: {
+    preset: ManagerKpiPreset;
+    customFrom?: string | null;
+    customTo?: string | null;
+    compare: boolean;
+  }
+): Promise<ManagerKpiViewModel> {
+  const warnings: string[] = [];
+
+  // Cheap first-activity for all_time; RPC also returns it if we need a fallback.
+  const allTimeFrom = opts.preset === "all_time" ? await fetchManagerKpiFirstActivityDate(supabase) : null;
+  const range = resolveManagerKpiRange(opts.preset, opts.customFrom, opts.customTo, allTimeFrom);
+  const dayCount = calendarDaysInRange(range);
+  const workingDayCount = Math.max(0, countWorkingDaysLtIso(range.from, range.to));
+  const compareRange = opts.compare ? comparisonRangeForPreset(opts.preset, range, opts.customFrom, opts.customTo) : null;
+
+  const [usersRes, targetsRes, rpc] = await Promise.all([
+    supabase
+      .from("crm_users")
+      .select("id,name,email,role,status,is_kpi_tracked")
+      .eq("status", "active")
+      .eq("is_kpi_tracked", true)
+      .order("name", { ascending: true }),
+    supabase.from("crm_user_kpi_targets").select("user_id,daily_call_target,daily_answered_target,daily_commercial_target"),
+    rpcManagerKpiDashboard(supabase, range, compareRange),
+  ]);
+
+  if (targetsRes.error) {
+    const msg = targetsRes.error.message ?? "Nepavyko nuskaityti KPI tikslų (crm_user_kpi_targets).";
+    if (msg.includes("Could not find the table") || msg.includes("crm_user_kpi_targets")) {
+      warnings.push(
+        "Nerasta lentelė `crm_user_kpi_targets` (migracija nepritaikyta). KPI tikslai imami pagal numatytuosius (default)."
+      );
+    } else {
+      warnings.push(`Nepavyko nuskaityti KPI tikslų: ${msg}`);
+    }
+  }
+
+  const users = (usersRes.data ?? []) as Array<{ id: string; name: string | null; email: string | null; role: string }>;
+  const targetByUser = new Map<string, ManagerKpiUserTargets>();
+  for (const r of targetsRes.data ?? []) {
+    const uid = String((r as { user_id?: string }).user_id ?? "");
+    if (!uid) continue;
+    targetByUser.set(uid, {
+      user_id: uid,
+      daily_call_target: Number((r as { daily_call_target?: number }).daily_call_target ?? MANAGER_KPI_DEFAULTS.daily_call_target),
+      daily_answered_target: Number(
+        (r as { daily_answered_target?: number }).daily_answered_target ?? MANAGER_KPI_DEFAULTS.daily_answered_target
+      ),
+      daily_commercial_target: Number(
+        (r as { daily_commercial_target?: number }).daily_commercial_target ?? MANAGER_KPI_DEFAULTS.daily_commercial_target
+      ),
+    });
+  }
+
+  if (rpc.ok) {
+    const curByUser = new Map<string, UserAgg>();
+    const prevByUser = new Map<string, UserAgg>();
+    for (const u of rpc.data.users) {
+      curByUser.set(u.userId, {
+        calls: u.calls,
+        answered: u.answered,
+        notAnswered: u.notAnswered,
+        commercial: u.commercial,
+      });
+      prevByUser.set(u.userId, {
+        calls: u.prevCalls,
+        answered: u.prevAnswered,
+        notAnswered: u.prevNotAnswered,
+        commercial: u.prevCommercial,
+      });
+    }
+    const byDay = new Map<string, DayAgg>();
+    for (const c of rpc.data.chart) {
+      byDay.set(c.date, { calls: c.calls, answered: c.answered, commercial: c.commercial });
+    }
+
+    return assembleViewModel({
+      preset: opts.preset,
+      range,
+      compareRange,
+      compareEnabled: opts.compare,
+      dayCount,
+      workingDayCount,
+      truncated: false,
+      warnings,
+      users,
+      targetByUser,
+      curByUser,
+      prevByUser,
+      teamAgg: {
+        calls: rpc.data.team.calls,
+        answered: rpc.data.team.answered,
+        notAnswered: rpc.data.team.notAnswered,
+        commercial: rpc.data.team.commercial,
+      },
+      teamPrev: {
+        calls: rpc.data.team.prevCalls,
+        answered: rpc.data.team.prevAnswered,
+        notAnswered: rpc.data.team.prevNotAnswered,
+        commercial: rpc.data.team.prevCommercial,
+      },
+      byDay,
+    });
+  }
+
+  console.warn("[managerKpiDashboard] RPC fallback:", rpc.error);
+
+  const [{ rows: curActs, truncated }, prevActsPack] = await Promise.all([
+    fetchActivitiesWindow(supabase, range),
+    compareRange
+      ? fetchActivitiesWindow(supabase, compareRange)
+      : Promise.resolve({ rows: [] as ActivityRow[], truncated: false }),
+  ]);
+
+  if (truncated) {
+    warnings.push(
+      `Veiklos įrašai apkirpti po ${MAX_ACTIVITY_ROWS.toLocaleString("lt-LT")} eilučių. Skaičiai gali būti ne pilni.`
+    );
+  }
+
+  const workIds = curActs.map((a) => a.work_item_id);
+  const prevIds = compareRange ? prevActsPack.rows.map((a) => a.work_item_id) : [];
+  const assignedTo = await loadAssignedToMap(supabase, [...workIds, ...prevIds]);
+
+  const kpiTrackedUserIds = new Set(users.map((u) => u.id));
+  const curAgg = aggregateAssigned(curActs, assignedTo, kpiTrackedUserIds);
+  const prevAgg = compareRange ? aggregateAssigned(prevActsPack.rows, assignedTo, kpiTrackedUserIds) : null;
+  warnings.push(...curAgg.warnings);
+
+  const prevByUser = prevAgg?.byUser ?? new Map<string, UserAgg>();
+  const teamAgg = emptyAgg();
+  for (const a of curAgg.byUser.values()) {
+    teamAgg.calls += a.calls;
+    teamAgg.answered += a.answered;
+    teamAgg.notAnswered += a.notAnswered;
+    teamAgg.commercial += a.commercial;
+  }
+  const teamPrev = emptyAgg();
+  if (prevAgg) {
+    for (const a of prevByUser.values()) {
+      teamPrev.calls += a.calls;
+      teamPrev.answered += a.answered;
+      teamPrev.notAnswered += a.notAnswered;
+      teamPrev.commercial += a.commercial;
+    }
+  }
+
+  return assembleViewModel({
+    preset: opts.preset,
+    range,
+    compareRange,
+    compareEnabled: opts.compare,
+    dayCount,
+    workingDayCount,
+    truncated,
+    warnings,
+    users,
+    targetByUser,
+    curByUser: curAgg.byUser,
+    prevByUser,
+    teamAgg,
+    teamPrev,
+    byDay: curAgg.byDay,
+  });
 }

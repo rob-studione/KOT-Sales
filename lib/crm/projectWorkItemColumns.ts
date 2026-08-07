@@ -4,7 +4,7 @@
  */
 
 export const PROJECT_WORK_ITEMS_SELECT_LEGACY =
-  "id,client_key,client_identifier_display,client_name_snapshot,assigned_to,picked_at,snapshot_order_count,snapshot_revenue,snapshot_last_invoice_date,snapshot_priority,call_status,next_action,next_action_date,comment,result_status";
+  "id,client_key,client_identifier_display,client_name_snapshot,assigned_to,picked_at,snapshot_order_count,snapshot_revenue,snapshot_last_invoice_date,snapshot_priority,call_status,next_action,next_action_date,comment,result_status,work_updated_at";
 
 export const PROJECT_WORK_ITEMS_SELECT_WITH_SOURCE = `${PROJECT_WORK_ITEMS_SELECT_LEGACY},source_type,source_id`;
 

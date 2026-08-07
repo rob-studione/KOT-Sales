@@ -24,7 +24,7 @@ export function ProjectProcurementNotifications({
             <p className="mt-1 text-xs text-zinc-500">
               {formatDate(n.created_at.slice(0, 10))}
               {" · "}
-              <Link href={`/projektai/${projectId}?tab=sutartys`} className="font-medium text-zinc-700 underline-offset-2 hover:underline">
+              <Link href={`/projektai/${projectId}/sutartys`} className="font-medium text-zinc-700 underline-offset-2 hover:underline">
                 Atverti sutartis
               </Link>
             </p>

@@ -449,7 +449,7 @@ export async function updateProjectOwnerAction(
   }
 
   revalidatePath("/projektai");
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   return { ok: true };
 }
 
@@ -517,7 +517,7 @@ export async function updateAutomaticProjectRulesAction(
   if (error) return { ok: false, error: error.message ?? "Nepavyko išsaugoti taisyklių." };
 
   revalidatePath("/projektai");
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   return { ok: true };
 }
 
@@ -590,7 +590,7 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
     return { ok: false, error: error.message ?? "Nepavyko išsaugoti kandidato." };
   }
 
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   revalidatePath("/projektai");
   return { ok: true };
 }
@@ -627,7 +627,7 @@ export async function markAutoCandidateAsInvalidAction(
     return { ok: false, error: error.message ?? "Nepavyko pažymėti kandidato kaip netinkamo." };
   }
 
-  revalidatePath(`/projektai/${pid}`);
+  revalidatePath(`/projektai/${pid}`, "layout");
   return { ok: true };
 }
 
@@ -664,7 +664,7 @@ export async function markManualCandidateAsInvalidAction(
     return { ok: false, error: error.message ?? "Nepavyko pažymėti kandidato kaip netinkamo." };
   }
 
-  revalidatePath(`/projektai/${pid}`);
+  revalidatePath(`/projektai/${pid}`, "layout");
   return { ok: true };
 }
 
@@ -702,7 +702,7 @@ export async function restoreAutoCandidateAction(
     return { ok: false, error: error.message ?? "Nepavyko grąžinti kandidato." };
   }
 
-  revalidatePath(`/projektai/${pid}`);
+  revalidatePath(`/projektai/${pid}`, "layout");
   return { ok: true };
 }
 
@@ -739,7 +739,7 @@ export async function restoreManualCandidateAction(
     return { ok: false, error: error.message ?? "Nepavyko grąžinti kandidato." };
   }
 
-  revalidatePath(`/projektai/${pid}`);
+  revalidatePath(`/projektai/${pid}`, "layout");
   return { ok: true };
 }
 
@@ -1078,7 +1078,7 @@ export async function importManualProjectLeadsCsvAction(
     : 0;
   const inserted = updateExisting ? payloadToApply.length - updated : payloadToApply.length;
 
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   revalidatePath("/projektai");
 
   return {
@@ -1144,7 +1144,7 @@ export async function linkExistingClientToManualProjectAction(
     return { ok: false, error: error.message ?? "Nepavyko prijungti kliento." };
   }
 
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   revalidatePath("/projektai");
   return { ok: true };
 }
@@ -1255,7 +1255,7 @@ async function insertPickedWorkItemRow(
   }
 
   const tRev0 = Date.now();
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   const revalidateDetailMs = Date.now() - tRev0;
   return { ok: true, insertWorkItemMs, insertActivityMs, revalidateDetailMs };
 }
@@ -1767,7 +1767,7 @@ export async function saveWorkItemTouchpoint(
     .single();
   const pid = row?.project_id as string | undefined;
   if (pid) {
-    revalidatePath(`/projektai/${pid}`);
+    revalidatePath(`/projektai/${pid}`, "layout");
     revalidatePath("/projektai");
   }
   return { error: null };
@@ -1932,7 +1932,7 @@ export async function confirmKanbanMove(formData: FormData): Promise<{ error: st
   }
 
   const pid = row.project_id as string;
-  revalidatePath(`/projektai/${pid}`);
+  revalidatePath(`/projektai/${pid}`, "layout");
   revalidatePath("/projektai");
   return { error: null };
 }
@@ -2005,7 +2005,7 @@ export async function returnWorkItemToCandidates(workItemId: string): Promise<{ 
   }
 
   const pid = row.project_id as string;
-  revalidatePath(`/projektai/${pid}`);
+  revalidatePath(`/projektai/${pid}`, "layout");
   revalidatePath("/projektai");
   return { error: null };
 }
@@ -2024,7 +2024,7 @@ export async function setProjectStatus(
   const { error } = await supabase.from("projects").update({ status }).eq("id", projectId);
   if (error) return { error: error.message };
   revalidatePath("/projektai");
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   return { error: null };
 }
 
@@ -2187,7 +2187,7 @@ export async function importProcurementContractsCsvAction(
     return { ok: false, error: rpcErr.message ?? "Importo klaida." };
   }
 
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   return {
     ok: true,
     merged: typeof merged === "number" ? merged : uniqueRows.length,
@@ -2234,7 +2234,7 @@ export async function updateProcurementContractStatusAction(
   const { error } = await supabase.from("project_procurement_contracts").update({ status: st }).eq("id", contractId);
   if (error) return { ok: false, error: error.message ?? "Nepavyko išsaugoti." };
 
-  revalidatePath(`/projektai/${row.project_id}`);
+  revalidatePath(`/projektai/${row.project_id}`, "layout");
   return { ok: true };
 }
 
@@ -2282,7 +2282,7 @@ export async function updateProcurementContractAssigneeAction(
     .eq("id", contractId);
   if (error) return { ok: false, error: error.message ?? "Nepavyko išsaugoti." };
 
-  revalidatePath(`/projektai/${row.project_id}`);
+  revalidatePath(`/projektai/${row.project_id}`, "layout");
   return { ok: true };
 }
 
@@ -2317,7 +2317,7 @@ export async function updateProjectProcurementNotifyDaysAction(
     .eq("id", projectId);
   if (error) return { ok: false, error: error.message ?? "Nepavyko išsaugoti." };
 
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   return { ok: true };
 }
 
@@ -2340,7 +2340,7 @@ export async function renameProjectNameAction(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/projektai");
-  revalidatePath(`/projektai/${projectId}`);
+  revalidatePath(`/projektai/${projectId}`, "layout");
   return { ok: true, name };
 }
 

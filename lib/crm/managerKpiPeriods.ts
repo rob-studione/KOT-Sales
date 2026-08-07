@@ -19,7 +19,7 @@ export function parseManagerKpiPreset(raw: string | undefined | null): ManagerKp
   if (raw === "year") return "year";
   if (raw === "all_time") return "all_time";
   if (raw === "custom") return "custom";
-  return "today";
+  return "month";
 }
 
 function lastMonthRange(todayIso: string): ManagerKpiDateRange {

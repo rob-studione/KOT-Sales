@@ -106,7 +106,7 @@ export function CrmNotificationBell() {
   }
 
   function hrefFor(n: CrmNotificationRow): string {
-    return `/projektai/${n.project_id}?tab=sutartys`;
+    return `/projektai/${n.project_id}/sutartys`;
   }
 
   return (

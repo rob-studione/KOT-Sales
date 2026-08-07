@@ -15,10 +15,14 @@ export function InvoicesBreakdownTableClientOnly({
   rows,
   title,
   className,
+  previewRows,
 }: {
   rows: InvoiceBreakdownRow[];
   title: string;
   className?: string;
+  previewRows?: number;
 }) {
-  return <InvoicesBreakdownTableInner rows={rows} title={title} className={className} />;
+  return (
+    <InvoicesBreakdownTableInner rows={rows} title={title} className={className} previewRows={previewRows} />
+  );
 }

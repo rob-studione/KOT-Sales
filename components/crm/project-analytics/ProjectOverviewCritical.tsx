@@ -51,6 +51,7 @@ export async function ProjectOverviewCritical({
           activePeriod={period}
           rangeFrom={range.from}
           rangeTo={range.to}
+          heading="Veiklos laikotarpis"
         />
       </div>
 
@@ -60,12 +61,11 @@ export async function ProjectOverviewCritical({
           <KpiCard label="Skambučiai" value={data.kpi.calls} />
           <KpiCard label="Atsiliepė" value={data.kpi.answered} />
           <KpiCard label="Neatsiliepė" value={data.kpi.notAnswered} />
-          <KpiCard label="Laiškai" value={data.kpi.emails} />
-          <KpiCard label="Komerciniai" value={data.kpi.commercial} />
+          <KpiCard label="Laiškai" value={data.closedEmail} sub="uždaryta periode" />
+          <KpiCard label="Komerciniai" value={data.closedCommercial} sub="uždaryta periode" />
           <KpiCard label="Atsiliepimo %" value={pct} sub="nuo skambučių" />
         </div>
       </section>
     </div>
   );
 }
-

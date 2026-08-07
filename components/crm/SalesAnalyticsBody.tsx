@@ -29,33 +29,35 @@ export async function SalesAnalyticsBody({
   }
 
   try {
-    const data = await fetchSalesDashboard(supabase, period, range);
     const todayIso = vilniusTodayDateString();
     const monthFrom = vilniusFirstDayOfMonthIso(todayIso);
     const [yy, mm] = monthFrom.split("-").map(Number);
     const nextMonthFrom =
       mm === 12 ? `${yy + 1}-01-01` : `${yy}-${String(mm + 1).padStart(2, "0")}-01`;
     const monthTo = subtractOneCivilDayVilnius(nextMonthFrom);
-
     const monthRange = { from: monthFrom, to: monthTo };
-    let monthTrend: Array<{ date: string; calls: number }> = [];
-    try {
-      const { data: rpcRows, error } = await supabase.rpc("dashboard_month_call_counts_by_day", {
-        p_start_utc: vilniusStartUtc(monthFrom),
-        p_end_utc: vilniusEndUtc(monthTo),
-      });
-      if (!error && rpcRows && Array.isArray(rpcRows)) {
-        monthTrend = (rpcRows as Array<{ day: string; calls: number | string | null }>)
-          .map((r) => ({
-            date: String(r.day ?? "").slice(0, 10),
-            calls: typeof r.calls === "number" ? r.calls : Number(r.calls ?? 0),
-          }))
-          .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date) && Number.isFinite(r.calls))
-          .sort((a, b) => a.date.localeCompare(b.date));
-      }
-    } catch {
-      // Graceful: chart will render empty state.
-    }
+
+    const [data, monthTrend] = await Promise.all([
+      fetchSalesDashboard(supabase, period, range),
+      (async (): Promise<Array<{ date: string; calls: number }>> => {
+        try {
+          const { data: rpcRows, error } = await supabase.rpc("dashboard_month_call_counts_by_day", {
+            p_start_utc: vilniusStartUtc(monthFrom),
+            p_end_utc: vilniusEndUtc(monthTo),
+          });
+          if (error || !rpcRows || !Array.isArray(rpcRows)) return [];
+          return (rpcRows as Array<{ day: string; calls: number | string | null }>)
+            .map((r) => ({
+              date: String(r.day ?? "").slice(0, 10),
+              calls: typeof r.calls === "number" ? r.calls : Number(r.calls ?? 0),
+            }))
+            .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date) && Number.isFinite(r.calls))
+            .sort((a, b) => a.date.localeCompare(b.date));
+        } catch {
+          return [];
+        }
+      })(),
+    ]);
 
     return <SalesAnalyticsDashboardView data={data} monthCallsTrend={monthTrend} monthRange={monthRange} />;
   } catch (e) {

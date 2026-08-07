@@ -1,7 +1,7 @@
+import Link from "next/link";
 import type { SalesDashboardData } from "@/lib/crm/salesAnalyticsDashboard";
 import { formatMoney } from "@/lib/crm/format";
 import { CallsByDayBarChart } from "@/components/crm/CallsByDayBarChart";
-import { InvoicesBreakdownTableClientOnly } from "@/components/crm/InvoicesBreakdownTableClientOnly";
 import { SalesAnalyticsBestCallTimeClient } from "@/components/crm/SalesAnalyticsBestCallTimeClient";
 
 export function SalesAnalyticsDashboardView({
@@ -13,12 +13,19 @@ export function SalesAnalyticsDashboardView({
   monthCallsTrend: Array<{ date: string; calls: number }>;
   monthRange: { from: string; to: string };
 }) {
-  const { kpi, warnings, bestCallTimes, coldInvoices, returningInvoices } = data;
+  const { kpi, warnings, bestCallTimes, projectRevenues, period, range } = data;
 
   const coldDisplay = kpi.coldRevenueEur === 0 ? "—" : formatMoney(kpi.coldRevenueEur);
   const returningDisplay = kpi.returningRevenueEur === 0 ? "—" : formatMoney(kpi.returningRevenueEur);
   const conversionDisplay =
     kpi.conversionPercent === null ? "—" : `${kpi.conversionPercent}%`;
+
+  const pajamosQs = new URLSearchParams();
+  pajamosQs.set("salesPeriod", period === "custom" ? "custom" : period);
+  if (period === "custom") {
+    pajamosQs.set("salesFrom", range.from);
+    pajamosQs.set("salesTo", range.to);
+  }
 
   return (
     <div className="space-y-10">
@@ -59,11 +66,8 @@ export function SalesAnalyticsDashboardView({
         </h2>
         <p className="mt-1 text-xs text-zinc-500">
           PVM sąskaitos (sumos <span className="font-medium text-zinc-700">be PVM</span>) pagal{" "}
-          <span className="font-medium text-zinc-700">invoice_date</span> fiksuotame pardavimų lange: jei viršuje pasirinkta{" "}
-          <span className="font-medium text-zinc-700">Pasirinkti laikotarpį</span> — naudojamos tos pačios <span className="font-medium text-zinc-700">nuo / iki</span>{" "}
-          datos; kitu atveju — <span className="font-medium text-zinc-700">paskutinės 30 kalendorinių dienų</span> iki šiandien (Vilnius). Sąskaita
-          įtraukiama, jei su tuo klientu buvo atliktas relevant veiksmas (call/email/meeting) per <span className="font-medium text-zinc-700">365 d.</span> iki sąskaitos datos.
-          Cold / Returning skirstoma pagal visą kliento sąskaitų istoriją iki sąskaitos datos.
+          <span className="font-medium text-zinc-700">invoice_date</span>. Cold / Returning — jei per 365 d. iki sąskaitos
+          buvo call / email / meeting / commercial. Žemiau — pajamos pagal projektą; detalės — projekto Pajamose.
         </p>
         <div className="mt-4 space-y-3">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -71,18 +75,37 @@ export function SalesAnalyticsDashboardView({
             <KpiCard label="Returning pajamos (€, KPI langas)" value={returningDisplay} />
           </div>
 
-          {coldInvoices.length > 0 || returningInvoices.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {coldInvoices.length > 0 ? (
-                <InvoicesBreakdownTableClientOnly className="sm:col-start-1" rows={coldInvoices} title="Cold sąskaitos" />
-              ) : null}
-              {returningInvoices.length > 0 ? (
-                <InvoicesBreakdownTableClientOnly
-                  className="sm:col-start-2"
-                  rows={returningInvoices}
-                  title="Returning sąskaitos"
-                />
-              ) : null}
+          {projectRevenues.length > 0 ? (
+            <div className="overflow-hidden rounded-md border border-zinc-200 bg-white">
+              <div className="border-b border-zinc-100 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                Pajamos pagal projektą
+              </div>
+              <ul className="divide-y divide-zinc-100">
+                {projectRevenues.map((row) => (
+                  <li key={row.projectId}>
+                    <Link
+                      href={`/projektai/${row.projectId}/pajamos?${pajamosQs.toString()}`}
+                      className="block px-3 py-2.5 transition-colors hover:bg-zinc-50"
+                    >
+                      <div className="truncate text-[13px] font-medium text-zinc-900">{row.projectName}</div>
+                      <div className="mt-1.5 grid grid-cols-2 gap-3 text-[12px]">
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">Cold</div>
+                          <div className="mt-0.5 tabular-nums font-semibold text-zinc-900">
+                            {row.coldEur === 0 ? "—" : formatMoney(row.coldEur)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">Returning</div>
+                          <div className="mt-0.5 tabular-nums font-semibold text-zinc-900">
+                            {row.returningEur === 0 ? "—" : formatMoney(row.returningEur)}
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : null}
         </div>

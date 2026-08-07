@@ -11,25 +11,29 @@ export type InvoiceBreakdownRow = {
   companyName: string | null;
 };
 
-const PREVIEW_ROWS = 10;
-/** ~10 eilučių aukštis + thead, kad expand'inus nebeaugtų visas puslapis. */
-const EXPANDED_MAX_HEIGHT_CLASS = "max-h-[17.5rem]";
+const DEFAULT_PREVIEW_ROWS = 10;
 
 export function InvoicesBreakdownTable({
   rows,
   title,
   className,
+  previewRows = DEFAULT_PREVIEW_ROWS,
 }: {
   rows: InvoiceBreakdownRow[];
   title: string;
   className?: string;
+  /** Kiek eilučių matyti prieš „Rodyti daugiau“ (ir expand viewport aukštis). */
+  previewRows?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const preview = Math.max(1, Math.floor(previewRows));
+  /** ~eilutės aukštis + thead; expand'inus scroll'inama šiame rėmelyje. */
+  const expandedMaxHeightStyle = { maxHeight: `${Math.max(preview * 1.75 + 2, 10)}rem` };
 
   if (rows.length === 0) return null;
 
-  const canExpand = rows.length > PREVIEW_ROWS;
-  const shown = expanded || !canExpand ? rows : rows.slice(0, PREVIEW_ROWS);
+  const canExpand = rows.length > preview;
+  const shown = expanded || !canExpand ? rows : rows.slice(0, preview);
 
   return (
     <div className={className}>
@@ -37,16 +41,17 @@ export function InvoicesBreakdownTable({
         <div className="text-[11px] font-medium text-zinc-500">{title}</div>
         {canExpand ? (
           <div className="text-[11px] tabular-nums text-zinc-400">
-            {expanded ? rows.length : PREVIEW_ROWS} / {rows.length}
+            {expanded ? rows.length : preview} / {rows.length}
           </div>
         ) : null}
       </div>
       <div
         className={
           expanded && canExpand
-            ? `overflow-auto rounded-md border border-zinc-200 bg-white ${EXPANDED_MAX_HEIGHT_CLASS}`
+            ? "overflow-auto rounded-md border border-zinc-200 bg-white"
             : "overflow-x-auto rounded-md border border-zinc-200 bg-white"
         }
+        style={expanded && canExpand ? expandedMaxHeightStyle : undefined}
       >
         <table className="min-w-full text-[11px]">
           <thead className="sticky top-0 z-10 border-b border-zinc-100 bg-zinc-50 text-left font-medium uppercase tracking-wide text-zinc-500">
@@ -83,7 +88,7 @@ export function InvoicesBreakdownTable({
               : "mt-2 text-[11px] font-medium text-[#7C4A57] hover:underline"
           }
         >
-          {expanded ? "Suskleisti" : `Rodyti daugiau (+${rows.length - PREVIEW_ROWS})`}
+          {expanded ? "Suskleisti" : `Rodyti daugiau (+${rows.length - preview})`}
         </button>
       ) : null}
     </div>

@@ -1,8 +1,15 @@
 import "server-only";
 
-import { formatMoney } from "@/lib/crm/format";
-import { fetchProjectAnalytics, type ProjectAnalyticsRange } from "@/lib/crm/projectAnalytics";
+import { formatDate, formatMoney } from "@/lib/crm/format";
+import {
+  fetchProjectAnalytics,
+  fetchProjectFirstActivityDate,
+  fetchProjectMonthCallsTrend,
+  resolveAnalyticsRange,
+  type ProjectAnalyticsPeriod,
+} from "@/lib/crm/projectAnalytics";
 import { CallsByDayBarChart } from "@/components/crm/CallsByDayBarChart";
+import { ProjectOverviewSalesPeriodHeader } from "@/components/crm/project-analytics/ProjectOverviewSalesPeriodHeader";
 import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 
 function KpiCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
@@ -15,16 +22,39 @@ function KpiCard({ label, value, sub }: { label: string; value: string | number;
   );
 }
 
-export async function ProjectOverviewDeferred({
+/** Mėnesio skambučių grafikas (nepriklauso nuo pardavimų periodo). */
+export async function ProjectOverviewMonthCallsChart({ projectId }: { projectId: string }) {
+  const supabase = await createSupabaseSsrReadOnlyClient();
+  const { monthRange, monthCallsTrend } = await fetchProjectMonthCallsTrend(supabase, projectId);
+
+  return (
+    <section className="rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm">
+      <h3 className="text-sm font-semibold text-zinc-900">Skambučiai per mėnesį (darbo dienos)</h3>
+      <div className="mt-4">
+        <CallsByDayBarChart trend={monthCallsTrend} range={{ from: monthRange.from, to: monthRange.to }} showAverage={false} />
+      </div>
+    </section>
+  );
+}
+
+/** Visa pardavimų sekcija: header + meta + KPI (all_time anchor tik čia). */
+export async function ProjectOverviewSalesSection({
   projectId,
-  range,
+  salesPeriod,
+  salesFrom,
+  salesTo,
 }: {
   projectId: string;
-  range: ProjectAnalyticsRange;
+  salesPeriod: ProjectAnalyticsPeriod;
+  salesFrom?: string;
+  salesTo?: string;
 }) {
   const supabase = await createSupabaseSsrReadOnlyClient();
-  const data = await fetchProjectAnalytics(supabase, projectId, range);
-  const { monthRange, monthCallsTrend, generated, kpi } = data;
+  const allTimeFrom =
+    salesPeriod === "all_time" ? await fetchProjectFirstActivityDate(supabase, projectId) : null;
+  const salesRange = resolveAnalyticsRange(salesPeriod, salesFrom, salesTo, allTimeFrom);
+  const data = await fetchProjectAnalytics(supabase, projectId, salesRange);
+  const { generated, kpi } = data;
 
   const directRevenue = generated.totalEur;
   const influencedRevenue = generated.totalEur;
@@ -32,45 +62,73 @@ export async function ProjectOverviewDeferred({
   const conversion =
     generated.clientsCount > 0 && data.work.totalPicked > 0 ? (generated.clientsCount / data.work.totalPicked) * 100 : null;
 
+  const rangeLabel =
+    salesRange.from === salesRange.to
+      ? formatDate(salesRange.from)
+      : `${formatDate(salesRange.from)} — ${formatDate(salesRange.to)}`;
+
+  const meta = (
+    <p className="text-xs text-zinc-500">
+      Klientai su užsakymu: <span className="font-medium tabular-nums text-zinc-900">{generated.clientsCount}</span>
+      <span className="mx-2 text-zinc-300">·</span>
+      {rangeLabel}
+    </p>
+  );
+
   return (
-    <div className="space-y-8">
-      <section className="rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-zinc-900">Skambučiai per mėnesį (darbo dienos)</h3>
-        <div className="mt-4">
-          <CallsByDayBarChart trend={monthCallsTrend} range={{ from: monthRange.from, to: monthRange.to }} showAverage={false} />
-        </div>
-      </section>
-
-      <section>
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Pardavimai</h3>
-            <p className="mt-1 text-sm text-zinc-600">
-              Pajamos skaičiuojamos pagal PVM sąskaitas po pirmo kontakto pasirinktame laikotarpyje (sąskaitos data vėlesnė nei kontakto
-              diena).
-            </p>
-          </div>
-          <div className="hidden text-xs text-zinc-500 sm:block">
-            Klientai su užsakymu: <span className="font-medium tabular-nums text-zinc-900">{generated.clientsCount}</span>
-          </div>
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <KpiCard label="Direct pajamos" value={formatMoney(directRevenue)} sub="po kontakto (intervalas)" />
-          <KpiCard label="Influenced pajamos" value={formatMoney(influencedRevenue)} sub="kol kas ta pati metodika" />
-          <KpiCard
-            label="Vid. € / kontaktą"
-            value={avgPerContact == null ? "—" : formatMoney(avgPerContact)}
-            sub="pagal atsiliepusius skambučius"
-          />
-          <KpiCard
-            label="Konversija"
-            value={conversion == null ? "—" : `${conversion.toLocaleString("lt-LT", { maximumFractionDigits: 1 })}%`}
-            sub="užsakymas / paimtas į darbą"
-          />
-        </div>
-      </section>
-    </div>
+    <>
+      <ProjectOverviewSalesPeriodHeader
+        projectId={projectId}
+        salesPeriod={salesPeriod}
+        rangeFrom={salesRange.from}
+        rangeTo={salesRange.to}
+        meta={meta}
+      />
+      <div className="mt-5 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label="Direct pajamos" value={formatMoney(directRevenue)} sub="po kontakto (intervalas)" />
+        <KpiCard label="Influenced pajamos" value={formatMoney(influencedRevenue)} sub="kol kas ta pati metodika" />
+        <KpiCard
+          label="Vid. € / kontaktą"
+          value={avgPerContact == null ? "—" : formatMoney(avgPerContact)}
+          sub="pagal atsiliepusius skambučius"
+        />
+        <KpiCard
+          label="Konversija"
+          value={conversion == null ? "—" : `${conversion.toLocaleString("lt-LT", { maximumFractionDigits: 1 })}%`}
+          sub="užsakymas / paimtas į darbą"
+        />
+      </div>
+    </>
   );
 }
 
+/** Greitas header be duomenų — kol Suspense krauna sales sekciją. */
+export function ProjectOverviewSalesSectionFallback({
+  projectId,
+  salesPeriod,
+  rangeFrom,
+  rangeTo,
+}: {
+  projectId: string;
+  salesPeriod: ProjectAnalyticsPeriod;
+  rangeFrom: string;
+  rangeTo: string;
+}) {
+  return (
+    <>
+      <ProjectOverviewSalesPeriodHeader
+        projectId={projectId}
+        salesPeriod={salesPeriod}
+        rangeFrom={rangeFrom}
+        rangeTo={rangeTo}
+        meta={<div className="h-4 w-48 animate-pulse rounded bg-zinc-100" />}
+      />
+      <div className="mt-5 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 xl:grid-cols-4">
+        <div className="h-24 rounded-xl bg-zinc-100" />
+        <div className="h-24 rounded-xl bg-zinc-100" />
+        <div className="h-24 rounded-xl bg-zinc-100" />
+        <div className="h-24 rounded-xl bg-zinc-100" />
+      </div>
+    </>
+  );
+}

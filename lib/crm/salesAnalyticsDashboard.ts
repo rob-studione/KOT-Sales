@@ -73,13 +73,21 @@ export type BestCallTimesData = {
   slotHours: number;
 };
 
+export type SalesDashboardProjectRevenue = {
+  projectId: string;
+  projectName: string;
+  coldEur: number;
+  returningEur: number;
+  totalEur: number;
+};
+
 export type SalesDashboardData = {
   range: SalesDashboardRange;
   period: SalesDashboardPeriod;
   kpi: SalesDashboardKpi;
   trend: SalesDashboardTrendDay[];
-  coldInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
-  returningInvoices: Array<{ invoiceNumber: string; date: string; amount: number; clientKey: string; companyName: string | null }>;
+  /** Pajamos pagal projektą (bendra suma; detalės — projekto Pajamose). */
+  projectRevenues: SalesDashboardProjectRevenue[];
   bestCallTimes: BestCallTimesData;
   warnings: string[];
 };
@@ -187,8 +195,13 @@ type RpcV1 = {
     conversionPercent: number | null;
   };
   trend: Array<{ date: string; calls: number; answered: number; notAnswered: number }>;
-  coldInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string; companyName?: string | null }>;
-  returningInvoices: Array<{ invoiceNumber: string; date: string; amount: number | string; clientKey: string; companyName?: string | null }>;
+  projectRevenues: Array<{
+    projectId: string;
+    projectName: string;
+    coldEur?: number | string;
+    returningEur?: number | string;
+    totalEur: number | string;
+  }>;
 };
 
 function asFiniteNumber(v: unknown, fallback = 0): number {
@@ -226,8 +239,7 @@ export async function fetchSalesDashboard(
   const payload = (data ?? {}) as Partial<RpcV1>;
   const k = payload.kpi ?? ({} as RpcV1["kpi"]);
   const trendRaw = Array.isArray(payload.trend) ? payload.trend : [];
-  const coldInvoicesRaw = Array.isArray(payload.coldInvoices) ? payload.coldInvoices : [];
-  const returningInvoicesRaw = Array.isArray(payload.returningInvoices) ? payload.returningInvoices : [];
+  const projectRevenuesRaw = Array.isArray(payload.projectRevenues) ? payload.projectRevenues : [];
 
   const out: SalesDashboardData = {
     range,
@@ -248,26 +260,20 @@ export async function fetchSalesDashboard(
         notAnswered: asFiniteNumber((r as any).notAnswered, 0),
       }))
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date)),
-    coldInvoices: coldInvoicesRaw
-      .map((r) => ({
-        invoiceNumber: String((r as any).invoiceNumber ?? "").trim(),
-        date: String((r as any).date ?? "").slice(0, 10),
-        amount: asFiniteNumber((r as any).amount, 0),
-        clientKey: String((r as any).clientKey ?? "").trim(),
-        companyName:
-          (r as any).companyName == null ? null : String((r as any).companyName ?? "").trim() || null,
-      }))
-      .filter((r) => r.invoiceNumber && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.clientKey),
-    returningInvoices: returningInvoicesRaw
-      .map((r) => ({
-        invoiceNumber: String((r as any).invoiceNumber ?? "").trim(),
-        date: String((r as any).date ?? "").slice(0, 10),
-        amount: asFiniteNumber((r as any).amount, 0),
-        clientKey: String((r as any).clientKey ?? "").trim(),
-        companyName:
-          (r as any).companyName == null ? null : String((r as any).companyName ?? "").trim() || null,
-      }))
-      .filter((r) => r.invoiceNumber && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.clientKey),
+    projectRevenues: projectRevenuesRaw
+      .map((r) => {
+        const coldEur = asFiniteNumber((r as any).coldEur, 0);
+        const returningEur = asFiniteNumber((r as any).returningEur, 0);
+        const totalEur = asFiniteNumber((r as any).totalEur, coldEur + returningEur);
+        return {
+          projectId: String((r as any).projectId ?? "").trim(),
+          projectName: String((r as any).projectName ?? "").trim() || "Be pavadinimo",
+          coldEur,
+          returningEur,
+          totalEur,
+        };
+      })
+      .filter((r) => r.projectId && r.totalEur > 0),
     bestCallTimes: buildEmptyBestCallTimes(),
     warnings,
   };

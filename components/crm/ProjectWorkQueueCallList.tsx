@@ -348,9 +348,7 @@ function WorkItemCard({
         case "Perskambinti":
           return "Neperskambino";
         case "Užbaigta":
-          return item.source_type === "procurement_contract"
-            ? projectResultStatusLabel(item.result_status)
-            : "Užbaigta";
+          return projectResultStatusLabel(item.result_status);
         default:
           return callStatusOptionLabel(col);
       }

@@ -3,6 +3,7 @@ import {
   normalizeRpcCandidateRow,
   parseProjectSortOption,
   sortSnapshotCandidates,
+  type ProjectSortOption,
   type SnapshotCandidateRow,
 } from "@/lib/crm/projectSnapshot";
 import { isManualProjectType, isProcurementProjectType, projectTypeFromDbRow } from "@/lib/crm/projectType";
@@ -52,6 +53,162 @@ export type ProjectRulesRow = {
   candidates_require_business_id?: boolean | null;
 };
 
+export type MatchProjectCandidatesPageResult = {
+  rows: SnapshotCandidateRow[];
+  totalCount: number;
+  sort: ProjectSortOption;
+  offset: number;
+  limit: number;
+};
+
+/**
+ * Server-side puslapis auto kandidatams (sort + search DB pusėje).
+ * Prioritetų rank = `offset + index + 1` (ta pati tvarka kaip sortSnapshotCandidates).
+ * Jei paged RPC timeout / nerastas — fallback į pilną sąrašą + slice (kad UI nenulūžtų).
+ */
+export async function rpcMatchProjectCandidatesPage(
+  supabase: SupabaseClient,
+  opts: {
+    dateFrom: string;
+    dateTo: string;
+    minOrderCount: number;
+    inactivityDays: number;
+    projectId: string | null;
+    requireBusinessId?: boolean;
+    sort: ProjectSortOption;
+    limit: number;
+    offset: number;
+    search?: string | null;
+  }
+): Promise<{ ok: true; data: MatchProjectCandidatesPageResult } | { ok: false; error: string }> {
+  const limit = Math.min(Math.max(Math.trunc(opts.limit) || 20, 1), 100);
+  const offset = Math.max(Math.trunc(opts.offset) || 0, 0);
+  const search = (opts.search ?? "").trim();
+
+  const { data, error } = await supabase.rpc("match_project_candidates_page", {
+    p_date_from: opts.dateFrom,
+    p_date_to: opts.dateTo,
+    p_min_orders: opts.minOrderCount,
+    p_inactivity_days: opts.inactivityDays,
+    p_project_id: opts.projectId,
+    p_require_business_id: Boolean(opts.requireBusinessId),
+    p_sort: opts.sort,
+    p_limit: limit,
+    p_offset: offset,
+    p_search: search.length > 0 ? search : null,
+  });
+
+  if (!error) {
+    const payload = (data ?? {}) as { total_count?: unknown; items?: unknown };
+    const totalRaw = payload.total_count;
+    const totalCount =
+      typeof totalRaw === "number" && Number.isFinite(totalRaw)
+        ? Math.max(0, Math.trunc(totalRaw))
+        : typeof totalRaw === "string" && Number.isFinite(Number(totalRaw))
+          ? Math.max(0, Math.trunc(Number(totalRaw)))
+          : 0;
+    const itemsRaw = Array.isArray(payload.items) ? (payload.items as Record<string, unknown>[]) : [];
+    return {
+      ok: true,
+      data: {
+        rows: itemsRaw.map(normalizeRpcCandidateRow),
+        totalCount,
+        sort: opts.sort,
+        offset,
+        limit,
+      },
+    };
+  }
+
+  const msg = String(error.message ?? "");
+  const missingFn =
+    error.code === "42883" ||
+    msg.toLowerCase().includes("match_project_candidates_page") ||
+    msg.includes("Could not find the function");
+  const timedOut = /statement timeout|canceling statement/i.test(msg);
+
+  if (!missingFn && !timedOut) {
+    return { ok: false, error: msg };
+  }
+
+  // Fallback: senas full RPC + JS sort/filter/slice (lėčiau, bet veikia).
+  const full = await rpcMatchProjectCandidates(
+    supabase,
+    opts.dateFrom,
+    opts.dateTo,
+    opts.minOrderCount,
+    opts.inactivityDays,
+    opts.projectId,
+    Boolean(opts.requireBusinessId)
+  );
+  if (!full.ok) {
+    return {
+      ok: false,
+      error: timedOut
+        ? `Kandidatų užklausa nutrūko (timeout). ${full.error}`
+        : missingFn
+          ? "RPC match_project_candidates_page nerastas — pritaikykite migraciją 0122/0123."
+          : full.error,
+    };
+  }
+
+  let rows = sortSnapshotCandidates(full.rows, opts.sort);
+  if (search) {
+    const q = search.toLowerCase();
+    rows = rows.filter((c) => {
+      const name = String(c.company_name ?? "").toLowerCase();
+      const code = String(c.company_code ?? "").toLowerCase();
+      const cid = String(c.client_id ?? "").toLowerCase();
+      const ck = String(c.client_key ?? "").toLowerCase();
+      return name.includes(q) || code.includes(q) || cid.includes(q) || ck.includes(q);
+    });
+  }
+  const totalCount = rows.length;
+  const pageRows = rows.slice(offset, offset + limit);
+  return {
+    ok: true,
+    data: { rows: pageRows, totalCount, sort: opts.sort, offset, limit },
+  };
+}
+
+export async function fetchSortedCandidatesPageForProject(
+  supabase: SupabaseClient,
+  p: ProjectRulesRow,
+  page: { pageIndex0: number; pageSize: number; search?: string | null }
+): Promise<{ ok: true; data: MatchProjectCandidatesPageResult } | { ok: false; error: string }> {
+  const t = projectTypeFromDbRow(p) ?? p.project_type;
+  if (isManualProjectType(t) || isProcurementProjectType(t)) {
+    return {
+      ok: true,
+      data: {
+        rows: [],
+        totalCount: 0,
+        sort: parseProjectSortOption(String(p.sort_option ?? "")),
+        offset: 0,
+        limit: page.pageSize,
+      },
+    };
+  }
+
+  const sort = parseProjectSortOption(String(p.sort_option ?? ""));
+  const pageSize = Math.min(Math.max(Math.trunc(page.pageSize) || 20, 1), 100);
+  const pageIndex0 = Math.max(Math.trunc(page.pageIndex0) || 0, 0);
+
+  return rpcMatchProjectCandidatesPage(supabase, {
+    dateFrom: String(p.filter_date_from).slice(0, 10),
+    dateTo: String(p.filter_date_to).slice(0, 10),
+    minOrderCount: Number(p.min_order_count ?? 1),
+    inactivityDays: Number(p.inactivity_days ?? 90),
+    projectId: p.id,
+    requireBusinessId: Boolean(p.candidates_require_business_id),
+    sort,
+    limit: pageSize,
+    offset: pageIndex0 * pageSize,
+    search: page.search,
+  });
+}
+
+/** Pilnas sąrašas — preview / legacy pick fallback. Kandidatai tab naudoja paged RPC. */
 export async function fetchSortedCandidatesForProject(
   supabase: SupabaseClient,
   p: ProjectRulesRow
