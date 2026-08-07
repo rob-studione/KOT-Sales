@@ -22,11 +22,24 @@ export function AnalyticsDateFilterClientOnly({
   range,
   paramKeys,
   heading = "Laikotarpis",
+  rangePlacement = "below",
+  align = "start",
 }: {
   period: SalesDashboardPeriod;
   range: SalesDashboardRange;
   paramKeys?: AnalyticsDateFilterParamKeys;
   heading?: string;
+  rangePlacement?: "below" | "beside" | "none";
+  align?: "start" | "end";
 }) {
-  return <AnalyticsDateFilterInner period={period} range={range} paramKeys={paramKeys} heading={heading} />;
+  return (
+    <AnalyticsDateFilterInner
+      period={period}
+      range={range}
+      paramKeys={paramKeys}
+      heading={heading}
+      rangePlacement={rangePlacement}
+      align={align}
+    />
+  );
 }

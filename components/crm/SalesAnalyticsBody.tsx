@@ -114,15 +114,17 @@ export async function SalesAnalyticsSalesBody({
     });
 
     const salesPeriodHeader = (
-      <div>
+      <div className="relative z-20 flex w-full flex-col items-stretch sm:w-auto sm:items-end">
         <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Pardavimų laikotarpis</div>
-        <div className="mt-2">
+        <div className="mt-3">
           <Suspense fallback={<div className="h-9 w-44 animate-pulse rounded-lg border border-zinc-200 bg-zinc-50" />}>
             <AnalyticsDateFilterClientOnly
               period={salesPeriod}
               range={salesRange}
               paramKeys={SALES_PARAM_KEYS}
               heading="Pardavimų laikotarpis"
+              rangePlacement="below"
+              align="end"
             />
           </Suspense>
         </div>

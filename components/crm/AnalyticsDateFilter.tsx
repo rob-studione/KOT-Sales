@@ -48,11 +48,17 @@ export function AnalyticsDateFilter({
   range,
   paramKeys = DEFAULT_PARAM_KEYS,
   heading = "Laikotarpis",
+  /** Kaip prie projektų: datos po mygtuku, ne šalia. */
+  rangePlacement = "below",
+  /** Pardavimų dešinėje kolonoje — `end`; veiklos viršuje — `start`. */
+  align = "start",
 }: {
   period: SalesDashboardPeriod;
   range: SalesDashboardRange;
   paramKeys?: AnalyticsDateFilterParamKeys;
   heading?: string;
+  rangePlacement?: "below" | "beside" | "none";
+  align?: "start" | "end";
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -123,8 +129,26 @@ export function AnalyticsDateFilter({
 
   const applyDisabled = !isIsoDate(from) || !isIsoDate(to) || isPending;
 
+  const rangeLabel =
+    rangePlacement === "none" ? null : (
+      <p
+        className={`text-xs text-zinc-500 ${
+          rangePlacement === "below" ? "mt-2" : ""
+        } ${align === "end" || rangePlacement === "beside" ? "sm:text-right" : ""}`}
+      >
+        Rodoma: <span className="font-medium text-zinc-700">{range.from}</span> —{" "}
+        <span className="font-medium text-zinc-700">{range.to}</span>
+      </p>
+    );
+
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+    <div
+      className={
+        rangePlacement === "beside"
+          ? "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between"
+          : `flex flex-col items-stretch ${align === "end" ? "sm:items-end" : "items-start"}`
+      }
+    >
       <div ref={rootRef} className="relative">
         <button
           type="button"
@@ -138,7 +162,7 @@ export function AnalyticsDateFilter({
         </button>
 
         {open ? (
-          <div className="absolute right-0 z-20 mt-2 w-[22rem] rounded-xl border border-zinc-200 bg-white p-3 shadow-xl shadow-black/10 sm:left-full sm:right-auto sm:ml-2 sm:mt-0 sm:top-0">
+          <div className="absolute right-0 z-20 mt-2 w-[22rem] rounded-xl border border-zinc-200 bg-white p-3 shadow-xl shadow-black/10 sm:left-auto sm:right-0">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">{heading}</div>
             <div className="grid grid-cols-2 gap-2">
               {PRESETS.map((p) => (
@@ -191,10 +215,7 @@ export function AnalyticsDateFilter({
         ) : null}
       </div>
 
-      <p className="text-xs text-zinc-500 sm:text-right">
-        Rodoma: <span className="font-medium text-zinc-700">{range.from}</span> —{" "}
-        <span className="font-medium text-zinc-700">{range.to}</span>
-      </p>
+      {rangeLabel}
     </div>
   );
 }
