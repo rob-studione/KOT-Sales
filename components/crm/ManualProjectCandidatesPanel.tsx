@@ -733,7 +733,6 @@ export function ManualProjectCandidatesPanel({
                 const form = e.currentTarget;
                 const fd = new FormData(form);
                 fd.set("project_id", projectId);
-                fd.delete("force_new_lead");
                 startTransition(async () => {
                   setError(null);
                   const r = await createManualProjectLeadAction(fd);
@@ -963,7 +962,7 @@ export function ManualProjectCandidatesPanel({
                   Panašūs klientai CRM
                 </h3>
                 <p className="mt-2 text-sm text-zinc-600">
-                  Pagal pavadinimą rasta galimų sutapimų. Galite pridėti esamą arba vis tiek sukurti naują kandidatą.
+                  Pagal pavadinimą rastas CRM klientas. Naujo leado nekuriame — pridėkite esamą arba atšaukite.
                 </p>
                 <ul className="mt-3 space-y-3">
                   {nameSuggestions.map((s) => (
@@ -1003,7 +1002,7 @@ export function ManualProjectCandidatesPanel({
                     </li>
                   ))}
                 </ul>
-                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                <div className="mt-4 flex justify-end">
                   <button
                     type="button"
                     disabled={linkPending || pending}
@@ -1011,41 +1010,6 @@ export function ManualProjectCandidatesPanel({
                     className="rounded-lg border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
                   >
                     Atšaukti
-                  </button>
-                  <button
-                    type="button"
-                    disabled={linkPending || pending}
-                    onClick={() => {
-                      const form = formRef.current;
-                      if (!form) return;
-                      const fd = new FormData(form);
-                      fd.set("project_id", projectId);
-                      fd.set("force_new_lead", "1");
-                      startTransition(async () => {
-                        setError(null);
-                        const r = await createManualProjectLeadAction(fd);
-                        if (r.ok) {
-                          form.reset();
-                          setNameSuggestions(null);
-                          setExistingProjectLead(null);
-                          setOpen(false);
-                          router.refresh();
-                        } else if (isExistingProjectLeadResult(r)) {
-                          setNameSuggestions(null);
-                          setExistingProjectLead(r.lead);
-                        } else if (isDuplicateResult(r)) {
-                          setNameSuggestions(null);
-                          setDuplicateMatch(r.match);
-                        } else if (isSuggestionsResult(r)) {
-                          setNameSuggestions(r.suggestions);
-                        } else {
-                          setError(r.error);
-                        }
-                      });
-                    }}
-                    className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
-                  >
-                    Vis tiek kurti naują kandidatą
                   </button>
                 </div>
               </div>

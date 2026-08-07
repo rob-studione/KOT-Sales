@@ -541,7 +541,6 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
   const phoneRaw = String(formData.get("phone") ?? "").trim();
   const contactNameRaw = String(formData.get("contact_name") ?? "").trim();
   const notesRaw = String(formData.get("notes") ?? "").trim();
-  const forceNewLead = String(formData.get("force_new_lead") ?? "").trim() === "1";
 
   const companyCode = companyCodeRaw ? companyCodeRaw : null;
   const email = emailRaw ? emailRaw : null;
@@ -589,11 +588,12 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
   });
 
   if (matchResult.kind === "strong") {
-    // Stiprus match: neleidžiame force create — tik prijungti esamą.
+    // Stiprus match: tik prijungti esamą CRM klientą.
     return { ok: false, duplicate: true, match: matchResult.match };
   }
 
-  if (!forceNewLead && matchResult.kind === "suggestions") {
+  if (matchResult.kind === "suggestions") {
+    // Tikslus pavadinimo sutapimas: force create neleidžiamas.
     return { ok: false, nameSuggestions: true, suggestions: matchResult.suggestions };
   }
 
