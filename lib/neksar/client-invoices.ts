@@ -64,12 +64,16 @@ function issuerFingerprint(normalized: string): string {
 /** Non-null company code for aggregation; mirrors Invoice123 `resolveEffectiveCompanyCode`. */
 export function resolveNeksarCompanyCode(opts: {
   rawCode: string | null;
+  /** Prefer real VAT over synthetic PERSON_* when registration code is missing. */
+  vatCode?: string | null;
   clientId: string | null;
   nameNormalized: string | null;
   invoiceId: string;
 }): string {
   const rc = (opts.rawCode ?? "").trim();
   if (rc.length > 0 && rc.toUpperCase() !== "UNKNOWN") return rc;
+  const vat = (opts.vatCode ?? "").trim();
+  if (vat.length > 0 && !vat.toUpperCase().startsWith(SYNTHETIC_COMPANY_CODE_PREFIX)) return vat;
   const cid = (opts.clientId ?? "").trim();
   if (cid.length > 0) return `${SYNTHETIC_COMPANY_CODE_PREFIX}${cid}`;
   const nm = opts.nameNormalized;
@@ -244,8 +248,10 @@ export function mapNeksarInvoice(inv: NeksarClientInvoice): NeksarMapResult {
     asString(inv.buyerRegistrationNo)?.trim() ?? asString(inv.buyerPersonalCode)?.trim() ?? null;
   const client_id = asString(inv.clientId)?.trim() ?? null;
   const nameNormalized = rawName ? rawName.replace(/\s+/g, " ").trim().toLowerCase() : null;
+  const vat_code = asString(inv.buyerVatNo)?.trim() ?? null;
   const company_code = resolveNeksarCompanyCode({
     rawCode,
+    vatCode: vat_code,
     clientId: client_id,
     nameNormalized,
     invoiceId,
@@ -269,7 +275,7 @@ export function mapNeksarInvoice(inv: NeksarClientInvoice): NeksarMapResult {
       client_id,
       company_name,
       company_code,
-      vat_code: asString(inv.buyerVatNo)?.trim() ?? null,
+      vat_code,
       address,
       email: asString(inv.buyerEmail)?.trim() ?? null,
       phone: asString(inv.buyerPhone)?.trim() ?? null,
