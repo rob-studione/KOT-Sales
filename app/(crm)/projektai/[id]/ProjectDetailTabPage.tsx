@@ -222,8 +222,12 @@ export async function ProjectDetailTabPage({
     return <p className="text-sm text-red-600">Supabase nekonfigūruotas. {message}</p>;
   }
 
-  roundTripCount += 2;
-  const { project, projectError: pErr } = await loadProjectDetailCore(id);
+  // Project row + current user in parallel (shared cached Auth session).
+  roundTripCount += 3;
+  const [{ project, projectError: pErr }, currentCrm] = await Promise.all([
+    loadProjectDetailCore(id),
+    getCurrentCrmUser(),
+  ]);
 
   if (pErr || !project) {
     if (pErr) {
@@ -238,7 +242,6 @@ export async function ProjectDetailTabPage({
     period === "all_time" && tab !== "pajamos" ? await fetchProjectFirstActivityDate(supabase, id) : null;
   const analyticsRange = resolveAnalyticsRange(period, customFrom, customTo, allTimeFrom);
   const salesAnalyticsRangePreview = resolveAnalyticsRange(salesPeriod, salesFrom, salesTo, null);
-  const currentCrm = await getCurrentCrmUser();
   const defaultAssignee = currentCrm?.id ?? defaultProjectActor();
   const pt = projectTypeFromDbRow(p) ?? p.project_type;
   const isManual = isManualProjectType(pt);
