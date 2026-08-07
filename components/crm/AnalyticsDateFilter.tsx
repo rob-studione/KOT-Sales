@@ -146,10 +146,10 @@ export function AnalyticsDateFilter({
       className={
         rangePlacement === "beside"
           ? "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between"
-          : `flex flex-col items-stretch ${align === "end" ? "sm:items-end" : "items-start"}`
+          : `flex flex-col gap-0 ${align === "end" ? "items-end" : "items-start"}`
       }
     >
-      <div ref={rootRef} className="relative">
+      <div ref={rootRef} className="relative w-fit">
         <button
           type="button"
           aria-expanded={open}
@@ -162,7 +162,11 @@ export function AnalyticsDateFilter({
         </button>
 
         {open ? (
-          <div className="absolute right-0 z-20 mt-2 w-[22rem] rounded-xl border border-zinc-200 bg-white p-3 shadow-xl shadow-black/10 sm:left-auto sm:right-0">
+          <div
+            className={`absolute z-20 mt-2 w-[22rem] rounded-xl border border-zinc-200 bg-white p-3 shadow-xl shadow-black/10 ${
+              align === "end" ? "right-0" : "left-0"
+            }`}
+          >
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">{heading}</div>
             <div className="grid grid-cols-2 gap-2">
               {PRESETS.map((p) => (
