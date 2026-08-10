@@ -28,7 +28,9 @@ import { parseCompletionResult } from "@/lib/crm/projectCompletion";
 import { crmUserExists, isValidUuid, messageForCrmUserExistsFailure } from "@/lib/crm/crmUsers";
 import {
   findClientMatches,
+  findClientWorkHistoryInOtherProjects,
   findExistingManualLeadInProject,
+  type ClientProjectHistoryEntry,
   type ExistingClientMatch,
   type ExistingProjectLeadMatch,
 } from "@/lib/crm/findMatchingExistingClient";
@@ -1287,6 +1289,142 @@ function finishPickTimings(
   partial: Omit<PickClientFromProjectTimings, "totalServerMs">,
 ): PickClientFromProjectTimings {
   return { ...partial, totalServerMs: Date.now() - startedAt };
+}
+
+export type PreviewPickPriorHistoryResult =
+  | { ok: true; history: ClientProjectHistoryEntry[] }
+  | { ok: false; error: string };
+
+/**
+ * Prieš pick: ar klientas jau turėjo work item kitame projekte.
+ * Tuščia istorija → pick be modalо.
+ */
+export async function previewPickClientPriorHistoryAction(
+  formData: FormData
+): Promise<PreviewPickPriorHistoryResult> {
+  const projectId = String(formData.get("project_id") ?? "").trim();
+  const candidateType = parseCandidateType(formData);
+  const candidateId = String(formData.get("candidate_id") ?? "").trim();
+  const clientKeyRaw = String(formData.get("client_key") ?? "").trim();
+
+  if (!projectId || !isValidUuid(projectId)) {
+    return { ok: false, error: "Neteisingas projektas." };
+  }
+
+  let supabase;
+  try {
+    supabase = await createSupabaseSsrClient();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
+  }
+
+  let clientKey = "";
+  let companyCode: string | null = null;
+  let vatCode: string | null = null;
+  let clientId: string | null = null;
+  let companyName: string | null = null;
+
+  if (candidateType === "auto") {
+    clientKey = clientKeyRaw;
+    if (!clientKey) return { ok: false, error: "Trūksta kliento rakto." };
+  } else if (candidateType === "manual_lead") {
+    if (!candidateId || !isValidUuid(candidateId)) {
+      return { ok: false, error: "Neteisingas kandidatas." };
+    }
+    const { data: lead } = await supabase
+      .from("project_manual_leads")
+      .select("id,company_name,company_code")
+      .eq("id", candidateId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (!lead) return { ok: false, error: "Rankinis kandidatas nerastas." };
+    clientKey = manualLeadClientKey(String(lead.id));
+    companyCode = lead.company_code != null ? String(lead.company_code).trim() || null : null;
+    companyName = String(lead.company_name ?? "").trim() || null;
+  } else if (candidateType === "linked_client") {
+    if (!candidateId || !isValidUuid(candidateId)) {
+      return { ok: false, error: "Neteisingas kandidatas." };
+    }
+    const { data: linkRow } = await supabase
+      .from("project_manual_linked_clients")
+      .select("client_key")
+      .eq("id", candidateId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+    clientKey = String(linkRow?.client_key ?? "").trim();
+    if (!clientKey) return { ok: false, error: "Trūksta kliento rakto." };
+  } else if (candidateType === "procurement_contract") {
+    if (!candidateId || !isValidUuid(candidateId)) {
+      return { ok: false, error: "Neteisinga sutartis." };
+    }
+    clientKey = procurementContractClientKey(candidateId);
+  }
+
+  // CRM laukai — platesniam sibling match (company_code / VAT).
+  if (clientKey && !clientKey.startsWith("ml:") && !clientKey.startsWith("pc:")) {
+    const { data: viewRow } = await supabase
+      .from("v_client_list_from_invoices")
+      .select("client_key,company_code,client_id,company_name,vat_code")
+      .eq("client_key", clientKey)
+      .maybeSingle();
+    if (viewRow) {
+      companyCode =
+        companyCode ??
+        (viewRow.company_code != null && String(viewRow.company_code).trim() !== ""
+          ? String(viewRow.company_code).trim()
+          : null);
+      clientId =
+        viewRow.client_id != null && String(viewRow.client_id).trim() !== ""
+          ? String(viewRow.client_id).trim()
+          : null;
+      vatCode =
+        viewRow.vat_code != null && String(viewRow.vat_code).trim() !== ""
+          ? String(viewRow.vat_code).trim()
+          : null;
+      companyName = companyName ?? (String(viewRow.company_name ?? "").trim() || null);
+    }
+  } else if (companyCode) {
+    const { data: viewRow } = await supabase
+      .from("v_client_list_from_invoices")
+      .select("client_key,company_code,client_id,company_name,vat_code")
+      .eq("company_code", companyCode)
+      .maybeSingle();
+    if (viewRow) {
+      clientId =
+        viewRow.client_id != null && String(viewRow.client_id).trim() !== ""
+          ? String(viewRow.client_id).trim()
+          : null;
+      vatCode =
+        viewRow.vat_code != null && String(viewRow.vat_code).trim() !== ""
+          ? String(viewRow.vat_code).trim()
+          : null;
+      // Taip pat ieškoti CRM client_key istorijoje (ne tik ml:).
+      const crmKey = String(viewRow.client_key ?? "").trim();
+      if (crmKey) {
+        const hist = await findClientWorkHistoryInOtherProjects(supabase, {
+          excludeProjectId: projectId,
+          clientKey: crmKey,
+          companyCode,
+          vatCode,
+          clientId,
+          companyName: companyName ?? (String(viewRow.company_name ?? "").trim() || null),
+        });
+        return { ok: true, history: hist };
+      }
+    }
+  }
+
+  if (!clientKey) return { ok: true, history: [] };
+
+  const history = await findClientWorkHistoryInOtherProjects(supabase, {
+    excludeProjectId: projectId,
+    clientKey,
+    companyCode,
+    vatCode,
+    clientId,
+    companyName,
+  });
+  return { ok: true, history };
 }
 
 export async function pickClientFromProject(formData: FormData): Promise<PickClientFromProjectResult> {

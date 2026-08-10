@@ -145,7 +145,8 @@ function historyHref(opts: {
 
 async function loadProjectHistory(
   supabase: SupabaseClient,
-  match: Omit<ExistingClientMatch, "project_history">
+  match: Omit<ExistingClientMatch, "project_history">,
+  opts?: { excludeProjectId?: string | null }
 ): Promise<ClientProjectHistoryEntry[]> {
   const keys = new Set<string>();
   if (match.client_key) keys.add(match.client_key);
@@ -155,12 +156,14 @@ async function loadProjectHistory(
   const keyList = [...keys].filter(Boolean);
   if (keyList.length === 0) return [];
 
+  const excludeProjectId = opts?.excludeProjectId?.trim() || null;
+
   const { data: workRows, error } = await supabase
     .from("project_work_items")
     .select("id,project_id,client_key,result_status,picked_at,work_updated_at,projects(name)")
     .in("client_key", keyList)
     .order("picked_at", { ascending: false })
-    .limit(12);
+    .limit(24);
 
   if (error || !workRows?.length) {
     if (error) console.error("[findMatchingExistingClient] project history", error);
@@ -177,7 +180,14 @@ async function loadProjectHistory(
     projects: { name: string | null } | { name: string | null }[] | null;
   };
 
-  const rows = workRows as WorkRow[];
+  const rows = (workRows as WorkRow[]).filter((r) => {
+    const pid = String(r.project_id ?? "");
+    if (!pid) return false;
+    if (excludeProjectId && pid === excludeProjectId) return false;
+    return true;
+  });
+  if (rows.length === 0) return [];
+
   const workIds = rows.map((r) => r.id);
 
   const lastByWork = new Map<string, { occurred_at: string; action_type: string; call_status: string | null }>();
@@ -248,6 +258,40 @@ async function loadProjectHistory(
   }
 
   return out;
+}
+
+/**
+ * Darbo istorija kituose projektuose (dabartinis projektas išfiltruojamas).
+ * Naudojama pick įspėjimui ir lead match istorijai.
+ */
+export async function findClientWorkHistoryInOtherProjects(
+  supabase: SupabaseClient,
+  opts: {
+    excludeProjectId: string;
+    clientKey: string;
+    companyCode?: string | null;
+    vatCode?: string | null;
+    clientId?: string | null;
+    companyName?: string | null;
+  }
+): Promise<ClientProjectHistoryEntry[]> {
+  const clientKey = String(opts.clientKey ?? "").trim();
+  if (!clientKey) return [];
+  return loadProjectHistory(
+    supabase,
+    {
+      client_key: clientKey,
+      company_name: String(opts.companyName ?? "").trim() || "—",
+      company_code: opts.companyCode?.trim() || null,
+      client_id: opts.clientId?.trim() || null,
+      email: null,
+      vat_code: opts.vatCode?.trim() || null,
+      strength: "strong",
+      match_reason: "company_code",
+      allow_force_create: false,
+    },
+    { excludeProjectId: opts.excludeProjectId }
+  );
 }
 
 async function withHistory(
