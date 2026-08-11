@@ -1,5 +1,8 @@
 import { parseManualLeadIdFromClientKey } from "@/lib/crm/manualLeadClientKey";
-import { parseProcurementContractIdFromClientKey } from "@/lib/crm/procurementContractClientKey";
+import {
+  isProcurementOrgClientKey,
+  parseProcurementContractIdFromClientKey,
+} from "@/lib/crm/procurementContractClientKey";
 
 /** URL segment for clients grouped without company_code and without client_id (single bucket). */
 export const ORPHAN_CLIENT_PATH_SEGMENT = "orphan";
@@ -24,5 +27,6 @@ export function workItemClientDetailHref(clientKey: string | null | undefined): 
   if (clientKey == null || String(clientKey).trim() === "") return null;
   if (parseManualLeadIdFromClientKey(clientKey)) return null;
   if (parseProcurementContractIdFromClientKey(clientKey)) return null;
+  if (isProcurementOrgClientKey(clientKey)) return null;
   return clientDetailPath(clientKey);
 }

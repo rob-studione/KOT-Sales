@@ -42,7 +42,11 @@ import {
 } from "@/lib/crm/procurementImportCsv";
 import { PROCUREMENT_CONTRACT_STATUSES } from "@/lib/crm/procurementContracts";
 import { manualLeadClientKey } from "@/lib/crm/manualLeadClientKey";
-import { procurementContractClientKey } from "@/lib/crm/procurementContractClientKey";
+import {
+  isProcurementOrgClientKey,
+  procurementOrgClientKeyFromContract,
+} from "@/lib/crm/procurementContractClientKey";
+import { fetchBlockedProcurementContractIds } from "@/lib/crm/procurementOrgGrouping";
 import { isMissingWorkItemSourceColumnsError } from "@/lib/crm/projectWorkItemColumns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseDateInputToIso } from "@/lib/crm/format";
@@ -767,6 +771,78 @@ export async function restoreManualCandidateAction(
   return { ok: true };
 }
 
+export async function markProcurementOrgAsInvalidAction(
+  projectId: string,
+  orgClientKey: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pid = String(projectId ?? "").trim();
+  const ck = String(orgClientKey ?? "").trim();
+  if (!pid || !isValidUuid(pid)) return { ok: false, error: "Neteisingas projektas." };
+  if (!isProcurementOrgClientKey(ck)) return { ok: false, error: "Neteisingas įstaigos raktas." };
+
+  let supabase;
+  try {
+    supabase = await createSupabaseSsrClient();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
+  }
+
+  const { data: proj, error: projErr } = await supabase.from("projects").select("id, project_type").eq("id", pid).maybeSingle();
+  if (projErr || !proj) return { ok: false, error: "Projektas nerastas." };
+  if (!isProcurementProjectType(projectTypeFromDbRow(proj))) {
+    return { ok: false, error: "Netinkamos įstaigos žymėjimas galimas tik viešųjų pirkimų projekte." };
+  }
+
+  const { error } = await supabase
+    .from("project_candidate_exclusions")
+    .upsert({ project_id: pid, client_key: ck, updated_at: new Date().toISOString() }, { onConflict: "project_id,client_key" });
+
+  if (error) {
+    console.error("[projectActions] markProcurementOrgAsInvalidAction failed", error);
+    return { ok: false, error: error.message ?? "Nepavyko pažymėti įstaigos kaip netinkamos." };
+  }
+
+  revalidatePath(`/projektai/${pid}`, "layout");
+  return { ok: true };
+}
+
+export async function restoreProcurementOrgAction(
+  projectId: string,
+  orgClientKey: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pid = String(projectId ?? "").trim();
+  const ck = String(orgClientKey ?? "").trim();
+  if (!pid || !isValidUuid(pid)) return { ok: false, error: "Neteisingas projektas." };
+  if (!isProcurementOrgClientKey(ck)) return { ok: false, error: "Neteisingas įstaigos raktas." };
+
+  let supabase;
+  try {
+    supabase = await createSupabaseSsrClient();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Supabase klaida" };
+  }
+
+  const { data: proj, error: projErr } = await supabase.from("projects").select("id, project_type").eq("id", pid).maybeSingle();
+  if (projErr || !proj) return { ok: false, error: "Projektas nerastas." };
+  if (!isProcurementProjectType(projectTypeFromDbRow(proj))) {
+    return { ok: false, error: "Atkūrimas galimas tik viešųjų pirkimų projekte." };
+  }
+
+  const { error } = await supabase
+    .from("project_candidate_exclusions")
+    .delete()
+    .eq("project_id", pid)
+    .eq("client_key", ck);
+
+  if (error) {
+    console.error("[projectActions] restoreProcurementOrgAction failed", error);
+    return { ok: false, error: error.message ?? "Nepavyko atkurti įstaigos." };
+  }
+
+  revalidatePath(`/projektai/${pid}`, "layout");
+  return { ok: true };
+}
+
 export type ManualCsvImportMapping = {
   companyNameColumn: string;
   companyCodeColumn: string;
@@ -1357,7 +1433,26 @@ export async function previewPickClientPriorHistoryAction(
     if (!candidateId || !isValidUuid(candidateId)) {
       return { ok: false, error: "Neteisinga sutartis." };
     }
-    clientKey = procurementContractClientKey(candidateId);
+    const { data: cRow } = await supabase
+      .from("project_procurement_contracts")
+      .select("organization_name,organization_code")
+      .eq("id", candidateId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (!cRow) return { ok: false, error: "Sutartis nerasta." };
+    const orgCode =
+      (cRow as { organization_code?: string | null }).organization_code != null
+        ? String((cRow as { organization_code?: string | null }).organization_code).trim() || null
+        : null;
+    const orgName = String((cRow as { organization_name?: string | null }).organization_name ?? "").trim() || null;
+    clientKey =
+      procurementOrgClientKeyFromContract({
+        organization_code: orgCode,
+        organization_name: orgName,
+      }) ?? "";
+    companyCode = orgCode;
+    companyName = orgName;
+    if (!clientKey) return { ok: false, error: "Trūksta įstaigos identifikatoriaus." };
   }
 
   // CRM laukai — platesniam sibling match (company_code / VAT).
@@ -1671,7 +1766,7 @@ export async function pickClientFromProject(formData: FormData): Promise<PickCli
       };
     }
 
-    const c = cRow as {
+    const seed = cRow as {
       id: string;
       organization_name: string | null;
       organization_code: string | null;
@@ -1680,27 +1775,90 @@ export async function pickClientFromProject(formData: FormData): Promise<PickCli
       value: number | null;
     };
 
-    const validUntil =
-      typeof c.valid_until === "string"
-        ? c.valid_until.slice(0, 10)
-        : String(c.valid_until ?? "").slice(0, 10) || MANUAL_LEAD_PLACEHOLDER_INVOICE_DATE;
-    const rev = c.value != null && Number.isFinite(Number(c.value)) ? Number(c.value) : 0;
-    const orgName = String(c.organization_name ?? "").trim();
-    const obj = String(c.contract_object ?? "").trim();
-    const title = orgName && obj ? `${orgName} — ${obj}` : orgName || obj || "Sutartis";
+    const orgKey = procurementOrgClientKeyFromContract(seed);
+    if (!orgKey) {
+      return {
+        ok: false,
+        error: "Trūksta įstaigos pavadinimo arba kodo — negalima priskirti.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
+    }
+
+    const blocked = await fetchBlockedProcurementContractIds(supabase, projectId);
+    if (!blocked.ok) {
+      return {
+        ok: false,
+        error: blocked.error,
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
+    }
+    if (blocked.blockedOrgKeys.includes(orgKey) || blocked.contractIds.includes(String(seed.id))) {
+      return {
+        ok: false,
+        error: "Ši įstaiga jau yra darbe, užbaigta arba pažymėta kaip netinkama.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
+    }
+
+    const orgCode = String(seed.organization_code ?? "").trim();
+    let orgContractsQuery = supabase
+      .from("project_procurement_contracts")
+      .select("id,organization_name,organization_code,contract_object,valid_until,value")
+      .eq("project_id", projectId)
+      .limit(500);
+
+    if (orgCode) {
+      orgContractsQuery = orgContractsQuery.eq("organization_code", orgCode);
+    } else {
+      orgContractsQuery = orgContractsQuery.eq("organization_name", String(seed.organization_name ?? "").trim());
+    }
+
+    const { data: orgContractRows, error: orgListErr } = await orgContractsQuery;
+    if (orgListErr) {
+      console.error("[pickClientFromProject] procurement org contracts", orgListErr);
+      return {
+        ok: false,
+        error: orgListErr.message ?? "Nepavyko įkelti įstaigos sutarčių.",
+        timings: finishPickTimings(tServer0, { projectLoadMs }),
+      };
+    }
+
+    const orgContracts = ((orgContractRows ?? []) as typeof seed[]).filter(
+      (r) => procurementOrgClientKeyFromContract(r) === orgKey
+    );
+    const list = orgContracts.length > 0 ? orgContracts : [seed];
+
+    let sumValue = 0;
+    let nearestUntil: string | null = null;
+    let nearestId = String(seed.id);
+    for (const c of list) {
+      if (c.value != null && Number.isFinite(Number(c.value))) sumValue += Number(c.value);
+      const vu =
+        typeof c.valid_until === "string"
+          ? c.valid_until.slice(0, 10)
+          : String(c.valid_until ?? "").slice(0, 10);
+      if (vu && (/^\d{4}-\d{2}-\d{2}$/.test(vu)) && (nearestUntil == null || vu < nearestUntil)) {
+        nearestUntil = vu;
+        nearestId = String(c.id);
+      }
+    }
+
+    const orgName = String(seed.organization_name ?? "").trim() || "Įstaiga";
+    const n = list.length;
+    const title = n > 1 ? `${orgName} (${n} sutartys)` : orgName;
 
     return wrapInsert(
       { projectLoadMs },
       insertPickedWorkItemRow(supabase, projectId, assignedTo, {
-        client_key: procurementContractClientKey(String(c.id)),
-        client_identifier_display: formatProjectClientIdentifier(c.organization_code, null),
+        client_key: orgKey,
+        client_identifier_display: formatProjectClientIdentifier(seed.organization_code, null),
         client_name_snapshot: title,
-        snapshot_order_count: 0,
-        snapshot_revenue: rev,
-        snapshot_last_invoice_date: validUntil,
+        snapshot_order_count: n,
+        snapshot_revenue: sumValue,
+        snapshot_last_invoice_date: nearestUntil || MANUAL_LEAD_PLACEHOLDER_INVOICE_DATE,
         snapshot_priority: 1,
         source_type: "procurement_contract",
-        source_id: String(c.id),
+        source_id: nearestId,
       }),
     );
   }

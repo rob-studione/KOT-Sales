@@ -14,6 +14,7 @@ type Status = "active" | "netinkamas";
 export function CandidatesListStatusToggle({
   projectId,
   currentStatus,
+  tab = "kandidatai",
   q,
   period,
   from,
@@ -22,13 +23,13 @@ export function CandidatesListStatusToggle({
 }: {
   projectId: string;
   currentStatus: Status;
+  tab?: ProjectDetailTab;
   q?: string;
   period?: string;
   from?: string;
   to?: string;
   pageSize?: number;
 }) {
-  const tab: ProjectDetailTab = "kandidatai";
   const base = {
     tab,
     page: 0 as const,

@@ -7,6 +7,9 @@ import type { ProjectAnalyticsRange } from "@/lib/crm/projectAnalytics";
 export type ProcurementDashboardAnalyticsDto = {
   range: ProjectAnalyticsRange;
   totals: {
+    /** Distinct įstaigos (organizacijos) projekte. */
+    organizations: number;
+    /** @deprecated alias of organizations (senas RPC laukas). */
     contracts: number;
     calls: number;
     contacted: number;
@@ -73,6 +76,7 @@ async function rpcProcurementOverviewAnalytics(
 
   const payload = (data ?? {}) as {
     totals?: {
+      organizations?: unknown;
       contracts?: unknown;
       calls?: unknown;
       contacted?: unknown;
@@ -95,12 +99,15 @@ async function rpcProcurementOverviewAnalytics(
   const int = (v: unknown) => Math.max(0, Math.trunc(num(v)));
   const pctRaw = payload.period?.contactedConversionPercent;
   const pctNum = typeof pctRaw === "number" ? pctRaw : typeof pctRaw === "string" ? Number(pctRaw) : NaN;
+  const organizations =
+    payload.totals?.organizations != null ? int(payload.totals.organizations) : int(payload.totals?.contracts);
 
   return {
     ok: true,
     data: {
       totals: {
-        contracts: int(payload.totals?.contracts),
+        organizations,
+        contracts: organizations,
         calls: int(payload.totals?.calls),
         contacted: int(payload.totals?.contacted),
         calledWorkItems: int(payload.totals?.calledWorkItems),
@@ -210,13 +217,28 @@ async function fetchProcurementContractsTotalValue(
   return totalEur;
 }
 
-async function fetchProcurementContractsCountTotal(supabase: SupabaseClient, projectId: string): Promise<number> {
-  const { count, error } = await supabase
+async function fetchProcurementOrganizationsCount(supabase: SupabaseClient, projectId: string): Promise<number> {
+  const { data, error } = await supabase
     .from("project_procurement_contracts")
-    .select("id", { count: "exact", head: true })
-    .eq("project_id", projectId);
+    .select("organization_code,organization_name")
+    .eq("project_id", projectId)
+    .limit(12000);
   if (error) return 0;
-  return count ?? 0;
+  const keys = new Set<string>();
+  for (const r of (data ?? []) as Array<{ organization_code?: unknown; organization_name?: unknown }>) {
+    const code = String(r.organization_code ?? "").trim();
+    if (code && !code.toUpperCase().startsWith("PERSON_")) {
+      keys.add(`po:${code}`);
+      continue;
+    }
+    const name = String(r.organization_name ?? "")
+      .normalize("NFKC")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    if (name) keys.add(`po:name:${name}`);
+  }
+  return keys.size;
 }
 
 export async function fetchProcurementDashboardAnalytics(
@@ -235,17 +257,18 @@ export async function fetchProcurementDashboardAnalytics(
   }
 
   console.warn("[procurementAnalytics] overview RPC fallback:", rpc.error);
-  const [totalsEff, periodEff, totalValueEur, totalContracts] = await Promise.all([
+  const [totalsEff, periodEff, totalValueEur, organizations] = await Promise.all([
     computeProcurementEffortAndInvites(supabase, projectId, totalsRange),
     computeProcurementEffortAndInvites(supabase, projectId, range),
     fetchProcurementContractsTotalValue(supabase, projectId),
-    fetchProcurementContractsCountTotal(supabase, projectId),
+    fetchProcurementOrganizationsCount(supabase, projectId),
   ]);
 
   return {
     range,
     totals: {
-      contracts: totalContracts,
+      organizations,
+      contracts: organizations,
       calls: totalsEff.calls,
       contacted: totalsEff.contacted,
       calledWorkItems: totalsEff.calledWorkItems,

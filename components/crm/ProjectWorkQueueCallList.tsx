@@ -31,7 +31,7 @@ import {
   type WorkItemTouchActionType,
 } from "@/lib/crm/projectBoardConstants";
 import { loadCandidateExpandDetailsAction, saveWorkItemTouchpoint } from "@/lib/crm/projectActions";
-import { parseProcurementContractIdFromClientKey } from "@/lib/crm/procurementContractClientKey";
+import { isProcurementOrgClientKey, parseProcurementContractIdFromClientKey } from "@/lib/crm/procurementContractClientKey";
 import type { CandidateExpandDetails } from "@/lib/crm/candidateExpandTypes";
 import type { ProjectWorkItemActivityDto } from "@/lib/crm/projectWorkItemActivityDto";
 import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
@@ -384,6 +384,7 @@ function WorkItemCard({
     const ck = item.client_key;
     if (!ck) return;
     if (parseProcurementContractIdFromClientKey(ck)) return;
+    if (isProcurementOrgClientKey(ck)) return;
     if (detailsCache.has(ck)) return;
 
     let cancelled = false;

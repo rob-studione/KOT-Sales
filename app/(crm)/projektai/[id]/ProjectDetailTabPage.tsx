@@ -68,9 +68,14 @@ import { ProcurementContractsPanel } from "@/components/crm/ProcurementContracts
 import {
   fetchProcurementContractsCount,
   fetchProcurementContractsForProject,
-  fetchProcurementContractsValueSum,
   type ProcurementContractRow,
 } from "@/lib/crm/procurementContracts";
+import {
+  fetchBlockedProcurementContractIds,
+  fetchProcurementInvalidOrgKeys,
+  groupProcurementContractsByOrg,
+  type ProcurementOrgGroup,
+} from "@/lib/crm/procurementOrgGrouping";
 import { isManualProjectType, isProcurementProjectType, projectTypeFromDbRow } from "@/lib/crm/projectType";
 import {
   clampPageIndex0,
@@ -393,7 +398,9 @@ export async function ProjectDetailTabPage({
   }
 
   let procurementContractsTotal = 0;
+  let procurementOrgGroupsTotal = 0;
   let procurementContracts: ProcurementContractRow[] = [];
+  let procurementOrgGroups: ProcurementOrgGroup[] = [];
   let procurementContractsValueSumEur = 0;
   let procurementFilterOptions: { organizations: string[]; suppliers: string[]; types: string[] } = {
     organizations: [],
@@ -402,6 +409,7 @@ export async function ProjectDetailTabPage({
   };
   const procurementT0 = 0;
   let procurementOpenPickedContractIds: string[] = [];
+  let procurementListStatus: "active" | "netinkamas" = "active";
   if (isProcurement && tab === "sutartys") {
     function parseCsvList(raw: unknown): string[] {
       const s = typeof raw === "string" ? raw : "";
@@ -430,64 +438,72 @@ export async function ProjectDetailTabPage({
     const validTo = parseYmd(typeof sp.validTo === "string" ? sp.validTo : "");
     const searchQ = typeof sp.q === "string" ? sp.q.trim() : "";
 
-    // Exclude already-picked procurement contracts (open work items).
+    procurementListStatus = parseManualCandidatesStatus(
+      typeof sp.candidateStatus === "string" ? sp.candidateStatus : undefined
+    );
+
+    // Aktyvūs: slepiame darbe/užbaigtas + netinkamas. Netinkamos: rodome tik exclusions.
     roundTripCount += 1;
-    const { data: pickedRows } = await supabase
-      .from("project_work_items")
-      .select("source_id,result_status,source_type")
-      .eq("project_id", id)
-      .eq("source_type", "procurement_contract");
-    const excludeIds = (pickedRows ?? [])
-      .filter((r) => !isProjectWorkItemClosed(String((r as { result_status?: unknown } | null)?.result_status ?? "")))
-      .map((r) => String((r as { source_id?: unknown } | null)?.source_id ?? ""))
-      .filter(Boolean);
+    const blocked = await fetchBlockedProcurementContractIds(supabase, id, {
+      includeInvalidExclusions: procurementListStatus === "active",
+    });
+    const workAndInvalidExcludeIds = blocked.ok ? blocked.contractIds : [];
+    procurementOpenPickedContractIds = workAndInvalidExcludeIds;
+
+    const invalidKeysRes = await fetchProcurementInvalidOrgKeys(supabase, id);
+    const invalidOrgKeys = new Set(invalidKeysRes.ok ? invalidKeysRes.orgKeys : []);
 
     const pc = await fetchProcurementContractsCount(supabase, id);
     if (pc.ok) procurementContractsTotal = pc.count;
-    if (tab === "sutartys") {
-      const filters = {
-        q: searchQ || null,
-        organizationNames: filterOrgs,
-        suppliers: filterSuppliers,
-        types: filterTypes,
-        validFrom,
-        validTo,
-        excludeIds,
-      };
 
-      const pcFiltered = await fetchProcurementContractsCount(supabase, id, filters);
-      if (pcFiltered.ok) procurementContractsTotal = pcFiltered.count;
+    const filters = {
+      q: searchQ || null,
+      organizationNames: filterOrgs,
+      suppliers: filterSuppliers,
+      types: filterTypes,
+      validFrom,
+      validTo,
+      excludeIds: procurementListStatus === "active" ? workAndInvalidExcludeIds : [],
+    };
 
-      const vs = await fetchProcurementContractsValueSum(supabase, id, filters);
-      if (vs.ok) procurementContractsValueSumEur = vs.sumEur;
+    const full = await fetchProcurementContractsForProject(supabase, id, { sortBy, sortDir, filters });
+    let allRows = full.ok ? full.rows : [];
+    let allGroups = groupProcurementContractsByOrg(allRows, { sortBy, sortDir });
+    if (procurementListStatus === "netinkamas") {
+      allGroups = allGroups.filter((g) => invalidOrgKeys.has(g.orgKey));
+      allRows = allGroups.flatMap((g) => g.contracts);
+    }
+    procurementOrgGroupsTotal = allGroups.length;
+    procurementContractsTotal = allRows.length;
+    let valueSum = 0;
+    for (const g of allGroups) valueSum += g.totalValueEur;
+    procurementContractsValueSumEur = valueSum;
 
-      if (procurementShowAll) {
-        const full = await fetchProcurementContractsForProject(supabase, id, { sortBy, sortDir, filters });
-        if (full.ok) procurementContracts = full.rows;
-      } else {
-        const requestedProcPageIndex0 = parsePageIndex0(sp.page);
-        const procPageSize = parsePageSize(sp.pageSize);
-        const procTotalPages = totalPagesFromCount(procurementContractsTotal, procPageSize);
-        const procPageIndex0 = clampPageIndex0(requestedProcPageIndex0, procTotalPages);
-        if (procPageIndex0 !== requestedProcPageIndex0) {
-          redirect(
-            buildProjectDetailHref(id, {
-              tab: "sutartys",
-              ...projectLinkOpts,
-              page: procPageIndex0,
-              pageSize: procPageSize,
-            })
-          );
-        }
-
-        const limit = procPageSize;
-        const offset = procPageIndex0 * procPageSize;
-        const pageRes = await fetchProcurementContractsForProject(supabase, id, { limit, offset, sortBy, sortDir, filters });
-        if (pageRes.ok) procurementContracts = pageRes.rows;
+    if (procurementShowAll) {
+      procurementOrgGroups = allGroups;
+      procurementContracts = allRows;
+    } else {
+      const requestedProcPageIndex0 = parsePageIndex0(sp.page);
+      const procPageSize = parsePageSize(sp.pageSize);
+      const procTotalPages = totalPagesFromCount(procurementOrgGroupsTotal, procPageSize);
+      const procPageIndex0 = clampPageIndex0(requestedProcPageIndex0, procTotalPages);
+      if (procPageIndex0 !== requestedProcPageIndex0) {
+        redirect(
+          buildProjectDetailHref(id, {
+            tab: "sutartys",
+            ...projectLinkOpts,
+            page: procPageIndex0,
+            pageSize: procPageSize,
+            ...(procurementListStatus === "netinkamas" ? { candidateStatus: "netinkamas" as const } : {}),
+          })
+        );
       }
+      const start = procPageIndex0 * procPageSize;
+      procurementOrgGroups = allGroups.slice(start, start + procPageSize);
+      procurementContracts = procurementOrgGroups.flatMap((g) => g.contracts);
     }
 
-    // Filter options (distinct-ish) for UI panel. Use all contracts excluding picked, no other filters.
+    // Filter options: all contracts excluding blocked orgs.
     roundTripCount += 1;
     let optsQ = supabase
       .from("project_procurement_contracts")
@@ -495,8 +511,12 @@ export async function ProjectDetailTabPage({
       .eq("project_id", id)
       .order("valid_until", { ascending: true })
       .limit(5000);
-    if (excludeIds.length > 0) {
-      optsQ = optsQ.not("id", "in", `(${excludeIds.map((x) => `"${x.replaceAll('"', "")}"`).join(",")})`);
+    if (workAndInvalidExcludeIds.length > 0) {
+      optsQ = optsQ.not(
+        "id",
+        "in",
+        `(${workAndInvalidExcludeIds.map((x) => `"${x.replaceAll('"', "")}"`).join(",")})`
+      );
     }
     const { data: optRows } = await optsQ;
     const orgSet = new Set<string>();
@@ -515,8 +535,6 @@ export async function ProjectDetailTabPage({
       suppliers: [...supSet].sort((a, b) => a.localeCompare(b, "lt")),
       types: [...typeSet].sort((a, b) => a.localeCompare(b, "lt")),
     };
-
-    procurementOpenPickedContractIds = excludeIds;
   }
   if (isProcurement && tab === "sutartys") {
     markMs("procurementMs", 0 - procurementT0);
@@ -986,17 +1004,26 @@ export async function ProjectDetailTabPage({
           <CrmTableContainer>
             <CrmListPageIntro
               title="Sutartys"
-              description="Pilnas viešųjų pirkimų sutarčių backlog. Filtrai ir rikiavimas taikomi visam sąrašui. „Priskirti sau“ sukuria darbo eilutę skirtuke „Darbas“."
+              description="Backlog pagal įstaigą (sutartys — kontekstas). „Priskirti sau“ paima visą įstaigą į darbą vienu kartu."
             />
+            <CrmListPageControls>
+              <CandidatesListStatusToggle
+                projectId={id}
+                tab="sutartys"
+                currentStatus={procurementListStatus}
+                q={typeof sp.q === "string" ? sp.q : undefined}
+                pageSize={parsePageSize(sp.pageSize)}
+              />
+            </CrmListPageControls>
             <CrmListPageMain>
               {(() => {
                 const procurementAllRaw = typeof sp.all === "string" ? sp.all : "";
                 const procurementShowAll = procurementAllRaw === "1" || procurementAllRaw.toLowerCase() === "true";
                 const requestedProcPageIndex0 = parsePageIndex0(sp.page);
                 const procPageSize = parsePageSize(sp.pageSize);
-                const procTotalPages = totalPagesFromCount(procurementContractsTotal, procPageSize);
+                const procTotalPages = totalPagesFromCount(procurementOrgGroupsTotal, procPageSize);
                 const procPageIndex0 = clampPageIndex0(requestedProcPageIndex0, procTotalPages);
-                const sr = showingRange1Based(procPageIndex0, procPageSize, procurementContractsTotal);
+                const sr = showingRange1Based(procPageIndex0, procPageSize, procurementOrgGroupsTotal);
 
                 const sortBy = typeof sp.sortBy === "string" ? sp.sortBy : "";
                 const sortDir = typeof sp.sortDir === "string" ? sp.sortDir : "";
@@ -1018,12 +1045,14 @@ export async function ProjectDetailTabPage({
                   ...(validFrom ? { validFrom: String(validFrom) } : {}),
                   ...(validTo ? { validTo: String(validTo) } : {}),
                   ...(q ? { q: String(q) } : {}),
+                  ...(procurementListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
                 };
 
                 return (
               <ProcurementContractsPanel
                 projectId={id}
-                contracts={procurementContracts}
+                orgGroups={procurementOrgGroups}
+                listStatus={procurementListStatus}
                 procurementNotifyDaysBefore={Math.min(
                   365,
                   Math.max(0, Number(p.procurement_notify_days_before ?? 14) || 14)
@@ -1031,12 +1060,16 @@ export async function ProjectDetailTabPage({
                 defaultAssignee={defaultAssignee}
                 openPickedContractIds={procurementOpenPickedContractIds}
                 filterOptions={procurementFilterOptions}
-                resultsSummary={{ count: procurementContractsTotal, totalValueEur: procurementContractsValueSumEur }}
+                resultsSummary={{
+                  orgCount: procurementOrgGroupsTotal,
+                  contractCount: procurementContractsTotal,
+                  totalValueEur: procurementContractsValueSumEur,
+                }}
                 pagination={{
                   showAll: procurementShowAll,
                   pageIndex0: procPageIndex0,
                   pageSize: procPageSize,
-                  totalCount: procurementContractsTotal,
+                  totalCount: procurementOrgGroupsTotal,
                   totalPages: procTotalPages,
                   showingFrom: sr.from,
                   showingTo: sr.to,

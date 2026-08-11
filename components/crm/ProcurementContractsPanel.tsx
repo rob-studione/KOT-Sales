@@ -3,10 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { formatDate, formatMoney } from "@/lib/crm/format";
 import {
   importProcurementContractsCsvAction,
+  markProcurementOrgAsInvalidAction,
+  restoreProcurementOrgAction,
   updateProjectProcurementNotifyDaysAction,
   type ImportProcurementContractsCsvResult,
 } from "@/lib/crm/projectActions";
@@ -21,11 +23,11 @@ import {
   procurementCalendarDaysLeft,
 } from "@/lib/crm/procurementDates";
 import {
-  procurementContractTypeFullLabel,
   procurementContractTypeTableParts,
 } from "@/lib/crm/procurementContractTypeDisplay";
 import { ProjectCandidatePickForm } from "@/components/crm/ProjectCandidatePickForm";
 import { TruncateTooltip } from "@/components/crm/TruncateTooltip";
+import type { ProcurementOrgGroup } from "@/lib/crm/procurementOrgGrouping";
 
 function formatCsvFileSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
@@ -120,7 +122,8 @@ function computeImportPreview(
 
 export function ProcurementContractsPanel({
   projectId,
-  contracts,
+  orgGroups,
+  listStatus = "active",
   procurementNotifyDaysBefore,
   defaultAssignee,
   openPickedContractIds,
@@ -129,12 +132,13 @@ export function ProcurementContractsPanel({
   pagination,
 }: {
   projectId: string;
-  contracts: ProcurementContractRow[];
+  orgGroups: ProcurementOrgGroup[];
+  listStatus?: "active" | "netinkamas";
   procurementNotifyDaysBefore: number;
   defaultAssignee: string;
   openPickedContractIds: string[];
   filterOptions: { organizations: string[]; suppliers: string[]; types: string[] };
-  resultsSummary: { count: number; totalValueEur: number };
+  resultsSummary: { orgCount: number; contractCount: number; totalValueEur: number };
   pagination: {
     showAll: boolean;
     pageIndex0: number;
@@ -154,6 +158,8 @@ export function ProcurementContractsPanel({
   const [importResult, setImportResult] = useState<ImportProcurementContractsCsvResult | null>(null);
   const [importPending, startImport] = useTransition();
   const [notifyPending, startNotify] = useTransition();
+  const [statusPending, startStatus] = useTransition();
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
   const [notifyEditOpen, setNotifyEditOpen] = useState(false);
   const [notifyDraft, setNotifyDraft] = useState(() => String(procurementNotifyDaysBefore));
@@ -188,16 +194,17 @@ export function ProcurementContractsPanel({
   const sortValue = `${sortBy || "valid_until"}:${sortDir || "asc"}`;
 
   const pickedSet = useMemo(() => new Set(openPickedContractIds.map((x) => String(x).trim()).filter(Boolean)), [openPickedContractIds]);
-  const [optimisticPickedContractIds, setOptimisticPickedContractIds] = useState<Set<string>>(() => new Set());
+  const [optimisticPickedOrgKeys, setOptimisticPickedOrgKeys] = useState<Set<string>>(() => new Set());
+  const [expandedOrgKeys, setExpandedOrgKeys] = useState<Set<string>>(() => new Set());
 
-  const listContracts = useMemo(
-    () => contracts.filter((c) => !pickedSet.has(String(c.id))),
-    [contracts, pickedSet]
-  );
-
-  const visibleContracts = useMemo(
-    () => listContracts.filter((c) => !optimisticPickedContractIds.has(String(c.id))),
-    [listContracts, optimisticPickedContractIds],
+  const listGroups = useMemo(
+    () =>
+      orgGroups.filter((g) => {
+        if (optimisticPickedOrgKeys.has(g.orgKey)) return false;
+        if (g.contracts.some((c) => pickedSet.has(String(c.id)))) return false;
+        return true;
+      }),
+    [orgGroups, pickedSet, optimisticPickedOrgKeys]
   );
 
   const buildHref = useMemo(() => {
@@ -288,7 +295,7 @@ export function ProcurementContractsPanel({
     return { pages, leftGap, rightGap, cur, total };
   }, [pagination.pageIndex0, pagination.totalPages]);
 
-  const empty = contracts.length === 0;
+  const empty = resultsSummary.orgCount === 0 && orgGroups.length === 0;
 
   const importJustSucceeded = importResult?.ok === true;
   const importLocked = importPending || importJustSucceeded;
@@ -323,7 +330,8 @@ export function ProcurementContractsPanel({
         const keys = resolveProcurementCsvColumnKeys(first as Record<string, unknown>);
         const { rows, issues } = mapProcurementCsvRows(parsed, keys);
         const existingDedupeKeys = new Set(
-          contracts
+          orgGroups
+            .flatMap((g) => g.contracts)
             .map((c) => c.import_dedupe_key)
             .filter((k): k is string => typeof k === "string" && k.length > 0)
         );
@@ -348,7 +356,7 @@ export function ProcurementContractsPanel({
     return () => {
       cancelled = true;
     };
-  }, [importOpen, csvFile, contracts]);
+  }, [importOpen, csvFile, orgGroups]);
 
   useEffect(() => {
     if (!importOpen) return;
@@ -610,9 +618,12 @@ export function ProcurementContractsPanel({
           ) : null}
 
           <p className="text-xs text-zinc-600">
-            Rasta <span className="font-semibold tabular-nums text-zinc-900">{Math.max(0, resultsSummary.count)}</span>{" "}
+            Rasta <span className="font-semibold tabular-nums text-zinc-900">{Math.max(0, resultsSummary.orgCount)}</span>{" "}
+            įstaigų <span className="text-zinc-400">•</span>{" "}
+            <span className="font-semibold tabular-nums text-zinc-900">{Math.max(0, resultsSummary.contractCount)}</span>{" "}
             sutarčių <span className="text-zinc-400">•</span> Bendra vertė{" "}
             <span className="font-semibold tabular-nums text-zinc-900">{formatMoney(Math.max(0, resultsSummary.totalValueEur))}</span>
+            {statusError ? <span className="ml-2 text-red-600">{statusError}</span> : null}
           </p>
         </div>
 
@@ -1068,117 +1079,182 @@ export function ProcurementContractsPanel({
         <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 px-6 py-12 text-center text-sm text-zinc-500">
           Nėra sutarčių. Įkelkite CSV su viešųjų pirkimų sutartimis.
         </div>
-      ) : listContracts.length === 0 ? (
+      ) : listGroups.length === 0 ? (
         <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 px-6 py-12 text-center text-sm text-zinc-500">
-          Visos sutartys jau priskirtos darbui. Perjunkite į skirtuką „Darbas“.
+          {listStatus === "netinkamas"
+            ? "Nėra netinkamų įstaigų."
+            : "Visos įstaigos jau darbe arba užbaigtos. Perjunkite į skirtuką „Darbas“ / „Užbaigta“."}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-zinc-200/80 bg-white shadow-sm ring-1 ring-zinc-100/80">
           <table className="min-w-[900px] w-full border-collapse text-left text-sm">
             <thead className="sticky top-0 z-[1] border-b border-zinc-200 bg-zinc-50/95 text-xs font-semibold uppercase tracking-wide text-zinc-500 backdrop-blur-sm">
               <tr>
-                <th className="px-3 py-3">Organizacija</th>
-                <th className="px-3 py-3">Sutarties objektas</th>
-                <th className="whitespace-nowrap px-3 py-3">Iki</th>
+                <th className="px-3 py-3">Įstaiga</th>
+                <th className="whitespace-nowrap px-3 py-3">Sutartys</th>
+                <th className="whitespace-nowrap px-3 py-3">Artimiausia iki</th>
                 <th className="whitespace-nowrap px-3 py-3">Liko dienų</th>
-                <th className="whitespace-nowrap px-3 py-3">Vertė</th>
-                <th className="min-w-[14rem] px-3 py-3">Dabartinis tiekėjas (-ai)</th>
-                <th className="w-20 whitespace-nowrap px-2 py-3 text-right">Tipas</th>
+                <th className="whitespace-nowrap px-3 py-3">Suma</th>
                 <th className="whitespace-nowrap px-3 py-3 text-right">Veiksmas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {visibleContracts.map((c) => {
-                const daysLeft = procurementCalendarDaysLeft(c.valid_until);
-                const typeParts = procurementContractTypeTableParts(c.type);
-                const supplierRaw = c.supplier?.trim() ? c.supplier.trim() : "";
-                const uidRaw = c.contract_uid?.trim() ? c.contract_uid.trim() : "";
-                const orgCode = c.organization_code?.trim() ? c.organization_code.trim() : "—";
+              {listGroups.map((g) => {
+                const daysLeft = g.nearestValidUntil ? procurementCalendarDaysLeft(g.nearestValidUntil) : null;
+                const orgCode = g.organization_code?.trim() ? g.organization_code.trim() : "";
+                const expanded = expandedOrgKeys.has(g.orgKey);
+                const pickContractId = g.contracts[0]?.id;
                 return (
-                  <tr key={c.id} className="hover:bg-zinc-50/80">
-                    <td className="max-w-[200px] px-3 py-2.5 align-middle font-medium text-zinc-900">
-                      <div className="min-w-0">
-                        <TruncateTooltip
-                          text={c.organization_name?.trim() ? c.organization_name : "—"}
-                          className="truncate"
-                        />
-                        {orgCode !== "—" ? (
-                          <div className="mt-0.5 whitespace-nowrap text-xs font-mono font-normal text-zinc-500">
-                            kodas: <span className="tabular-nums">{orgCode}</span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="max-w-[200px] px-3 py-2.5 align-middle text-zinc-800">
-                      <div className="min-w-0">
-                        <TruncateTooltip
-                          text={c.contract_object?.trim() ? c.contract_object : "—"}
-                          className="line-clamp-2"
-                        />
-                        {uidRaw ? (
-                          <div className="mt-0.5 max-w-full whitespace-nowrap text-xs font-mono text-zinc-500">
-                            <span className="block truncate" title={uidRaw}>
-                              ID: <span className="tabular-nums">{uidRaw}</span>
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle tabular-nums text-zinc-800">
-                      {formatDate(c.valid_until)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle tabular-nums text-zinc-700">
-                      {daysLeft === null ? "—" : daysLeft}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle tabular-nums font-medium text-zinc-900">
-                      {c.value != null ? formatMoney(c.value) : "—"}
-                    </td>
-                    <td className="max-w-[18rem] px-3 py-2.5 align-middle text-zinc-800">
-                      {supplierRaw ? (
-                        <TruncateTooltip text={supplierRaw} className="truncate" />
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="w-20 whitespace-nowrap px-2 py-2.5 align-middle text-right text-zinc-800">
-                      <span
-                        className="block truncate text-right"
-                        title={(() => {
-                          const cell = String(typeParts.cellText ?? "").trim();
-                          const full = procurementContractTypeFullLabel(c.type);
-                          if (!cell || cell === "—") return "";
-                          // Jei mappingo nėra, `full` = originalas, t.y. title == cell.
-                          return full || cell;
-                        })()}
-                      >
-                        {typeParts.cellText}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">
-                      <div className="flex justify-end">
-                        <ProjectCandidatePickForm
-                          projectId={projectId}
-                          defaultAssignee={defaultAssignee}
-                          candidateType="procurement_contract"
-                          candidateId={c.id}
-                          onOptimisticPick={(t) => {
-                            if (t.kind === "procurement_contract") {
-                              setOptimisticPickedContractIds((s) => new Set(s).add(t.contractId));
-                            }
-                          }}
-                          onOptimisticRevert={(t) => {
-                            if (t.kind === "procurement_contract") {
-                              setOptimisticPickedContractIds((s) => {
-                                const n = new Set(s);
-                                n.delete(t.contractId);
-                                return n;
-                              });
-                            }
-                          }}
-                        />
-                      </div>
-                    </td>
-                  </tr>
+                  <Fragment key={g.orgKey}>
+                    <tr className="hover:bg-zinc-50/80">
+                      <td className="max-w-[280px] px-3 py-2.5 align-middle font-medium text-zinc-900">
+                        <div className="min-w-0">
+                          <TruncateTooltip
+                            text={g.organization_name?.trim() ? g.organization_name : "—"}
+                            className="truncate"
+                          />
+                          {orgCode ? (
+                            <div className="mt-0.5 whitespace-nowrap text-xs font-mono font-normal text-zinc-500">
+                              kodas: <span className="tabular-nums">{orgCode}</span>
+                            </div>
+                          ) : null}
+                          {g.contractCount > 1 ? (
+                            <button
+                              type="button"
+                              className="mt-1 text-xs font-medium text-[#7C4A57] hover:underline"
+                              onClick={() =>
+                                setExpandedOrgKeys((prev) => {
+                                  const n = new Set(prev);
+                                  if (n.has(g.orgKey)) n.delete(g.orgKey);
+                                  else n.add(g.orgKey);
+                                  return n;
+                                })
+                              }
+                            >
+                              {expanded ? "Slėpti sutartis" : `Rodyti ${g.contractCount} sutartis`}
+                            </button>
+                          ) : g.contracts[0]?.contract_object ? (
+                            <div className="mt-1 text-xs font-normal text-zinc-600 line-clamp-2">
+                              {g.contracts[0].contract_object}
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 align-middle tabular-nums text-zinc-800">
+                        {g.contractCount}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 align-middle tabular-nums text-zinc-800">
+                        {g.nearestValidUntil ? formatDate(g.nearestValidUntil) : "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 align-middle tabular-nums text-zinc-700">
+                        {daysLeft === null ? "—" : daysLeft}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 align-middle tabular-nums font-medium text-zinc-900">
+                        {g.totalValueEur > 0 ? formatMoney(g.totalValueEur) : "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 align-middle">
+                        <div className="flex flex-col items-end gap-1.5">
+                          {listStatus === "active" && pickContractId ? (
+                            <ProjectCandidatePickForm
+                              projectId={projectId}
+                              defaultAssignee={defaultAssignee}
+                              candidateType="procurement_contract"
+                              candidateId={pickContractId}
+                              onOptimisticPick={() => {
+                                setOptimisticPickedOrgKeys((s) => new Set(s).add(g.orgKey));
+                              }}
+                              onOptimisticRevert={() => {
+                                setOptimisticPickedOrgKeys((s) => {
+                                  const n = new Set(s);
+                                  n.delete(g.orgKey);
+                                  return n;
+                                });
+                              }}
+                            />
+                          ) : null}
+                          {listStatus === "active" ? (
+                            <button
+                              type="button"
+                              disabled={statusPending}
+                              onClick={() => {
+                                setStatusError(null);
+                                setOptimisticPickedOrgKeys((s) => new Set(s).add(g.orgKey));
+                                startStatus(async () => {
+                                  const r = await markProcurementOrgAsInvalidAction(projectId, g.orgKey);
+                                  if (!r.ok) {
+                                    setOptimisticPickedOrgKeys((s) => {
+                                      const n = new Set(s);
+                                      n.delete(g.orgKey);
+                                      return n;
+                                    });
+                                    setStatusError(r.error);
+                                    return;
+                                  }
+                                  router.refresh();
+                                });
+                              }}
+                              className="rounded-md px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50"
+                            >
+                              Netinkama
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={statusPending}
+                              onClick={() => {
+                                setStatusError(null);
+                                startStatus(async () => {
+                                  const r = await restoreProcurementOrgAction(projectId, g.orgKey);
+                                  if (!r.ok) {
+                                    setStatusError(r.error);
+                                    return;
+                                  }
+                                  router.refresh();
+                                });
+                              }}
+                              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+                            >
+                              Atkurti
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded
+                      ? g.contracts.map((c) => {
+                          const cDays = procurementCalendarDaysLeft(c.valid_until);
+                          const typeParts = procurementContractTypeTableParts(c.type);
+                          return (
+                            <tr key={c.id} className="bg-zinc-50/60 text-xs text-zinc-600">
+                              <td className="px-3 py-2 pl-8 align-middle" colSpan={2}>
+                                <div className="min-w-0">
+                                  <div className="line-clamp-2 text-zinc-800">
+                                    {c.contract_object?.trim() || "—"}
+                                  </div>
+                                  {c.contract_uid?.trim() ? (
+                                    <div className="mt-0.5 font-mono text-[11px] text-zinc-500">
+                                      ID: {c.contract_uid.trim()}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2 align-middle tabular-nums">
+                                {formatDate(c.valid_until)}
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2 align-middle tabular-nums">
+                                {cDays === null ? "—" : cDays}
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2 align-middle tabular-nums">
+                                {c.value != null ? formatMoney(c.value) : "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2 align-middle text-right">
+                                {typeParts.cellText}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      : null}
+                  </Fragment>
                 );
               })}
             </tbody>
