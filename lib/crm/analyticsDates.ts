@@ -12,6 +12,12 @@ export const DEFAULT_LOST_MONTHS: LostPresetMonth = 12;
 /** Active list: had at least one invoice on or after this local calendar date. */
 export const ACTIVE_WINDOW_MONTHS = 12;
 
+/**
+ * Rankinių kandidatų default Esamas/Buvęs langas (live badge + import klasifikacija).
+ * `/klientai` Aktyvūs lieka ACTIVE_WINDOW_MONTHS (12).
+ */
+export const MANUAL_LEAD_EXISTING_CLIENT_MONTHS = 6;
+
 /** YYYY-MM-DD in local calendar: `monthsAgo` months before `ref`. */
 export function calendarDateMonthsAgo(months: number, ref = new Date()): string {
   const d = new Date(ref.getFullYear(), ref.getMonth() - months, ref.getDate());

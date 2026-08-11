@@ -606,7 +606,9 @@ export function ManualProjectCandidatesPanel({
               <li key={`linked-${row.linked.id}`} className="flex flex-col gap-0 sm:flex-row sm:items-stretch">
                 <div className="min-w-0 flex-1 px-4 py-3.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">Esamas klientas</span>
+                    <span className={crmStatusBadge(row.linked.crm_status)}>
+                      {crmStatusLabel(row.linked.crm_status)}
+                    </span>
                     <Link
                       href={clientDetailPath(row.linked.client_key)}
                       className="font-medium text-zinc-900 underline-offset-2 hover:underline"

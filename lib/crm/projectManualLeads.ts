@@ -2,10 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { logSupabaseError } from "@/lib/supabase/supabaseErrorLog";
 import type { PageSize } from "@/lib/crm/pagination";
 import type { ManualCandidateListStatus } from "@/lib/crm/projectPageSearchParams";
+import { MANUAL_LEAD_EXISTING_CLIENT_MONTHS } from "@/lib/crm/analyticsDates";
+import { computeManualLeadCrmStatus } from "@/lib/crm/manualLeadCrmStatus";
 
 export type ManualCandidatesRpcFilters = {
   candidateStatus?: ManualCandidateListStatus;
   search?: string | null;
+  /** Live Esamas/Buvęs langas (mėn.); default 6. */
+  existingMonths?: number;
 };
 
 /** Visada 6 named paramų – PostgREST aiškiai renkasi vieną signatūrą; NULL = be filtro. */
@@ -96,6 +100,8 @@ export type ProjectManualLinkedClientRow = {
   company_name: string;
   company_code: string | null;
   email: string | null;
+  last_invoice_date: string | null;
+  crm_status: ProjectManualLeadRow["crm_status"];
 };
 
 export async function fetchManualLeadsForProject(
@@ -242,17 +248,32 @@ export async function fetchManualProjectCandidatesPage(
           company_name: ck,
           company_code: null,
           email: null,
+          last_invoice_date: null,
+          crm_status: "new_lead",
         },
       });
     }
   }
 
+  const existingMonths =
+    typeof opts?.existingMonths === "number" && Number.isFinite(opts.existingMonths) && opts.existingMonths > 0
+      ? opts.existingMonths
+      : MANUAL_LEAD_EXISTING_CLIENT_MONTHS;
+
+  for (const item of rows) {
+    if (item.kind !== "lead") continue;
+    item.lead.crm_status = computeManualLeadCrmStatus(item.lead.last_order_at, existingMonths);
+  }
+
   const keys = [...new Set(rows.filter((x): x is Extract<ManualCandidatePageRow, { kind: "linked" }> => x.kind === "linked").map((x) => x.linked.client_key))].filter(Boolean);
-  const viewByKey = new Map<string, { company_name: string | null; company_code: string | null; email: string | null }>();
+  const viewByKey = new Map<
+    string,
+    { company_name: string | null; company_code: string | null; email: string | null; last_invoice_date: string | null }
+  >();
   if (keys.length > 0) {
     const { data: viewRows, error: vErr } = await supabase
       .from("v_client_list_from_invoices")
-      .select("client_key,company_name,company_code,email")
+      .select("client_key,company_name,company_code,email,last_invoice_date")
       .in("client_key", keys);
     if (!vErr && viewRows) {
       for (const v of viewRows as Array<{
@@ -260,11 +281,17 @@ export async function fetchManualProjectCandidatesPage(
         company_name: string | null;
         company_code: string | null;
         email: string | null;
+        last_invoice_date: string | null;
       }>) {
+        const last =
+          v.last_invoice_date != null && String(v.last_invoice_date).trim() !== ""
+            ? String(v.last_invoice_date).slice(0, 10)
+            : null;
         viewByKey.set(String(v.client_key), {
           company_name: v.company_name,
           company_code: v.company_code,
           email: v.email,
+          last_invoice_date: last,
         });
       }
     }
@@ -278,6 +305,8 @@ export async function fetchManualProjectCandidatesPage(
     item.linked.company_code =
       meta?.company_code != null && String(meta.company_code).trim() !== "" ? String(meta.company_code).trim() : null;
     item.linked.email = meta?.email != null && String(meta.email).trim() !== "" ? String(meta.email).trim() : null;
+    item.linked.last_invoice_date = meta?.last_invoice_date ?? null;
+    item.linked.crm_status = computeManualLeadCrmStatus(item.linked.last_invoice_date, existingMonths);
   }
 
   return { rows, totalCount: safeTotal };

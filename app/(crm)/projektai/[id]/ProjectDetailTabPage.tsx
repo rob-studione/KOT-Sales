@@ -20,6 +20,8 @@ import {
   parseProjectCompletedPage1Based,
   type ProjectDetailTab,
 } from "@/lib/crm/projectPageSearchParams";
+import { parseManualLeadExistingMonths } from "@/lib/crm/manualLeadCrmStatus";
+import { MANUAL_LEAD_EXISTING_CLIENT_MONTHS } from "@/lib/crm/analyticsDates";
 import { loadProjectDetailCore } from "@/lib/crm/projectDetailLoad";
 import type { SnapshotCandidateRow } from "@/lib/crm/projectSnapshot";
 import { ProjectCandidateCallList } from "@/components/crm/ProjectCandidateCallList";
@@ -121,6 +123,8 @@ export type ProjectDetailTabPageSearchParams = {
   completedQ?: string | string[];
   /** Baigties statuso filtras skirtuke „Užbaigta“. */
   completedStatus?: string | string[];
+  /** Rankinių kandidatų Esamas/Buvęs langas (mėn.). */
+  existingMonths?: string | string[];
 };
 
 /**
@@ -173,6 +177,7 @@ export async function ProjectDetailTabPage({
     if (preserve.q) q.set("q", preserve.q);
     if (preserve.status) q.set("status", preserve.status);
     if (preserve.candidateStatus) q.set("candidateStatus", preserve.candidateStatus);
+    if (preserve.existingMonths != null) q.set("existingMonths", String(preserve.existingMonths));
     if (preserve.completedPage != null && preserve.completedPage > 1) {
       q.set("completedPage", String(preserve.completedPage));
     }
@@ -354,9 +359,14 @@ export async function ProjectDetailTabPage({
   const manualQRaw = typeof sp.q === "string" ? sp.q : "";
   const manualQueryTrim = manualQRaw.trim();
   const manualSearchFilter = manualQueryTrim.length > 0 ? manualQueryTrim : null;
+  const existingMonthsRaw = Array.isArray(sp.existingMonths) ? sp.existingMonths[0] : sp.existingMonths;
+  const manualExistingMonths = isManual
+    ? parseManualLeadExistingMonths(typeof existingMonthsRaw === "string" ? existingMonthsRaw : undefined)
+    : MANUAL_LEAD_EXISTING_CLIENT_MONTHS;
   const manualRpcFilters = {
     candidateStatus: manualCandidateListStatus,
     search: manualSearchFilter,
+    existingMonths: manualExistingMonths,
   };
 
   let manualCandidatesTotal = 0;
@@ -387,6 +397,9 @@ export async function ProjectDetailTabPage({
             pageSize: manualCandidatesPageSize,
             ...(manualCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
             ...(manualQueryTrim !== "" ? { q: manualQueryTrim } : {}),
+            ...(manualExistingMonths !== MANUAL_LEAD_EXISTING_CLIENT_MONTHS
+              ? { existingMonths: manualExistingMonths }
+              : {}),
           })
         );
       }
@@ -908,6 +921,9 @@ export async function ProjectDetailTabPage({
                       paginationExtraQuery={{
                         ...(manualCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
                         ...(manualQueryTrim !== "" ? { q: manualQueryTrim } : {}),
+                        ...(manualExistingMonths !== MANUAL_LEAD_EXISTING_CLIENT_MONTHS
+                          ? { existingMonths: String(manualExistingMonths) }
+                          : {}),
                         ...(manualCandidatesPageSize !== 20
                           ? { pageSize: String(manualCandidatesPageSize) }
                           : {}),
@@ -920,6 +936,7 @@ export async function ProjectDetailTabPage({
                           defaultCandidateStatus={manualCandidateListStatus}
                           defaultQuery={manualQueryTrim}
                           pageSizeHidden={manualCandidatesPageSize !== 20 ? String(manualCandidatesPageSize) : undefined}
+                          existingMonths={manualExistingMonths}
                         />
                       }
                     />

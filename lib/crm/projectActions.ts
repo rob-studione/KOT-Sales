@@ -51,7 +51,9 @@ import { isMissingWorkItemSourceColumnsError } from "@/lib/crm/projectWorkItemCo
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseDateInputToIso } from "@/lib/crm/format";
 import { resolveNextActionDateForKanbanStatus } from "@/lib/crm/kanbanNextActionDate";
-import { ACTIVE_WINDOW_MONTHS, calendarDateMonthsAgo } from "@/lib/crm/analyticsDates";
+import { MANUAL_LEAD_EXISTING_CLIENT_MONTHS } from "@/lib/crm/analyticsDates";
+import { computeManualLeadCrmStatus } from "@/lib/crm/manualLeadCrmStatus";
+
 import {
   aggregateSnapshotTotals,
   parseProjectSortOption,
@@ -1084,10 +1086,7 @@ type ClientViewMatch = {
 
 function crmStatusFromViewRow(row: ClientViewMatch | null): "existing_client" | "former_client" | "new_lead" {
   if (!row) return "new_lead";
-  const last = typeof row.last_invoice_date === "string" ? row.last_invoice_date.slice(0, 10) : "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(last)) return "former_client";
-  const cutoff = calendarDateMonthsAgo(ACTIVE_WINDOW_MONTHS);
-  return last >= cutoff ? "existing_client" : "former_client";
+  return computeManualLeadCrmStatus(row.last_invoice_date, MANUAL_LEAD_EXISTING_CLIENT_MONTHS);
 }
 
 export async function importManualProjectLeadsCsvAction(

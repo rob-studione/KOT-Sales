@@ -1,4 +1,6 @@
 import { parsePageIndex0, parsePageSize, type PageSize } from "@/lib/crm/pagination";
+import { MANUAL_LEAD_EXISTING_CLIENT_MONTHS } from "@/lib/crm/analyticsDates";
+import { parseManualLeadExistingMonths } from "@/lib/crm/manualLeadCrmStatus";
 
 /** Bendri projekto puslapio query parametrai (skirtukai + apžvalgos periodas). */
 
@@ -56,6 +58,7 @@ export function buildProjectPageQueryPreserve(sp: {
   q?: string | string[];
   status?: string | string[];
   candidateStatus?: string | string[];
+  existingMonths?: string | string[];
   completedPage?: string | string[];
   completedQ?: string | string[];
   completedStatus?: string | string[];
@@ -65,6 +68,7 @@ export function buildProjectPageQueryPreserve(sp: {
   q?: string;
   status?: string;
   candidateStatus?: ProjectAutoCandidatesListStatus;
+  existingMonths?: number;
   completedPage?: number;
   completedQ?: string;
   completedStatus?: string;
@@ -78,6 +82,7 @@ export function buildProjectPageQueryPreserve(sp: {
     q?: string;
     status?: string;
     candidateStatus?: ProjectAutoCandidatesListStatus;
+    existingMonths?: number;
     completedPage?: number;
     completedQ?: string;
     completedStatus?: string;
@@ -90,6 +95,11 @@ export function buildProjectPageQueryPreserve(sp: {
   if (status) out.status = status;
   if (typeof sp.candidateStatus === "string" && sp.candidateStatus === "netinkamas") {
     out.candidateStatus = "netinkamas";
+  }
+  const existingMonthsRaw = Array.isArray(sp.existingMonths) ? sp.existingMonths[0] : sp.existingMonths;
+  const existingMonths = parseManualLeadExistingMonths(existingMonthsRaw);
+  if (existingMonths !== MANUAL_LEAD_EXISTING_CLIENT_MONTHS) {
+    out.existingMonths = existingMonths;
   }
   const c1 = parseProjectCompletedPage1Based(
     Array.isArray(sp.completedPage) ? sp.completedPage[0] : sp.completedPage
@@ -123,6 +133,8 @@ export function buildProjectDetailHref(
     candidateStatus?: ProjectAutoCandidatesListStatus;
     /** Paieška (company_name / company_code). */
     q?: string;
+    /** Rankinių kandidatų live Esamas/Buvęs langas (mėn.); URL tik jei ≠ 6. */
+    existingMonths?: number;
     /**
      * 1-based, skirtukas „Užbaigta“ (kontaktuota) sąrašui. Jei 1, query ne įdedamas.
      * Kiti tab’ai perduoda `...buildProjectPageQueryPreserve` kad išsaugotų reikšmę.
@@ -150,6 +162,13 @@ export function buildProjectDetailHref(
   if (candSt !== "" && candSt !== "active") params.set("candidateStatus", candSt);
   const searchQ = opts.q !== undefined ? String(opts.q).trim() : "";
   if (searchQ !== "") params.set("q", searchQ);
+  if (
+    opts.existingMonths !== undefined &&
+    opts.existingMonths !== MANUAL_LEAD_EXISTING_CLIENT_MONTHS &&
+    Number.isFinite(opts.existingMonths)
+  ) {
+    params.set("existingMonths", String(Math.floor(opts.existingMonths)));
+  }
   if (opts.completedPage !== undefined && opts.completedPage > 1) {
     params.set("completedPage", String(Math.floor(opts.completedPage)));
   }

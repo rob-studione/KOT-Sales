@@ -20,6 +20,7 @@ export function CandidatesListStatusToggle({
   from,
   to,
   pageSize,
+  existingMonths,
 }: {
   projectId: string;
   currentStatus: Status;
@@ -29,6 +30,7 @@ export function CandidatesListStatusToggle({
   from?: string;
   to?: string;
   pageSize?: number;
+  existingMonths?: number;
 }) {
   const base = {
     tab,
@@ -38,6 +40,7 @@ export function CandidatesListStatusToggle({
     ...(to ? { to } : {}),
     ...(pageSize && pageSize !== 20 ? { pageSize } : {}),
     ...(q ? { q } : {}),
+    ...(existingMonths != null ? { existingMonths } : {}),
   };
 
   const hrefActive = buildProjectDetailHref(projectId, {
