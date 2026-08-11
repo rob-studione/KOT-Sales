@@ -14,6 +14,7 @@ import {
   subtractOneCivilDayVilnius,
   vilniusEndUtc,
   vilniusFirstDayOfMonthIso,
+  vilniusMondayOfWeekIso,
   vilniusStartUtc,
   vilniusTodayDateString,
 } from "@/lib/crm/vilniusTime";
@@ -55,16 +56,19 @@ export function resolveAnalyticsRange(
   customTo?: string | null,
   allTimeFrom?: string | null
 ): ProjectAnalyticsRange {
-  const today = calendarDateTodayUtc();
+  // Vilnius — kaip dashboard / manager KPI (ne UTC „šiandien“).
+  const today = vilniusTodayDateString();
   const isIsoDate = (v: string | null | undefined): v is string => Boolean(v && /^\d{4}-\d{2}-\d{2}$/.test(v));
   if (period === "custom" && customFrom && customTo && /^\d{4}-\d{2}-\d{2}$/.test(customFrom) && /^\d{4}-\d{2}-\d{2}$/.test(customTo)) {
     return customFrom <= customTo ? { from: customFrom, to: customTo } : { from: customTo, to: customFrom };
   }
   if (period === "today") return { from: today, to: today };
-  if (period === "week") return { from: calendarDateAddDaysUtc(today, -6), to: today };
+  if (period === "week") {
+    const mon = vilniusMondayOfWeekIso(today);
+    return { from: mon, to: today };
+  }
   if (period === "month") {
-    const [y, m] = today.split("-").map(Number);
-    const first = `${y}-${pad2(m)}-01`;
+    const first = vilniusFirstDayOfMonthIso(today);
     return { from: first, to: today };
   }
   if (period === "prev_month") {
