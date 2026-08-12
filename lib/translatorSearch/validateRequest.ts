@@ -1,3 +1,4 @@
+import { buildTranslatorSearchQueries } from "@/lib/translatorSearch/buildSearchQueries";
 import { TRANSLATOR_SEARCH_LIMITS } from "@/lib/translatorSearch/limits";
 import type {
   TranslatorCandidateTypeFilter,
@@ -5,6 +6,7 @@ import type {
   TranslatorSearchRequestParams,
 } from "@/lib/translatorSearch/types";
 import { assertSafeHttpsUrlSync } from "@/lib/translatorSearch/urlSafety";
+import { webSearchInputCharCount } from "@/lib/translatorSearch/webSearchParse";
 
 export type ValidateRequestResult =
   | { ok: true; params: TranslatorSearchRequestParams; title: string }
@@ -39,9 +41,25 @@ function parseSeedUrls(raw: unknown): string[] {
   return [];
 }
 
+function rejectIfTooLong(
+  value: string,
+  max: number,
+  code: string,
+  label: string
+): ValidateRequestResult | null {
+  if (value.length > max) {
+    return {
+      ok: false,
+      code,
+      error: `${label} per ilgas (maks. ${max} simb.).`,
+    };
+  }
+  return null;
+}
+
 /**
  * Server-side validation + clamp. Never trust UI-only limits.
- * Phase B requires 1–3 HTTPS seed URLs.
+ * Phase C1: search criteria required; seed URLs optional (0–3 HTTPS).
  */
 export function validateTranslatorSearchRequest(body: unknown): ValidateRequestResult {
   const raw = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
@@ -55,6 +73,43 @@ export function validateTranslatorSearchRequest(body: unknown): ValidateRequestR
   if (!languageFrom) return { ok: false, code: "validation_language_from", error: "Nurodykite kalbą (iš)." };
   if (!languageTo) return { ok: false, code: "validation_language_to", error: "Nurodykite kalbą (į)." };
   if (!country) return { ok: false, code: "validation_country", error: "Nurodykite šalį." };
+
+  const tooLong =
+    rejectIfTooLong(
+      languageFrom,
+      TRANSLATOR_SEARCH_LIMITS.maxLanguageFieldChars,
+      "validation_language_from_length",
+      "Kalba (iš)"
+    ) ||
+    rejectIfTooLong(
+      languageTo,
+      TRANSLATOR_SEARCH_LIMITS.maxLanguageFieldChars,
+      "validation_language_to_length",
+      "Kalba (į)"
+    ) ||
+    rejectIfTooLong(
+      country,
+      TRANSLATOR_SEARCH_LIMITS.maxCountryFieldChars,
+      "validation_country_length",
+      "Šalis"
+    ) ||
+    (cityRaw
+      ? rejectIfTooLong(
+          cityRaw,
+          TRANSLATOR_SEARCH_LIMITS.maxCityFieldChars,
+          "validation_city_length",
+          "Miestas"
+        )
+      : null) ||
+    (specializationRaw
+      ? rejectIfTooLong(
+          specializationRaw,
+          TRANSLATOR_SEARCH_LIMITS.maxSpecializationFieldChars,
+          "validation_specialization_length",
+          "Specializacija"
+        )
+      : null);
+  if (tooLong) return tooLong;
 
   const certificationRaw = asTrimmedString(raw.certification).toLowerCase();
   const certification: TranslatorCertificationRequirement =
@@ -88,13 +143,6 @@ export function validateTranslatorSearchRequest(body: unknown): ValidateRequestR
   }
 
   const seedUrlsRaw = parseSeedUrls(raw.seedUrls ?? raw.seed_urls);
-  if (seedUrlsRaw.length < TRANSLATOR_SEARCH_LIMITS.minSeedUrlsPhaseB) {
-    return {
-      ok: false,
-      code: "seed_urls_required_until_phase_c",
-      error: "Phase B reikalauja 1–3 HTTPS seed URL.",
-    };
-  }
   if (seedUrlsRaw.length > TRANSLATOR_SEARCH_LIMITS.maxSeedUrls) {
     return {
       ok: false,
@@ -111,6 +159,26 @@ export function validateTranslatorSearchRequest(body: unknown): ValidateRequestR
     }
     if (!seedUrls.includes(checked.canonicalHref)) {
       seedUrls.push(checked.canonicalHref);
+    }
+  }
+
+  const draftCriteria = {
+    languageFrom,
+    languageTo,
+    country,
+    city: cityRaw || null,
+    certification,
+    specialization: specializationRaw || null,
+    candidateType,
+  };
+  const queries = buildTranslatorSearchQueries(draftCriteria);
+  for (const q of queries) {
+    if (webSearchInputCharCount(q) > TRANSLATOR_SEARCH_LIMITS.maxWebSearchPromptChars) {
+      return {
+        ok: false,
+        code: "validation_criteria_too_long",
+        error: "Paieškos kriterijai per ilgi web-search užklausai.",
+      };
     }
   }
 
@@ -131,6 +199,8 @@ export function validateTranslatorSearchRequest(body: unknown): ValidateRequestR
       maxExtractionCalls: TRANSLATOR_SEARCH_LIMITS.maxExtractionCalls,
       maxCharsPerSource: TRANSLATOR_SEARCH_LIMITS.maxCharsPerSource,
       maxBudgetEur: TRANSLATOR_SEARCH_LIMITS.maxBudgetEur,
+      maxWebSearchCalls: TRANSLATOR_SEARCH_LIMITS.maxWebSearchCalls,
+      maxUniqueSourceUrls: TRANSLATOR_SEARCH_LIMITS.maxUniqueSourceUrls,
     },
   };
 

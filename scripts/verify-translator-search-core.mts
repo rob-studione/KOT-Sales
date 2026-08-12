@@ -14,14 +14,29 @@
  * No live network / DB / OpenAI.
  */
 
+import {
+  CANDIDATE_TYPE_MISMATCH_CODE,
+  CANDIDATE_TYPE_MISMATCH_WARNING,
+  isTargetReached,
+  looksLikeNonPersonTranslatorName,
+  matchesTranslatorCandidateTypeFilter,
+  nextFoundCandidatesAfterMatch,
+} from "@/lib/translatorSearch/candidateTypeMatch";
 import { authorizeTranslatorSearchAdmin } from "@/lib/translatorSearch/auth";
 import { toSafeApiError } from "@/lib/translatorSearch/apiErrors";
+import { buildTranslatorSearchQueries } from "@/lib/translatorSearch/buildSearchQueries";
+import { collectTranslatorSourceUrls } from "@/lib/translatorSearch/collectSourceUrls";
 import { decideCandidateMerge, computeDedupeKey } from "@/lib/translatorSearch/dedupe";
 import { DbUpdateError, assertUpdateApplied, isUniqueViolation } from "@/lib/translatorSearch/dbUpdates";
+import { discoverTranslatorSources } from "@/lib/translatorSearch/discoverSources";
 import {
   groundExtractedCandidateAgainstPage,
   quoteExistsInPageText,
 } from "@/lib/translatorSearch/evidenceGrounding";
+import {
+  canStartTimedAction,
+  createJobDeadline,
+} from "@/lib/translatorSearch/jobDeadline";
 import { canTransitionJobStatus } from "@/lib/translatorSearch/jobStatus";
 import {
   failJobOrThrow,
@@ -32,13 +47,24 @@ import {
 } from "@/lib/translatorSearch/jobPersistence";
 import { TRANSLATOR_SEARCH_LIMITS } from "@/lib/translatorSearch/limits";
 import {
+  assessWebSearchCallCost,
+  isTranslatorSearchBudgetEnforced,
+  TRANSLATOR_SEARCH_COST_UNKNOWN_WARNING,
+} from "@/lib/translatorSearch/costAssessment";
+import { evaluateWebSearchResponse } from "@/lib/translatorSearch/evaluateWebSearch";
+import { buildTranslatorSearchOpenAiRequestOptions } from "@/lib/translatorSearch/openaiRequestOptions";
+import {
   canAffordNextCall,
+  canAffordWebSearchCall,
   estimateCallReserveEur,
+  estimateTranslatorSearchCostEur,
+  estimateWebSearchReserveEur,
   getTranslatorSearchPricing,
   requireTranslatorSearchPricing,
 } from "@/lib/translatorSearch/pricing";
 import { TranslatorSearchConfigError } from "@/lib/translatorSearch/model";
 import { discardResponseBody, safeFetchHtmlCore } from "@/lib/translatorSearch/safeFetchCore";
+import { resolveTranslatorStopReason } from "@/lib/translatorSearch/stopReason";
 import {
   assertSafeHttpsUrlSync,
   isBlockedIpAddress,
@@ -47,6 +73,14 @@ import {
   sanitizeWebsiteUrl,
 } from "@/lib/translatorSearch/urlSafety";
 import { validateTranslatorSearchRequest } from "@/lib/translatorSearch/validateRequest";
+import {
+  buildWebSearchCreateParams,
+  countWebSearchActions,
+  extractWebSearchAssistantText,
+  parseWebSearchActionSourceUrls,
+  webSearchInputCharCount,
+} from "@/lib/translatorSearch/webSearchParse";
+import type { TranslatorSearchRequestParams } from "@/lib/translatorSearch/types";
 
 type FakeCrmUser = {
   id: string;
@@ -193,8 +227,10 @@ try {
   const prevModel = process.env.TRANSLATOR_SEARCH_MODEL;
   const prevPriceModel = process.env.TRANSLATOR_SEARCH_PRICE_MODEL;
   const prevPrice = process.env.TRANSLATOR_SEARCH_PRICE_EUR_PER_1M;
+  const prevWeb = process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL;
   delete process.env.TRANSLATOR_SEARCH_PRICE_EUR_PER_1M;
   delete process.env.TRANSLATOR_SEARCH_PRICE_MODEL;
+  delete process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL;
   process.env.TRANSLATOR_SEARCH_MODEL = "test-model-a";
   check(getTranslatorSearchPricing().configured === false, "pricing unconfigured");
   try {
@@ -208,11 +244,16 @@ try {
   }
   process.env.TRANSLATOR_SEARCH_PRICE_EUR_PER_1M = "in=1,out=2";
   process.env.TRANSLATOR_SEARCH_PRICE_MODEL = "old-model";
+  process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL = "0.01";
   check(getTranslatorSearchPricing().configured === false, "price model mismatch rejected");
   process.env.TRANSLATOR_SEARCH_PRICE_MODEL = "test-model-a";
+  delete process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL;
+  check(getTranslatorSearchPricing().configured === false, "web search price required");
+  process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL = "0.025";
   const okPricing = getTranslatorSearchPricing();
   check(okPricing.configured === true, "pricing configured with matching model");
   if (okPricing.configured) {
+    check(okPricing.webSearchPriceEurPerCall === 0.025, "web search per-call price");
     const reserve = estimateCallReserveEur({
       pricing: okPricing,
       maxInputChars: 4000,
@@ -239,7 +280,33 @@ try {
       }),
       "large reserve blocks call"
     );
+    const webReserve = estimateWebSearchReserveEur({ pricing: okPricing });
+    check(webReserve > okPricing.webSearchPriceEurPerCall, "web reserve includes tool+tokens+context");
+    check(
+      canAffordWebSearchCall({ pricing: okPricing, spentEur: 0, maxBudgetEur: 5 }),
+      "can afford web search"
+    );
+    check(
+      !canAffordWebSearchCall({
+        pricing: okPricing,
+        spentEur: 5 - webReserve + 0.000001,
+        maxBudgetEur: 5,
+      }),
+      "budget blocks web search before exceed"
+    );
+    const billed = estimateTranslatorSearchCostEur({
+      pricing: okPricing,
+      usage: { input_tokens: 1_000_000, output_tokens: 0, total_tokens: 1_000_000 },
+      searchActions: 2,
+    });
+    check(billed.cost_eur !== null && Math.abs((billed.cost_eur ?? 0) - (1 + 0.05)) < 1e-9, "tokens+2*tool billed");
   }
+  process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL = "0";
+  check(getTranslatorSearchPricing().configured === false, "zero web-search price rejected");
+  process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL = "0.025";
+  process.env.TRANSLATOR_SEARCH_PRICE_EUR_PER_1M = "in=0,out=2";
+  check(getTranslatorSearchPricing().configured === false, "zero input price rejected");
+  process.env.TRANSLATOR_SEARCH_PRICE_EUR_PER_1M = "in=1,out=2";
   check(
     !canAffordNextCall({
       pricing: { configured: false },
@@ -256,10 +323,12 @@ try {
   else process.env.TRANSLATOR_SEARCH_PRICE_MODEL = prevPriceModel;
   if (prevPrice === undefined) delete process.env.TRANSLATOR_SEARCH_PRICE_EUR_PER_1M;
   else process.env.TRANSLATOR_SEARCH_PRICE_EUR_PER_1M = prevPrice;
+  if (prevWeb === undefined) delete process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL;
+  else process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL = prevWeb;
 }
 
-// --- Validation ---
-const badSeed = validateTranslatorSearchRequest({
+// --- Validation (C1: 0–3 seeds) ---
+const noSeedOk = validateTranslatorSearchRequest({
   languageFrom: "EN",
   languageTo: "NL",
   country: "Belgium",
@@ -269,7 +338,630 @@ const badSeed = validateTranslatorSearchRequest({
   maxBudgetEur: 5,
   seedUrls: [],
 });
-check(!badSeed.ok && badSeed.code === "seed_urls_required_until_phase_c", "seed required");
+check(noSeedOk.ok === true, "0 seeds allowed in C1");
+if (noSeedOk.ok) check(noSeedOk.params.seedUrls.length === 0, "empty seed list");
+
+const threeSeeds = validateTranslatorSearchRequest({
+  languageFrom: "EN",
+  languageTo: "NL",
+  country: "Belgium",
+  certification: "required",
+  candidateType: "freelancer",
+  targetCandidates: 5,
+  maxBudgetEur: 5,
+  seedUrls: [
+    "https://example.com/a",
+    "https://example.com/b",
+    "https://example.com/c",
+  ],
+});
+check(threeSeeds.ok === true, "3 seeds ok");
+
+const fourSeeds = validateTranslatorSearchRequest({
+  languageFrom: "EN",
+  languageTo: "NL",
+  country: "Belgium",
+  certification: "required",
+  candidateType: "freelancer",
+  targetCandidates: 5,
+  maxBudgetEur: 5,
+  seedUrls: [
+    "https://example.com/a",
+    "https://example.com/b",
+    "https://example.com/c",
+    "https://example.com/d",
+  ],
+});
+check(!fourSeeds.ok && fourSeeds.code === "validation_seed_urls_count", "4 seeds rejected");
+
+const missingCriteria = validateTranslatorSearchRequest({
+  languageFrom: "",
+  languageTo: "NL",
+  country: "Belgium",
+  seedUrls: [],
+});
+check(!missingCriteria.ok, "criteria still required");
+
+// --- C1 query builder / web_search parse / discover ---
+{
+  const qs = buildTranslatorSearchQueries({
+    languageFrom: "English",
+    languageTo: "Dutch",
+    country: "Belgium",
+    city: "Brussels",
+    certification: "required",
+    specialization: "legal",
+    candidateType: "freelancer",
+  });
+  check(qs.length >= 1 && qs.length <= 3, "max 3 deterministic queries");
+  check(qs.every((q) => q.includes("English") && q.includes("Dutch")), "queries include languages");
+
+  const createParams = buildWebSearchCreateParams({ model: "test-model-a", query: qs[0]! });
+  check(createParams.tool_choice === "required", "tool_choice required");
+  check(createParams.max_tool_calls === 1, "max_tool_calls 1");
+  check(createParams.tools[0]?.type === "web_search", "web_search tool");
+  check(createParams.tools[0]?.search_context_size === "low", "search_context_size low");
+  check(
+    createParams.include.includes("web_search_call.action.sources"),
+    "include action.sources"
+  );
+
+  const fixtureOutput = [
+    {
+      type: "web_search_call",
+      id: "ws_1",
+      status: "completed",
+      action: {
+        type: "search",
+        query: "q",
+        sources: [
+          { type: "url", url: "https://example.com/translator" },
+          { type: "url", url: "https://127.0.0.1/private" },
+          { type: "url", url: "not-a-url" },
+          { type: "url", url: "https://example.com/translator" },
+        ],
+      },
+    },
+    {
+      type: "web_search_call",
+      id: "ws_2",
+      status: "completed",
+      action: { type: "open_page", url: "https://example.com/opened-not-source" },
+    },
+    {
+      type: "message",
+      role: "assistant",
+      content: [
+        {
+          type: "output_text",
+          text: "FAKE EVIDENCE: Jane Doe sworn translator email jane@evil.test",
+        },
+      ],
+    },
+  ];
+
+  check(countWebSearchActions(fixtureOutput) === 1, "search_calls count only search actions");
+  const parsedUrls = parseWebSearchActionSourceUrls(fixtureOutput);
+  check(parsedUrls.includes("https://example.com/translator"), "parsed public source");
+  check(parsedUrls.includes("https://127.0.0.1/private"), "raw private still in parse list");
+  check(!parsedUrls.includes("https://example.com/opened-not-source"), "open_page url ignored");
+  const assistantText = extractWebSearchAssistantText(fixtureOutput);
+  check(/FAKE EVIDENCE/.test(assistantText), "assistant text present in fixture");
+
+  const collected = collectTranslatorSourceUrls({
+    seedUrls: ["https://example.com/seed"],
+    webUrls: parsedUrls,
+    maxUnique: 30,
+  });
+  check(
+    collected.sources.some((s) => s.sourceType === "manual" && s.canonicalUrl.includes("seed")),
+    "seed remains manual"
+  );
+  check(
+    collected.sources.some((s) => s.sourceType === "web" && s.canonicalUrl.includes("translator")),
+    "web source typed web"
+  );
+  check(
+    !collected.sources.some((s) => s.canonicalUrl.includes("127.0.0.1")),
+    "private URL dropped before fetch"
+  );
+  check(collected.droppedUnsafe >= 1, "unsafe dropped counted");
+
+  // Web text must not become candidate evidence — grounding still requires page quotes.
+  const groundedFromWebText = groundExtractedCandidateAgainstPage(
+    {
+      found: true,
+      display_name: "Jane Doe",
+      entity_type: "person",
+      email: "jane@evil.test",
+      phone: null,
+      country: "Belgium",
+      city: null,
+      language_pairs: [],
+      specializations: [],
+      sworn_status: "claimed",
+      website_url: null,
+      match_summary: "from search",
+      evidence: [{ field: "email", quote: "jane@evil.test" }],
+    },
+    "Real page without those tokens."
+  );
+  check(groundedFromWebText.email === null, "web assistant text cannot ground email");
+}
+
+{
+  const baseRequest: TranslatorSearchRequestParams = {
+    languageFrom: "English",
+    languageTo: "Dutch",
+    country: "Belgium",
+    city: null,
+    certification: "required",
+    specialization: null,
+    candidateType: "freelancer",
+    targetCandidates: 5,
+    maxBudgetEur: 5,
+    seedUrls: ["https://example.com/seed-only"],
+    appliedLimits: {
+      maxSeedUrls: 3,
+      maxFetchUrls: 20,
+      maxExtractionCalls: 10,
+      maxCharsPerSource: 40000,
+      maxBudgetEur: 5,
+      maxWebSearchCalls: 3,
+      maxUniqueSourceUrls: 30,
+    },
+  };
+
+  const pricing = {
+    configured: true as const,
+    model: "test-model-a",
+    inEurPer1m: 1,
+    outEurPer1m: 2,
+    webSearchPriceEurPerCall: 0.025,
+  };
+
+  const failedDiscover = await discoverTranslatorSources({
+    request: baseRequest,
+    pricing,
+    runWebSearch: async () => ({
+      ok: false,
+      code: "web_search_failed",
+      searchActions: 0,
+      costFullyKnown: false,
+      knownCostEur: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+    }),
+  });
+  check(failedDiscover.webSearchFailed === true, "web search failure flagged");
+  check(failedDiscover.openaiCalls === 1, "unknown-cost failure stops further searches");
+  check(failedDiscover.costUnknown === true, "unknown cost flagged");
+  check(
+    failedDiscover.sources.some((s) => s.sourceType === "manual"),
+    "seed continues after web failure"
+  );
+  check(
+    failedDiscover.warnings.some((w) => /seed/i.test(w)),
+    "safe warning when web fails with seed"
+  );
+  check(failedDiscover.searchCalls === 0, "search_calls stay 0 when no search actions");
+
+  let searchRuns = 0;
+  const okDiscover = await discoverTranslatorSources({
+    request: { ...baseRequest, seedUrls: [] },
+    pricing,
+    runWebSearch: async () => {
+      searchRuns += 1;
+      return {
+        ok: true,
+        sourceUrls: [
+          "https://example.com/from-web",
+          "https://169.254.169.254/meta",
+          "ftp://example.com/nope",
+        ],
+        searchActions: 1,
+        usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 },
+        costFullyKnown: true,
+        knownCostEur: 0.025 + (100 / 1_000_000) * 1 + (20 / 1_000_000) * 2,
+        input_tokens: 100,
+        output_tokens: 20,
+        total_tokens: 120,
+        assistantTextIgnored: "MUST NOT BE EVIDENCE Jane Doe jane@evil.test",
+      };
+    },
+  });
+  check(searchRuns >= 1 && searchRuns <= 3, "web search runner called within limit");
+  check(okDiscover.searchCalls === searchRuns, "search_calls = factual search actions");
+  check(okDiscover.openaiCalls === searchRuns, "openai_calls = Responses calls");
+  check(
+    okDiscover.sources.every((s) => s.sourceType === "web"),
+    "discovered sources are web"
+  );
+  check(
+    !okDiscover.sources.some((s) => /169\.254|ftp:/i.test(s.canonicalUrl)),
+    "bad scheme/private excluded from fetch plan"
+  );
+  check(okDiscover.costEur > 0, "token+tool cost accumulated");
+  check(okDiscover.costUnknown === false, "fully known search keeps cost known");
+
+  const budgetBlocked = await discoverTranslatorSources({
+    request: { ...baseRequest, maxBudgetEur: 0.000001, seedUrls: ["https://example.com/seed-budget"] },
+    pricing,
+    runWebSearch: async () => {
+      throw new Error("must not call web search when budget blocks");
+    },
+  });
+  check(budgetBlocked.webSearchAttempted === false, "budget stops before web search call");
+  check(budgetBlocked.costLimit === true, "budget sets costLimit flag");
+  check(
+    resolveTranslatorStopReason({
+      costLimit: budgetBlocked.costLimit,
+      timeLimit: budgetBlocked.timeLimit,
+      sourceLimit: budgetBlocked.sourceLimit,
+    }) === "cost_limit",
+    "budget reserve → cost_limit not no_more_sources"
+  );
+  check(
+    budgetBlocked.sources.some((s) => s.sourceType === "manual"),
+    "seed path intact when web skipped by budget"
+  );
+}
+
+// --- C1 hardening: deadline, field length, unknown-cost stop, partial keep ---
+{
+  const pricing = {
+    configured: true as const,
+    model: "test-model-a",
+    inEurPer1m: 1,
+    outEurPer1m: 2,
+    webSearchPriceEurPerCall: 0.025,
+  };
+  const baseRequest: TranslatorSearchRequestParams = {
+    languageFrom: "English",
+    languageTo: "Dutch",
+    country: "Belgium",
+    city: null,
+    certification: "required",
+    specialization: null,
+    candidateType: "freelancer",
+    targetCandidates: 5,
+    maxBudgetEur: 5,
+    seedUrls: ["https://example.com/seed-partial"],
+    appliedLimits: {
+      maxSeedUrls: 3,
+      maxFetchUrls: 20,
+      maxExtractionCalls: 10,
+      maxCharsPerSource: 40000,
+      maxBudgetEur: 5,
+      maxWebSearchCalls: 3,
+      maxUniqueSourceUrls: 30,
+    },
+  };
+
+  const pastDeadline = createJobDeadline(Date.now() - TRANSLATOR_SEARCH_LIMITS.jobInternalDeadlineMs - 1_000);
+  check(
+    !canStartTimedAction({
+      deadline: pastDeadline,
+      preferredTimeoutMs: TRANSLATOR_SEARCH_LIMITS.openaiWebSearchTimeoutMs,
+    }).ok,
+    "deadline blocks search start"
+  );
+  check(
+    !canStartTimedAction({
+      deadline: pastDeadline,
+      preferredTimeoutMs: TRANSLATOR_SEARCH_LIMITS.fetchTimeoutMs,
+    }).ok,
+    "deadline blocks fetch start"
+  );
+  check(
+    !canStartTimedAction({
+      deadline: pastDeadline,
+      preferredTimeoutMs: TRANSLATOR_SEARCH_LIMITS.openaiExtractionTimeoutMs,
+    }).ok,
+    "deadline blocks extraction start"
+  );
+
+  const deadlineDiscover = await discoverTranslatorSources({
+    request: baseRequest,
+    pricing,
+    deadline: pastDeadline,
+    runWebSearch: async () => {
+      throw new Error("must not search after deadline");
+    },
+  });
+  check(deadlineDiscover.timeLimit === true, "discover timeLimit before search");
+  check(deadlineDiscover.webSearchAttempted === false, "no search after deadline");
+  check(
+    resolveTranslatorStopReason({ timeLimit: true }) === "time_limit",
+    "deadline → time_limit"
+  );
+  check(
+    deadlineDiscover.sources.some((s) => s.sourceType === "manual"),
+    "partial seed remains after deadline"
+  );
+
+  const longLang = "L".repeat(TRANSLATOR_SEARCH_LIMITS.maxLanguageFieldChars + 1);
+  const longCriteria = validateTranslatorSearchRequest({
+    languageFrom: longLang,
+    languageTo: "NL",
+    country: "Belgium",
+    certification: "any",
+    candidateType: "any",
+    targetCandidates: 5,
+    maxBudgetEur: 5,
+    seedUrls: [],
+  });
+  check(
+    !longCriteria.ok && longCriteria.code === "validation_language_from_length",
+    "overlong language rejected"
+  );
+
+  const fresh = createJobDeadline();
+  const gated = canStartTimedAction({
+    deadline: fresh,
+    preferredTimeoutMs: TRANSLATOR_SEARCH_LIMITS.openaiWebSearchTimeoutMs,
+  });
+  check(gated.ok === true, "fresh deadline allows search");
+  if (gated.ok) {
+    check(
+      gated.timeoutMs <= TRANSLATOR_SEARCH_LIMITS.openaiWebSearchTimeoutMs,
+      "openai timeout capped by preferred"
+    );
+    check(gated.timeoutMs <= TRANSLATOR_SEARCH_LIMITS.jobInternalDeadlineMs, "timeout within deadline");
+  }
+
+  let unknownCostRuns = 0;
+  const unknownCostDiscover = await discoverTranslatorSources({
+    request: { ...baseRequest, seedUrls: [] },
+    pricing,
+    runWebSearch: async () => {
+      unknownCostRuns += 1;
+      return {
+        ok: false,
+        code: "web_search_failed",
+        searchActions: 0,
+        costFullyKnown: false,
+        knownCostEur: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        total_tokens: 0,
+      };
+    },
+  });
+  check(unknownCostRuns === 1, "no further searches after unknown-cost failure");
+  check(unknownCostDiscover.openaiCalls === 1, "openai_calls still counted");
+  check(unknownCostDiscover.costEur === 0, "unknown cost not treated as precise amount");
+  check(unknownCostDiscover.costUnknown === true, "costUnknown after bare failure");
+  check(
+    isTranslatorSearchBudgetEnforced(unknownCostDiscover.costUnknown) === false,
+    "budget_enforced=false when costUnknown"
+  );
+  check(
+    unknownCostDiscover.warnings.some((w) => w === TRANSLATOR_SEARCH_COST_UNKNOWN_WARNING),
+    "unknown-cost warning text present"
+  );
+
+  let partialRuns = 0;
+  const partialDiscover = await discoverTranslatorSources({
+    request: { ...baseRequest, seedUrls: [] },
+    pricing,
+    runWebSearch: async () => {
+      partialRuns += 1;
+      if (partialRuns === 1) {
+        return {
+          ok: true,
+          sourceUrls: ["https://example.com/kept-partial"],
+          searchActions: 1,
+          usage: { input_tokens: 50, output_tokens: 10, total_tokens: 60 },
+          costFullyKnown: true,
+          knownCostEur: 0.025 + (50 / 1_000_000) * 1 + (10 / 1_000_000) * 2,
+          input_tokens: 50,
+          output_tokens: 10,
+          total_tokens: 60,
+        };
+      }
+      return {
+        ok: false,
+        code: "web_search_failed",
+        searchActions: 0,
+        costFullyKnown: false,
+        knownCostEur: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        total_tokens: 0,
+      };
+    },
+  });
+  check(partialRuns === 2, "second search attempted after success then stopped");
+  check(
+    partialDiscover.sources.some((s) => s.canonicalUrl.includes("kept-partial")),
+    "partial web results retained"
+  );
+  check(partialDiscover.openaiCalls === 2, "openai_calls include failed follow-up");
+  check(partialDiscover.costUnknown === true, "follow-up unknown cost marks job");
+
+  let billedIncompleteRuns = 0;
+  const incompleteBilled = await discoverTranslatorSources({
+    request: { ...baseRequest, seedUrls: ["https://example.com/seed-after-incomplete"] },
+    pricing,
+    runWebSearch: async () => {
+      billedIncompleteRuns += 1;
+      return {
+        ok: false,
+        code: "web_search_incomplete",
+        searchActions: 1,
+        usage: { input_tokens: 1000, output_tokens: 0, total_tokens: 1000 },
+        costFullyKnown: true,
+        knownCostEur: 0.025 + 1000 / 1_000_000,
+        input_tokens: 1000,
+        output_tokens: 0,
+        total_tokens: 1000,
+      };
+    },
+  });
+  check(billedIncompleteRuns === 1, "incomplete billed search does not continue");
+  check(incompleteBilled.searchCalls === 1, "incomplete search actions counted");
+  check(incompleteBilled.costEur > 0, "incomplete known usage billed");
+  check(incompleteBilled.costUnknown === false, "fully known incomplete keeps cost known");
+  check(
+    !incompleteBilled.sources.some((s) => s.sourceType === "web"),
+    "incomplete sources not used"
+  );
+  check(
+    incompleteBilled.sources.some((s) => s.sourceType === "manual"),
+    "seed continues after incomplete billed search"
+  );
+
+  const qs = buildTranslatorSearchQueries({
+    languageFrom: "English",
+    languageTo: "Dutch",
+    country: "Belgium",
+    city: "Brussels",
+    certification: "required",
+    specialization: "legal",
+    candidateType: "freelancer",
+  });
+  check(
+    qs.every((q) => webSearchInputCharCount(q) <= TRANSLATOR_SEARCH_LIMITS.maxWebSearchPromptChars),
+    "built queries fit web-search prompt reserve"
+  );
+}
+
+// --- C1.1: maxRetries=0, action count, partial cost semantics ---
+{
+  const pricing = {
+    configured: true as const,
+    model: "test-model-a",
+    inEurPer1m: 1,
+    outEurPer1m: 2,
+    webSearchPriceEurPerCall: 0.025,
+  };
+  const opts = buildTranslatorSearchOpenAiRequestOptions(12_000);
+  check(opts.maxRetries === 0, "OpenAI request options maxRetries=0");
+  check(opts.timeout === 12_000, "OpenAI request options timeout passthrough");
+
+  const zeroActions = evaluateWebSearchResponse({
+    status: "completed",
+    output: [
+      {
+        type: "message",
+        content: [{ type: "output_text", text: "no tool" }],
+      },
+    ],
+    usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+    pricing,
+  });
+  check(zeroActions.ok === false, "completed + 0 search actions is not success");
+  check(zeroActions.sourceUrls.length === 0, "no sources on bad action count");
+  check(zeroActions.costFullyKnown === false, "usage without one action → cost unknown");
+  check(zeroActions.knownCostEur > 0, "token portion still known");
+
+  const actionNoUsage = assessWebSearchCallCost({
+    pricing,
+    usage: null,
+    searchActions: 1,
+  });
+  check(actionNoUsage.costFullyKnown === false, "action without usage → not fully known");
+  check(
+    Math.abs(actionNoUsage.knownCostEur - 0.025) < 1e-9,
+    "action without usage → tool portion known"
+  );
+
+  const usageNoAction = assessWebSearchCallCost({
+    pricing,
+    usage: { input_tokens: 1_000_000, output_tokens: 0, total_tokens: 1_000_000 },
+    searchActions: 0,
+  });
+  check(usageNoAction.costFullyKnown === false, "usage without action → not fully known");
+  check(Math.abs(usageNoAction.knownCostEur - 1) < 1e-9, "usage without action → token portion");
+
+  const full = assessWebSearchCallCost({
+    pricing,
+    usage: { input_tokens: 1_000_000, output_tokens: 0, total_tokens: 1_000_000 },
+    searchActions: 1,
+  });
+  check(full.costFullyKnown === true, "usage + exactly one action → fully known");
+  check(Math.abs(full.knownCostEur - 1.025) < 1e-9, "full web-search cost");
+
+  const twoActions = evaluateWebSearchResponse({
+    status: "completed",
+    output: [
+      {
+        type: "web_search_call",
+        action: { type: "search", query: "a", sources: [{ type: "url", url: "https://example.com/a" }] },
+      },
+      {
+        type: "web_search_call",
+        action: { type: "search", query: "b", sources: [{ type: "url", url: "https://example.com/b" }] },
+      },
+    ],
+    usage: { input_tokens: 100, output_tokens: 0, total_tokens: 100 },
+    pricing,
+  });
+  check(twoActions.ok === false, "completed + 2 search actions is not success");
+  check(twoActions.sourceUrls.length === 0, "sources dropped when action count != 1");
+
+  const baseRequest: TranslatorSearchRequestParams = {
+    languageFrom: "English",
+    languageTo: "Dutch",
+    country: "Belgium",
+    city: null,
+    certification: "required",
+    specialization: null,
+    candidateType: "freelancer",
+    targetCandidates: 5,
+    maxBudgetEur: 5,
+    seedUrls: ["https://example.com/seed-c11"],
+    appliedLimits: {
+      maxSeedUrls: 3,
+      maxFetchUrls: 20,
+      maxExtractionCalls: 10,
+      maxCharsPerSource: 40000,
+      maxBudgetEur: 5,
+      maxWebSearchCalls: 3,
+      maxUniqueSourceUrls: 30,
+    },
+  };
+
+  let actionOnlyRuns = 0;
+  const actionOnlyDiscover = await discoverTranslatorSources({
+    request: baseRequest,
+    pricing,
+    runWebSearch: async () => {
+      actionOnlyRuns += 1;
+      return {
+        ok: true,
+        sourceUrls: ["https://example.com/from-partial-cost"],
+        searchActions: 1,
+        costFullyKnown: false,
+        knownCostEur: 0.025,
+        input_tokens: 0,
+        output_tokens: 0,
+        total_tokens: 0,
+      };
+    },
+  });
+  check(actionOnlyRuns === 1, "partial-cost success stops further search");
+  check(actionOnlyDiscover.costUnknown === true, "action-only → costUnknown");
+  check(actionOnlyDiscover.costLimit === true, "costUnknown uses cost_limit flag");
+  check(
+    actionOnlyDiscover.sources.some((s) => s.canonicalUrl.includes("from-partial-cost")),
+    "partial-cost success still keeps sources"
+  );
+  check(
+    actionOnlyDiscover.sources.some((s) => s.sourceType === "manual"),
+    "seed remains with partial-cost web"
+  );
+  check(
+    isTranslatorSearchBudgetEnforced(actionOnlyDiscover.costUnknown) === false,
+    "final budget_enforced=false"
+  );
+  check(
+    Math.abs(actionOnlyDiscover.costEur - 0.025) < 1e-9,
+    "only known tool portion counted"
+  );
+}
 
 // --- Fake fetch: redirect to private, DNS rebinding, slow body, body discard ---
 async function* slowBody() {
@@ -579,6 +1271,136 @@ async function* slowBody() {
   const safe = toSafeApiError("db_read");
   check(safe.error === "Nepavyko nuskaityti duomenų.", "db_read safe LT");
   check(!/connection reset|PGRST/i.test(safe.error), "no internal db text in API");
+}
+
+// --- C1.2 candidate type match (symmetric filter) ---
+{
+  check(
+    matchesTranslatorCandidateTypeFilter({
+      filter: "freelancer",
+      entityType: "person",
+      displayName: "Jonas Petraitis",
+    }).ok === true,
+    "freelancer + person accepted"
+  );
+
+  const freelancerAgency = matchesTranslatorCandidateTypeFilter({
+    filter: "freelancer",
+    entityType: "agency",
+    displayName: "Acme Translation Agency",
+  });
+  check(freelancerAgency.ok === false, "freelancer + agency rejected");
+  if (!freelancerAgency.ok) {
+    check(freelancerAgency.code === CANDIDATE_TYPE_MISMATCH_CODE, "mismatch diagnostic code");
+  }
+
+  check(
+    matchesTranslatorCandidateTypeFilter({
+      filter: "freelancer",
+      entityType: "unknown",
+      displayName: "Some Profile",
+    }).ok === false,
+    "freelancer + unknown rejected"
+  );
+
+  check(
+    matchesTranslatorCandidateTypeFilter({
+      filter: "freelancer",
+      entityType: "person",
+      displayName: "Baltic Software Platform",
+    }).ok === false,
+    "freelancer + generic product/org name rejected"
+  );
+
+  check(
+    matchesTranslatorCandidateTypeFilter({
+      filter: "agency",
+      entityType: "agency",
+      displayName: "Vilnius Translation Agency",
+    }).ok === true,
+    "agency + agency accepted"
+  );
+
+  check(
+    matchesTranslatorCandidateTypeFilter({
+      filter: "agency",
+      entityType: "person",
+      displayName: "Jonas",
+    }).ok === false,
+    "agency + person rejected"
+  );
+
+  check(
+    matchesTranslatorCandidateTypeFilter({
+      filter: "agency",
+      entityType: "unknown",
+      displayName: "Profile",
+    }).ok === false,
+    "agency + unknown rejected"
+  );
+
+  check(
+    matchesTranslatorCandidateTypeFilter({
+      filter: "any",
+      entityType: "person",
+      displayName: "Ada",
+    }).ok === true,
+    "any + person accepted"
+  );
+  check(
+    matchesTranslatorCandidateTypeFilter({
+      filter: "any",
+      entityType: "agency",
+      displayName: "Acme Agency",
+    }).ok === true,
+    "any + agency accepted"
+  );
+  check(
+    matchesTranslatorCandidateTypeFilter({
+      filter: "any",
+      entityType: "unknown",
+      displayName: "X",
+    }).ok === true,
+    "any + unknown accepted"
+  );
+
+  let found = 0;
+  const target = 1;
+  const rejected = matchesTranslatorCandidateTypeFilter({
+    filter: "freelancer",
+    entityType: "agency",
+    displayName: "Acme Translation Agency",
+  });
+  found = nextFoundCandidatesAfterMatch({ foundSoFar: found, accepted: rejected.ok });
+  check(found === 0, "rejected candidate does not increment found");
+  check(!isTargetReached({ foundCandidates: found, targetCandidates: target }), "reject ≠ target_reached");
+
+  const accepted = matchesTranslatorCandidateTypeFilter({
+    filter: "freelancer",
+    entityType: "person",
+    displayName: "Ada Translator",
+  });
+  found = nextFoundCandidatesAfterMatch({ foundSoFar: found, accepted: accepted.ok });
+  check(found === 1, "accepted person increments found");
+  check(isTargetReached({ foundCandidates: found, targetCandidates: target }), "person can reach target");
+
+  check(
+    !/lingvanex|html|http/i.test(CANDIDATE_TYPE_MISMATCH_WARNING),
+    "mismatch warning has no page/brand text"
+  );
+  // Brand-only names are not hard-rejected by the name heuristic (entity_type remains primary).
+  check(
+    looksLikeNonPersonTranslatorName("Lingvanex") === false,
+    "name heuristic ignores bare brand (no brand hardcode)"
+  );
+  check(
+    looksLikeNonPersonTranslatorName("Acme Limited") === true,
+    "name heuristic catches legal-form cue"
+  );
+  check(
+    looksLikeNonPersonTranslatorName("Foo Machine Translation") === true,
+    "name heuristic catches machine translation cue"
+  );
 }
 
 if (failures.length) {

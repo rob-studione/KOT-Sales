@@ -27,7 +27,7 @@ export type TranslatorSearchRequestParams = {
   candidateType: TranslatorCandidateTypeFilter;
   targetCandidates: number;
   maxBudgetEur: number;
-  /** Phase B: 1–3 HTTPS seed URL. */
+  /** Phase C1: 0–3 optional HTTPS seed URL. */
   seedUrls: string[];
   /** Snapshot of server limits at job creation. */
   appliedLimits: {
@@ -36,6 +36,8 @@ export type TranslatorSearchRequestParams = {
     maxExtractionCalls: number;
     maxCharsPerSource: number;
     maxBudgetEur: number;
+    maxWebSearchCalls: number;
+    maxUniqueSourceUrls: number;
   };
 };
 

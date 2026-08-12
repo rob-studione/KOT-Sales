@@ -50,8 +50,8 @@ export function JobHistoryPanel({
               </p>
             ) : null}
             <p className="mt-1 text-xs text-zinc-500">
-              fetch={j.fetch_url_count} · openai={j.openai_calls} · apskaičiuota kaina ≈{" "}
-              {Number(j.cost_eur_estimated).toFixed(4)} EUR
+              search={j.search_calls} · fetch={j.fetch_url_count} · openai={j.openai_calls} ·
+              apskaičiuota kaina ≈ {Number(j.cost_eur_estimated).toFixed(4)} EUR
             </p>
           </li>
         ))}

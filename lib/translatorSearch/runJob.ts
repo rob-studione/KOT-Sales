@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { isOpenAiGloballyDisabledByEnv, openAiGloballyDisabledMessage } from "@/lib/openai/callGate";
+import { TRANSLATOR_SEARCH_COST_UNKNOWN_WARNING, isTranslatorSearchBudgetEnforced } from "@/lib/translatorSearch/costAssessment";
 import { TranslatorSearchConfigError, getTranslatorSearchModel } from "@/lib/translatorSearch/model";
 import {
   canAffordNextCall,
@@ -14,7 +15,12 @@ import {
   hashRequestParams,
 } from "@/lib/translatorSearch/dedupe";
 import { DbUpdateError } from "@/lib/translatorSearch/dbUpdates";
+import { discoverTranslatorSources } from "@/lib/translatorSearch/discoverSources";
 import { htmlToText } from "@/lib/translatorSearch/htmlToText";
+import {
+  canStartTimedAction,
+  createJobDeadline,
+} from "@/lib/translatorSearch/jobDeadline";
 import { assertJobTransition, buildTerminalJobPatch } from "@/lib/translatorSearch/jobStatus";
 import {
   failJobOrThrow,
@@ -23,8 +29,16 @@ import {
   updateJobOrThrow,
 } from "@/lib/translatorSearch/jobPersistence";
 import { extractTranslatorCandidateFromText } from "@/lib/translatorSearch/openaiExtractCandidate";
+import { runTranslatorWebSearch } from "@/lib/translatorSearch/openaiWebSearch";
 import { prefilterContacts } from "@/lib/translatorSearch/prefilterContacts";
 import { safeFetchHtml } from "@/lib/translatorSearch/safeFetch";
+import { resolveTranslatorStopReason } from "@/lib/translatorSearch/stopReason";
+import {
+  CANDIDATE_TYPE_MISMATCH_WARNING,
+  isTargetReached,
+  matchesTranslatorCandidateTypeFilter,
+  nextFoundCandidatesAfterMatch,
+} from "@/lib/translatorSearch/candidateTypeMatch";
 import type {
   TranslatorCandidateEvidence,
   TranslatorSearchRequestParams,
@@ -55,6 +69,62 @@ function evidenceToJson(
   return out;
 }
 
+function pushUniqueWarning(warnings: string[], msg: string): void {
+  if (!warnings.includes(msg)) warnings.push(msg);
+}
+
+async function completeJob(params: {
+  admin: SupabaseClient;
+  jobId: string;
+  stopReason: string;
+  warning: string | null;
+  searchCalls: number;
+  fetchCount: number;
+  openaiCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costEur: number;
+  candidatesCreated: number;
+  candidatesReused: number;
+  sourcesSaved: number;
+  budgetEnforced: boolean;
+}): Promise<RunJobResult> {
+  assertJobTransition("running", "completed");
+  const cost = Number(params.costEur.toFixed(6));
+  await updateJobOrThrow(
+    params.admin,
+    params.jobId,
+    {
+      ...buildTerminalJobPatch("completed", {
+        stop_reason: params.stopReason,
+        warning: params.warning,
+      }),
+      search_calls: params.searchCalls,
+      fetch_url_count: params.fetchCount,
+      openai_calls: params.openaiCalls,
+      input_tokens: params.inputTokens,
+      output_tokens: params.outputTokens,
+      total_tokens: params.totalTokens,
+      cost_eur_estimated: cost,
+    },
+    "db_update_terminal"
+  );
+  return {
+    jobId: params.jobId,
+    status: "completed",
+    candidatesCreated: params.candidatesCreated,
+    candidatesReused: params.candidatesReused,
+    sourcesSaved: params.sourcesSaved,
+    warning: params.warning,
+    error_code: null,
+    error_message: null,
+    stop_reason: params.stopReason,
+    cost_eur_estimated: cost,
+    budget_enforced: params.budgetEnforced,
+  };
+}
+
 export async function runTranslatorSearchJob(params: {
   admin: SupabaseClient;
   actorId: string;
@@ -66,7 +136,9 @@ export async function runTranslatorSearchJob(params: {
 
   getTranslatorSearchModel();
   const pricing = requireTranslatorSearchPricing();
-  const budgetEnforced = true;
+  let costUnknown = false;
+  let budgetEnforced = isTranslatorSearchBudgetEnforced(costUnknown);
+  const deadline = createJobDeadline();
 
   const windowIso = new Date(
     Date.now() - TRANSLATOR_SEARCH_LIMITS.activeJobDedupeWindowMinutes * 60_000
@@ -88,7 +160,7 @@ export async function runTranslatorSearchJob(params: {
         error_message: null,
         stop_reason: null,
         cost_eur_estimated: 0,
-        budget_enforced: budgetEnforced,
+        budget_enforced: true,
       };
     }
   }
@@ -133,10 +205,11 @@ export async function runTranslatorSearchJob(params: {
       error_message: openAiGloballyDisabledMessage(),
       stop_reason: null,
       cost_eur_estimated: 0,
-      budget_enforced: budgetEnforced,
+      budget_enforced: true,
     };
   }
 
+  let searchCalls = 0;
   let fetchCount = 0;
   let openaiCalls = 0;
   let inputTokens = 0;
@@ -148,17 +221,123 @@ export async function runTranslatorSearchJob(params: {
   let sourcesSaved = 0;
   const warnings: string[] = [];
   const domainCounts = new Map<string, number>();
+  let timeLimit = false;
+  let costLimit = false;
+  let sourceLimit = false;
+  let targetReached = false;
 
   try {
-    const urls = requestParams.seedUrls.slice(0, TRANSLATOR_SEARCH_LIMITS.maxSeedUrls);
+    const discovery = await discoverTranslatorSources({
+      request: requestParams,
+      pricing,
+      spentEur: 0,
+      deadline,
+      runWebSearch: async (query, ctx) => {
+        const r = await runTranslatorWebSearch({ query, timeoutMs: ctx.timeoutMs });
+        if (!r.ok) {
+          return {
+            ok: false,
+            code: r.code,
+            searchActions: r.searchActions,
+            usage: r.usage,
+            costFullyKnown: r.costFullyKnown,
+            knownCostEur: r.knownCostEur,
+            input_tokens: r.input_tokens,
+            output_tokens: r.output_tokens,
+            total_tokens: r.total_tokens,
+          };
+        }
+        return {
+          ok: true,
+          sourceUrls: r.sourceUrls,
+          searchActions: r.searchActions,
+          usage: r.usage,
+          costFullyKnown: r.costFullyKnown,
+          knownCostEur: r.knownCostEur,
+          input_tokens: r.input_tokens,
+          output_tokens: r.output_tokens,
+          total_tokens: r.total_tokens,
+          assistantTextIgnored: r.assistantTextIgnored,
+        };
+      },
+    });
+
+    searchCalls += discovery.searchCalls;
+    openaiCalls += discovery.openaiCalls;
+    inputTokens += discovery.inputTokens;
+    outputTokens += discovery.outputTokens;
+    totalTokens += discovery.totalTokens;
+    costEur += discovery.costEur;
+    warnings.push(...discovery.warnings);
+    timeLimit = timeLimit || discovery.timeLimit;
+    costLimit = costLimit || discovery.costLimit;
+    sourceLimit = sourceLimit || discovery.sourceLimit;
+    if (discovery.costUnknown) {
+      costUnknown = true;
+      budgetEnforced = isTranslatorSearchBudgetEnforced(costUnknown);
+      costLimit = true;
+      pushUniqueWarning(warnings, TRANSLATOR_SEARCH_COST_UNKNOWN_WARNING);
+    }
+
+    const planned = discovery.sources;
     let foundCandidates = 0;
 
-    for (const seedUrl of urls) {
-      if (foundCandidates >= requestParams.targetCandidates) break;
-      if (fetchCount >= TRANSLATOR_SEARCH_LIMITS.maxFetchUrls) {
-        warnings.push("Pasiektas fetch URL limitas.");
+    if (planned.length === 0 || costUnknown) {
+      // No sources, or unknown cost forbids further OpenAI (extraction) calls.
+      if (costUnknown && planned.length > 0) {
+        pushUniqueWarning(
+          warnings,
+          "Po nežinomos kainos OpenAI kvietimo extraction nestartuojamas; daliniai rezultatai išsaugoti."
+        );
+      }
+      const stopReason = resolveTranslatorStopReason({
+        timeLimit,
+        costLimit,
+        sourceLimit,
+      });
+      const warning = warnings.length ? warnings.slice(0, 12).join(" · ") : "Nerasta tinkamų šaltinių.";
+      return completeJob({
+        admin,
+        jobId,
+        stopReason,
+        warning,
+        searchCalls,
+        fetchCount,
+        openaiCalls,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        costEur,
+        candidatesCreated: 0,
+        candidatesReused: 0,
+        sourcesSaved: 0,
+        budgetEnforced,
+      });
+    }
+
+    for (const src of planned) {
+      if (costUnknown) break;
+      if (foundCandidates >= requestParams.targetCandidates) {
+        targetReached = true;
         break;
       }
+
+      const fetchGate = canStartTimedAction({
+        deadline,
+        preferredTimeoutMs: TRANSLATOR_SEARCH_LIMITS.fetchTimeoutMs,
+      });
+      if (!fetchGate.ok) {
+        warnings.push("Pasiektas vidinis laiko limitas prieš fetch.");
+        timeLimit = true;
+        break;
+      }
+
+      if (fetchCount >= TRANSLATOR_SEARCH_LIMITS.maxFetchUrls) {
+        warnings.push("Pasiektas fetch URL limitas.");
+        sourceLimit = true;
+        break;
+      }
+
       if (
         !canAffordNextCall({
           pricing,
@@ -169,16 +348,20 @@ export async function runTranslatorSearchJob(params: {
         })
       ) {
         warnings.push("Pasiektas biudžeto rezervas.");
+        costLimit = true;
         break;
       }
-      if (openaiCalls >= TRANSLATOR_SEARCH_LIMITS.maxExtractionCalls) {
+
+      const extractionCallsSoFar = openaiCalls - discovery.openaiCalls;
+      if (extractionCallsSoFar >= TRANSLATOR_SEARCH_LIMITS.maxExtractionCalls) {
         warnings.push("Pasiektas extraction call limitas.");
+        sourceLimit = true;
         break;
       }
 
       let host = "";
       try {
-        host = new URL(seedUrl).hostname.toLowerCase();
+        host = new URL(src.canonicalUrl).hostname.toLowerCase();
       } catch {
         warnings.push("Praleistas netinkamas URL.");
         continue;
@@ -189,7 +372,7 @@ export async function runTranslatorSearchJob(params: {
         continue;
       }
 
-      const fetched = await safeFetchHtml(seedUrl);
+      const fetched = await safeFetchHtml(src.originalUrl, { timeoutMs: fetchGate.timeoutMs });
       fetchCount += 1;
       domainCounts.set(host, domainN + 1);
       if (!fetched.ok) {
@@ -204,6 +387,16 @@ export async function runTranslatorSearchJob(params: {
         continue;
       }
 
+      const extractGate = canStartTimedAction({
+        deadline,
+        preferredTimeoutMs: TRANSLATOR_SEARCH_LIMITS.openaiExtractionTimeoutMs,
+      });
+      if (!extractGate.ok) {
+        warnings.push("Pasiektas vidinis laiko limitas prieš extraction.");
+        timeLimit = true;
+        break;
+      }
+
       const boundedChars = Math.min(text.length, TRANSLATOR_SEARCH_LIMITS.maxCharsPerSource);
       if (
         !canAffordNextCall({
@@ -215,8 +408,11 @@ export async function runTranslatorSearchJob(params: {
         })
       ) {
         warnings.push("Pasiektas biudžeto rezervas.");
+        costLimit = true;
         break;
       }
+
+      if (costUnknown) break;
 
       openaiCalls += 1;
       let extracted;
@@ -226,22 +422,53 @@ export async function runTranslatorSearchJob(params: {
           pageUrl: fetched.finalUrl,
           pageTitle: fetched.titleHint,
           search: requestParams,
+          timeoutMs: extractGate.timeoutMs,
         });
       } catch (e) {
         if (e instanceof TranslatorSearchConfigError) throw e;
-        warnings.push("Extraction nepavyko.");
-        continue;
+        costUnknown = true;
+        budgetEnforced = isTranslatorSearchBudgetEnforced(costUnknown);
+        costLimit = true;
+        pushUniqueWarning(warnings, TRANSLATOR_SEARCH_COST_UNKNOWN_WARNING);
+        warnings.push("Extraction nepavyko be patikimos kainos.");
+        break;
       }
 
-      inputTokens += extracted.usage?.input_tokens ?? 0;
-      outputTokens += extracted.usage?.output_tokens ?? 0;
-      totalTokens += extracted.usage?.total_tokens ?? 0;
-      if (typeof extracted.costEur === "number" && Number.isFinite(extracted.costEur)) {
-        costEur += extracted.costEur;
+      inputTokens += extracted.input_tokens;
+      outputTokens += extracted.output_tokens;
+      totalTokens += extracted.total_tokens;
+      if (Number.isFinite(extracted.knownCostEur) && extracted.knownCostEur > 0) {
+        costEur += extracted.knownCostEur;
+      }
+
+      if (!extracted.costFullyKnown) {
+        costUnknown = true;
+        budgetEnforced = isTranslatorSearchBudgetEnforced(costUnknown);
+        costLimit = true;
+        pushUniqueWarning(warnings, TRANSLATOR_SEARCH_COST_UNKNOWN_WARNING);
+      }
+
+      if (!extracted.ok) {
+        warnings.push("Extraction nepavyko.");
+        if (costUnknown) break;
+        continue;
       }
 
       if (!extracted.parsed.found || !extracted.parsed.display_name) {
         warnings.push("Kandidatas nerastas šaltinyje.");
+        if (costUnknown) break;
+        continue;
+      }
+
+      const typeMatch = matchesTranslatorCandidateTypeFilter({
+        filter: requestParams.candidateType,
+        entityType: extracted.parsed.entity_type,
+        displayName: extracted.parsed.display_name,
+      });
+      if (!typeMatch.ok) {
+        pushUniqueWarning(warnings, CANDIDATE_TYPE_MISMATCH_WARNING);
+        // Do not persist; do not advance foundCandidates / target_reached.
+        if (costUnknown) break;
         continue;
       }
 
@@ -272,12 +499,20 @@ export async function runTranslatorSearchJob(params: {
       } catch (e) {
         if (e instanceof DbUpdateError && e.code === "db_read") throw e;
         warnings.push("Kandidato įrašymas nepavyko.");
+        if (costUnknown) break;
         continue;
       }
 
       if (persist.created) candidatesCreated += 1;
       if (persist.reused) candidatesReused += 1;
-      foundCandidates += 1;
+      foundCandidates = nextFoundCandidatesAfterMatch({
+        foundSoFar: foundCandidates,
+        accepted: true,
+      });
+
+      if (isTargetReached({ foundCandidates, targetCandidates: requestParams.targetCandidates })) {
+        targetReached = true;
+      }
 
       const candidateId = persist.candidateId;
       const existing = persist.existing;
@@ -304,8 +539,8 @@ export async function runTranslatorSearchJob(params: {
         {
           candidate_id: candidateId,
           job_id: jobId,
-          source_type: "manual",
-          original_url: seedUrl,
+          source_type: src.sourceType,
+          original_url: src.originalUrl,
           canonical_url: fetched.canonicalUrl,
           title: fetched.titleHint,
           snippet: text.slice(0, 400),
@@ -317,47 +552,40 @@ export async function runTranslatorSearchJob(params: {
       );
       if (sErr) warnings.push("Šaltinio įrašymas nepavyko.");
       else sourcesSaved += 1;
+
+      // After unknown-cost extraction, keep this candidate/source but stop further OpenAI.
+      if (costUnknown) break;
+      if (targetReached) break;
     }
 
-    const stopReason =
-      foundCandidates >= requestParams.targetCandidates
-        ? "target_reached"
-        : costEur >= requestParams.maxBudgetEur
-          ? "cost_limit"
-          : fetchCount >= TRANSLATOR_SEARCH_LIMITS.maxFetchUrls
-            ? "source_limit"
-            : "no_more_sources";
+    if (isTargetReached({ foundCandidates, targetCandidates: requestParams.targetCandidates })) {
+      targetReached = true;
+    }
 
-    assertJobTransition("running", "completed");
+    const stopReason = resolveTranslatorStopReason({
+      targetReached,
+      timeLimit,
+      costLimit,
+      sourceLimit,
+    });
     const warning = warnings.length ? warnings.slice(0, 12).join(" · ") : null;
-    await updateJobOrThrow(
+    return completeJob({
       admin,
       jobId,
-      {
-        ...buildTerminalJobPatch("completed", { stop_reason: stopReason, warning }),
-        fetch_url_count: fetchCount,
-        openai_calls: openaiCalls,
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        total_tokens: totalTokens,
-        cost_eur_estimated: Number(costEur.toFixed(6)),
-      },
-      "db_update_terminal"
-    );
-
-    return {
-      jobId,
-      status: "completed",
+      stopReason,
+      warning,
+      searchCalls,
+      fetchCount,
+      openaiCalls,
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      costEur,
       candidatesCreated,
       candidatesReused,
       sourcesSaved,
-      warning,
-      error_code: null,
-      error_message: null,
-      stop_reason: stopReason,
-      cost_eur_estimated: Number(costEur.toFixed(6)),
-      budget_enforced: budgetEnforced,
-    };
+      budgetEnforced,
+    });
   } catch (e) {
     const code =
       e instanceof TranslatorSearchConfigError || e instanceof DbUpdateError
@@ -371,6 +599,7 @@ export async function runTranslatorSearchJob(params: {
 
     try {
       await failJobOrThrow(admin, jobId, code === "db_update_running" ? "job_exception" : code, {
+        search_calls: searchCalls,
         fetch_url_count: fetchCount,
         openai_calls: openaiCalls,
         input_tokens: inputTokens,

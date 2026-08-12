@@ -91,7 +91,7 @@ export function NewSearchForm({ isAdmin }: { isAdmin: boolean }) {
     <div className="max-w-xl">
       <h2 className="text-lg font-semibold text-zinc-900">Nauja paieška</h2>
       <p className="mt-2 text-[15px] leading-relaxed text-zinc-600">
-        Phase B: privalomi 1–3 HTTPS seed URL. Automatinė web_search paieška — vėliau.
+        Automatinė HTML šaltinių paieška pagal kriterijus. Seed HTTPS URL optional (0–3).
       </p>
 
       <form className="mt-6 space-y-4" onSubmit={onSubmit}>
@@ -164,10 +164,9 @@ export function NewSearchForm({ isAdmin }: { isAdmin: boolean }) {
           </label>
         </div>
         <label className={labelClass}>
-          Seed HTTPS URL (1–3, po vieną eilutėje) *
+          Seed HTTPS URL (0–{TRANSLATOR_SEARCH_LIMITS.maxSeedUrls}, optional, po vieną eilutėje)
           <textarea
             name="seedUrls"
-            required
             rows={3}
             className={inputClass}
             placeholder={"https://example.com/translator\nhttps://example.com/profile"}

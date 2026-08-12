@@ -34,6 +34,7 @@ export async function failJobOrThrow(
   jobId: string,
   code: string,
   counters?: Partial<{
+    search_calls: number;
     fetch_url_count: number;
     openai_calls: number;
     input_tokens: number;
@@ -55,6 +56,7 @@ export async function failJobOrThrow(
       }),
       error_code: code,
       error_message: null,
+      search_calls: counters?.search_calls ?? 0,
       fetch_url_count: counters?.fetch_url_count ?? 0,
       openai_calls: counters?.openai_calls ?? 0,
       input_tokens: counters?.input_tokens ?? 0,

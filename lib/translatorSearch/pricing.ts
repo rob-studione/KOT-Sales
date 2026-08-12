@@ -5,10 +5,13 @@
  *   TRANSLATOR_SEARCH_MODEL=...
  *   TRANSLATOR_SEARCH_PRICE_MODEL=...   # must exactly match TRANSLATOR_SEARCH_MODEL
  *   TRANSLATOR_SEARCH_PRICE_EUR_PER_1M="in=2.50,out=10.00"
+ *   TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL=0.025
  *
  * Be pilnos kainodaros konfigūracijos job negali pretenduoti kontroliuoti EUR biudžetą.
+ * Jokio valiutos kurso ar paieškos kainos hardcode.
  */
 
+import { TRANSLATOR_SEARCH_LIMITS } from "@/lib/translatorSearch/limits";
 import { TranslatorSearchConfigError } from "@/lib/translatorSearch/model";
 
 export type OpenAiUsageLike = {
@@ -18,7 +21,13 @@ export type OpenAiUsageLike = {
 };
 
 export type TranslatorSearchPricing =
-  | { configured: true; model: string; inEurPer1m: number; outEurPer1m: number }
+  | {
+      configured: true;
+      model: string;
+      inEurPer1m: number;
+      outEurPer1m: number;
+      webSearchPriceEurPerCall: number;
+    }
   | { configured: false };
 
 function num(v: unknown, fallback = NaN): number {
@@ -30,8 +39,9 @@ export function getTranslatorSearchPricing(): TranslatorSearchPricing {
   const model = process.env.TRANSLATOR_SEARCH_MODEL?.trim();
   const priceModel = process.env.TRANSLATOR_SEARCH_PRICE_MODEL?.trim();
   const raw = process.env.TRANSLATOR_SEARCH_PRICE_EUR_PER_1M?.trim();
+  const webRaw = process.env.TRANSLATOR_SEARCH_WEB_SEARCH_PRICE_EUR_PER_CALL?.trim();
 
-  if (!model || !priceModel || priceModel !== model || !raw) {
+  if (!model || !priceModel || priceModel !== model || !raw || !webRaw) {
     return { configured: false };
   }
 
@@ -47,10 +57,24 @@ export function getTranslatorSearchPricing(): TranslatorSearchPricing {
   );
   const inEur = num(parts.in);
   const outEur = num(parts.out);
-  if (!Number.isFinite(inEur) || !Number.isFinite(outEur) || inEur < 0 || outEur < 0) {
+  const webSearchPriceEurPerCall = num(webRaw);
+  if (
+    !Number.isFinite(inEur) ||
+    !Number.isFinite(outEur) ||
+    !Number.isFinite(webSearchPriceEurPerCall) ||
+    !(inEur > 0) ||
+    !(outEur > 0) ||
+    !(webSearchPriceEurPerCall > 0)
+  ) {
     return { configured: false };
   }
-  return { configured: true, model, inEurPer1m: inEur, outEurPer1m: outEur };
+  return {
+    configured: true,
+    model,
+    inEurPer1m: inEur,
+    outEurPer1m: outEur,
+    webSearchPriceEurPerCall,
+  };
 }
 
 export function requireTranslatorSearchPricing(): Extract<
@@ -61,7 +85,7 @@ export function requireTranslatorSearchPricing(): Extract<
   if (!pricing.configured) {
     throw new TranslatorSearchConfigError(
       "pricing_not_configured",
-      "Trūksta arba neteisinga TRANSLATOR_SEARCH_PRICE_* konfigūracija."
+      "Trūksta arba neteisinga TRANSLATOR_SEARCH_PRICE_* / WEB_SEARCH_PRICE konfigūracija."
     );
   }
   return pricing;
@@ -70,6 +94,8 @@ export function requireTranslatorSearchPricing(): Extract<
 export function estimateTranslatorSearchCostEur(params: {
   pricing: TranslatorSearchPricing;
   usage?: OpenAiUsageLike | null;
+  /** Factual web_search Search actions to bill at configured per-call rate. */
+  searchActions?: number;
 }): { input_tokens: number; output_tokens: number; total_tokens: number; cost_eur: number | null } {
   const usage = params.usage ?? null;
   const input_tokens = num(usage?.input_tokens, 0) || 0;
@@ -83,9 +109,12 @@ export function estimateTranslatorSearchCostEur(params: {
     return { input_tokens, output_tokens, total_tokens, cost_eur: null };
   }
 
-  const cost_eur =
+  const tokenCost =
     (input_tokens / 1_000_000) * params.pricing.inEurPer1m +
     (output_tokens / 1_000_000) * params.pricing.outEurPer1m;
+  const searchActions = Math.max(0, Math.floor(num(params.searchActions, 0) || 0));
+  const toolCost = searchActions * params.pricing.webSearchPriceEurPerCall;
+  const cost_eur = tokenCost + toolCost;
 
   return {
     input_tokens,
@@ -113,6 +142,34 @@ export function estimateCallReserveEur(params: {
   return Number.isFinite(reserve) ? reserve : Number.POSITIVE_INFINITY;
 }
 
+/**
+ * Pre-call reserve for one web_search Responses call:
+ * configured tool-call price + prompt/output token reserve + low search-context token reserve.
+ */
+export function estimateWebSearchReserveEur(params: {
+  pricing: Extract<TranslatorSearchPricing, { configured: true }>;
+  maxInputChars?: number;
+  maxOutputTokens?: number;
+  searchContextReserveTokens?: number;
+}): number {
+  const promptChars = params.maxInputChars ?? TRANSLATOR_SEARCH_LIMITS.maxWebSearchPromptChars;
+  const maxOutputTokens =
+    params.maxOutputTokens ?? TRANSLATOR_SEARCH_LIMITS.maxWebSearchOutputTokens;
+  const contextTokens =
+    params.searchContextReserveTokens ?? TRANSLATOR_SEARCH_LIMITS.webSearchLowContextReserveTokens;
+
+  const tokenReserve = estimateCallReserveEur({
+    pricing: params.pricing,
+    maxInputChars: promptChars,
+    maxOutputTokens,
+  });
+  // Bill context reserve at the higher of in/out rates (conservative).
+  const contextRate = Math.max(params.pricing.inEurPer1m, params.pricing.outEurPer1m);
+  const contextReserve = (Math.max(0, contextTokens) / 1_000_000) * contextRate;
+  const total = params.pricing.webSearchPriceEurPerCall + tokenReserve + contextReserve;
+  return Number.isFinite(total) ? total : Number.POSITIVE_INFINITY;
+}
+
 export function canAffordNextCall(params: {
   pricing: TranslatorSearchPricing;
   spentEur: number;
@@ -127,4 +184,26 @@ export function canAffordNextCall(params: {
     maxOutputTokens: params.maxOutputTokens,
   });
   return params.spentEur + reserve <= params.maxBudgetEur;
+}
+
+export function canAffordWebSearchCall(params: {
+  pricing: TranslatorSearchPricing;
+  spentEur: number;
+  maxBudgetEur: number;
+}): boolean {
+  if (!params.pricing.configured) return false;
+  const reserve = estimateWebSearchReserveEur({ pricing: params.pricing });
+  return params.spentEur + reserve <= params.maxBudgetEur;
+}
+
+export function hasReliableOpenAiUsage(usage?: OpenAiUsageLike | null): boolean {
+  if (!usage) return false;
+  const input_tokens = num(usage.input_tokens, 0);
+  const output_tokens = num(usage.output_tokens, 0);
+  const total_tokens = num(usage.total_tokens, 0);
+  return (
+    (Number.isFinite(input_tokens) && input_tokens > 0) ||
+    (Number.isFinite(output_tokens) && output_tokens > 0) ||
+    (Number.isFinite(total_tokens) && total_tokens > 0)
+  );
 }
