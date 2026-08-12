@@ -23,7 +23,7 @@ export const TRANSLATOR_SEARCH_LIMITS = {
   maxRedirects: 3,
   fetchTimeoutMs: 15_000,
   maxHtmlBytes: 1_500_000,
-  /** PDF (C2+; not used in C1). */
+  /** PDF (C2): text-selectable only; no OCR. */
   maxPdfFiles: 3,
   maxPdfBytes: 10 * 1024 * 1024,
   maxPdfPagesTotal: 30,

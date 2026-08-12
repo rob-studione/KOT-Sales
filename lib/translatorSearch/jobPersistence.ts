@@ -36,6 +36,7 @@ export async function failJobOrThrow(
   counters?: Partial<{
     search_calls: number;
     fetch_url_count: number;
+    pdf_count: number;
     openai_calls: number;
     input_tokens: number;
     output_tokens: number;
@@ -56,16 +57,44 @@ export async function failJobOrThrow(
       }),
       error_code: code,
       error_message: null,
-      search_calls: counters?.search_calls ?? 0,
-      fetch_url_count: counters?.fetch_url_count ?? 0,
-      openai_calls: counters?.openai_calls ?? 0,
-      input_tokens: counters?.input_tokens ?? 0,
-      output_tokens: counters?.output_tokens ?? 0,
-      total_tokens: counters?.total_tokens ?? 0,
-      cost_eur_estimated: counters?.cost_eur_estimated ?? 0,
+      ...buildTranslatorSearchJobMetricFields(counters),
     },
     "db_update_terminal"
   );
+}
+
+/** Shared metric fields for completed / failed terminal job updates. */
+export function buildTranslatorSearchJobMetricFields(
+  counters?: Partial<{
+    search_calls: number;
+    fetch_url_count: number;
+    pdf_count: number;
+    openai_calls: number;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    cost_eur_estimated: number;
+  }>
+): {
+  search_calls: number;
+  fetch_url_count: number;
+  pdf_count: number;
+  openai_calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_eur_estimated: number;
+} {
+  return {
+    search_calls: counters?.search_calls ?? 0,
+    fetch_url_count: counters?.fetch_url_count ?? 0,
+    pdf_count: counters?.pdf_count ?? 0,
+    openai_calls: counters?.openai_calls ?? 0,
+    input_tokens: counters?.input_tokens ?? 0,
+    output_tokens: counters?.output_tokens ?? 0,
+    total_tokens: counters?.total_tokens ?? 0,
+    cost_eur_estimated: counters?.cost_eur_estimated ?? 0,
+  };
 }
 
 export async function loadCandidateByDedupe(

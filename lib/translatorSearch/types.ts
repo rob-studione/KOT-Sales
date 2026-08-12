@@ -38,6 +38,9 @@ export type TranslatorSearchRequestParams = {
     maxBudgetEur: number;
     maxWebSearchCalls: number;
     maxUniqueSourceUrls: number;
+    maxPdfFiles: number;
+    maxPdfBytes: number;
+    maxPdfPagesTotal: number;
   };
 };
 

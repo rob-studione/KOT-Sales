@@ -1,6 +1,7 @@
 /**
- * Safe HTML fetch core (be server-only) — pinned public IP jungtis (anti DNS-rebinding),
+ * Safe document fetch core (be server-only) — pinned public IP jungtis (anti DNS-rebinding),
  * full-request timeout įskaitant body, redirect re-check.
+ * Supports text/html, application/xhtml+xml, and application/pdf (C2).
  */
 
 import dns from "node:dns/promises";
@@ -18,6 +19,29 @@ import {
   type UrlSafetyErr,
 } from "@/lib/translatorSearch/urlSafety";
 
+export type SafeFetchHtmlOk = {
+  ok: true;
+  kind: "html";
+  finalUrl: string;
+  canonicalUrl: string;
+  contentType: string;
+  html: string;
+  titleHint: string | null;
+  pinnedIp: string;
+};
+
+export type SafeFetchPdfOk = {
+  ok: true;
+  kind: "pdf";
+  finalUrl: string;
+  canonicalUrl: string;
+  contentType: string;
+  bytes: Buffer;
+  titleHint: string | null;
+  pinnedIp: string;
+};
+
+/** @deprecated Prefer SafeFetchHtmlOk — kept for HTML-only callers. */
 export type SafeFetchOk = {
   ok: true;
   finalUrl: string;
@@ -28,6 +52,8 @@ export type SafeFetchOk = {
   pinnedIp: string;
 };
 
+export type SafeFetchDocumentOk = SafeFetchHtmlOk | SafeFetchPdfOk;
+
 export type SafeFetchErr = {
   ok: false;
   code: string;
@@ -35,6 +61,7 @@ export type SafeFetchErr = {
 };
 
 export type SafeFetchResult = SafeFetchOk | SafeFetchErr;
+export type SafeFetchDocumentResult = SafeFetchDocumentOk | SafeFetchErr;
 
 export type DnsLookupFn = (hostname: string) => Promise<string[]>;
 
@@ -96,10 +123,25 @@ export async function resolvePublicIps(
   return { ok: true, ips: publicIps };
 }
 
+function contentTypeBase(contentType: string | null | undefined): string {
+  if (!contentType) return "";
+  return String(contentType).split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
 function contentTypeIsHtml(contentType: string | null | undefined): boolean {
-  if (!contentType) return false;
-  const base = String(contentType).split(";")[0]?.trim().toLowerCase() ?? "";
+  const base = contentTypeBase(contentType);
   return base === "text/html" || base === "application/xhtml+xml";
+}
+
+function contentTypeIsPdf(contentType: string | null | undefined): boolean {
+  return contentTypeBase(contentType) === "application/pdf";
+}
+
+const PDF_MAGIC = Buffer.from("%PDF-", "ascii");
+
+function bufferStartsWithPdfMagic(buf: Buffer): boolean {
+  if (!buf || buf.byteLength < PDF_MAGIC.byteLength) return false;
+  return buf.subarray(0, PDF_MAGIC.byteLength).equals(PDF_MAGIC);
 }
 
 function extractTitleHint(html: string): string | null {
@@ -358,24 +400,36 @@ async function readBodyWithLimit(
   return { ok: true, buf: Buffer.concat(chunks) };
 }
 
+export type SafeFetchCoreOpts = {
+  lookup?: DnsLookupFn;
+  pinnedRequest?: PinnedHttpRequestFn;
+  /** HTML body limit (default maxHtmlBytes). */
+  maxHtmlBytes?: number;
+  /** PDF body limit (default maxPdfBytes). */
+  maxPdfBytes?: number;
+  /** @deprecated Use maxHtmlBytes. Kept for HTML-only callers. */
+  maxBytes?: number;
+  maxRedirects?: number;
+  timeoutMs?: number;
+  /** When false (default for HTML API), application/pdf is rejected as mime_not_html. */
+  allowPdf?: boolean;
+};
+
 /**
- * Safe public HTML fetch with DNS pinning (anti-rebinding).
+ * Safe public document fetch with DNS pinning (anti-rebinding).
+ * Accepts HTML and, when `allowPdf`, application/pdf with `%PDF-` magic.
  */
-export async function safeFetchHtmlCore(
+export async function safeFetchDocumentCore(
   rawUrl: string,
-  opts?: {
-    lookup?: DnsLookupFn;
-    pinnedRequest?: PinnedHttpRequestFn;
-    maxBytes?: number;
-    maxRedirects?: number;
-    timeoutMs?: number;
-  }
-): Promise<SafeFetchResult> {
+  opts?: SafeFetchCoreOpts
+): Promise<SafeFetchDocumentResult> {
   const lookup = opts?.lookup ?? defaultDnsLookup;
   const pinnedRequest = opts?.pinnedRequest ?? createNodePinnedHttpRequest();
-  const maxBytes = opts?.maxBytes ?? TRANSLATOR_SEARCH_LIMITS.maxHtmlBytes;
+  const maxHtmlBytes = opts?.maxHtmlBytes ?? opts?.maxBytes ?? TRANSLATOR_SEARCH_LIMITS.maxHtmlBytes;
+  const maxPdfBytes = opts?.maxPdfBytes ?? TRANSLATOR_SEARCH_LIMITS.maxPdfBytes;
   const maxRedirects = opts?.maxRedirects ?? TRANSLATOR_SEARCH_LIMITS.maxRedirects;
   const timeoutMs = opts?.timeoutMs ?? TRANSLATOR_SEARCH_LIMITS.fetchTimeoutMs;
+  const allowPdf = opts?.allowPdf === true;
 
   let current = assertSafeHttpsUrlSync(rawUrl, { allowHttp: false });
   if (!current.ok) return current;
@@ -406,7 +460,9 @@ export async function safeFetchHtmlCore(
           pinnedIp,
           signal: controller.signal,
           headers: {
-            Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
+            Accept: allowPdf
+              ? "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.1"
+              : "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
             "User-Agent": "KOT-Sales-TranslatorSearch/1.0",
             Connection: "close",
           },
@@ -449,19 +505,34 @@ export async function safeFetchHtmlCore(
 
       const ctRaw = res.headers["content-type"];
       const ct = Array.isArray(ctRaw) ? ctRaw[0] : ctRaw;
-      if (!contentTypeIsHtml(ct)) {
+      const isHtml = contentTypeIsHtml(ct);
+      const isPdf = contentTypeIsPdf(ct);
+
+      if (!isHtml && !(allowPdf && isPdf)) {
         discardResponseBody(res);
+        if (isPdf && !allowPdf) {
+          return {
+            ok: false,
+            code: "mime_not_html",
+            error: `Netinkamas MIME (tik text/html): ${ct ?? "nėra"}.`,
+          };
+        }
         return {
           ok: false,
-          code: "mime_not_html",
-          error: `Netinkamas MIME (tik text/html): ${ct ?? "nėra"}.`,
+          code: isPdf ? "mime_not_pdf" : "mime_unsupported",
+          error: `Netinkamas MIME: ${ct ?? "nėra"}.`,
         };
       }
 
+      const maxBytes = isPdf ? maxPdfBytes : maxHtmlBytes;
       const declared = Number(res.headers["content-length"] ?? NaN);
       if (Number.isFinite(declared) && declared > maxBytes) {
         discardResponseBody(res);
-        return { ok: false, code: "body_too_large", error: "Atsakymas per didelis." };
+        return {
+          ok: false,
+          code: isPdf ? "pdf_too_large" : "body_too_large",
+          error: "Atsakymas per didelis.",
+        };
       }
 
       const bodyRead = await readBodyWithLimit(
@@ -472,15 +543,37 @@ export async function safeFetchHtmlCore(
       );
       if (!bodyRead.ok) {
         discardResponseBody(res);
+        if (isPdf && bodyRead.code === "body_too_large") {
+          return { ok: false, code: "pdf_too_large", error: bodyRead.error };
+        }
         return bodyRead;
       }
 
-      const html = bodyRead.buf.toString("utf8");
       const finalUrl = current.canonicalHref;
+      const canonicalUrl = canonicalizeUrl(finalUrl);
+
+      if (isPdf) {
+        if (!bufferStartsWithPdfMagic(bodyRead.buf)) {
+          return { ok: false, code: "pdf_invalid", error: "Atsakymas nėra galiojantis PDF." };
+        }
+        return {
+          ok: true,
+          kind: "pdf",
+          finalUrl,
+          canonicalUrl,
+          contentType: ct ?? "application/pdf",
+          bytes: bodyRead.buf,
+          titleHint: null,
+          pinnedIp,
+        };
+      }
+
+      const html = bodyRead.buf.toString("utf8");
       return {
         ok: true,
+        kind: "html",
         finalUrl,
-        canonicalUrl: canonicalizeUrl(finalUrl),
+        canonicalUrl,
         contentType: ct ?? "text/html",
         html,
         titleHint: extractTitleHint(html),
@@ -492,4 +585,32 @@ export async function safeFetchHtmlCore(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Safe public HTML fetch with DNS pinning (anti-rebinding).
+ * Compatible wrapper — does not accept PDF bodies.
+ */
+export async function safeFetchHtmlCore(
+  rawUrl: string,
+  opts?: SafeFetchCoreOpts
+): Promise<SafeFetchResult> {
+  const doc = await safeFetchDocumentCore(rawUrl, { ...opts, allowPdf: false });
+  if (!doc.ok) return doc;
+  if (doc.kind !== "html") {
+    return {
+      ok: false,
+      code: "mime_not_html",
+      error: "Netinkamas MIME (tik text/html).",
+    };
+  }
+  return {
+    ok: true,
+    finalUrl: doc.finalUrl,
+    canonicalUrl: doc.canonicalUrl,
+    contentType: doc.contentType,
+    html: doc.html,
+    titleHint: doc.titleHint,
+    pinnedIp: doc.pinnedIp,
+  };
 }

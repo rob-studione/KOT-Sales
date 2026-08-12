@@ -201,6 +201,9 @@ export function validateTranslatorSearchRequest(body: unknown): ValidateRequestR
       maxBudgetEur: TRANSLATOR_SEARCH_LIMITS.maxBudgetEur,
       maxWebSearchCalls: TRANSLATOR_SEARCH_LIMITS.maxWebSearchCalls,
       maxUniqueSourceUrls: TRANSLATOR_SEARCH_LIMITS.maxUniqueSourceUrls,
+      maxPdfFiles: TRANSLATOR_SEARCH_LIMITS.maxPdfFiles,
+      maxPdfBytes: TRANSLATOR_SEARCH_LIMITS.maxPdfBytes,
+      maxPdfPagesTotal: TRANSLATOR_SEARCH_LIMITS.maxPdfPagesTotal,
     },
   };
 

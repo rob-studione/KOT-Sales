@@ -39,6 +39,7 @@ import {
 } from "@/lib/translatorSearch/jobDeadline";
 import { canTransitionJobStatus } from "@/lib/translatorSearch/jobStatus";
 import {
+  buildTranslatorSearchJobMetricFields,
   failJobOrThrow,
   insertOrReuseCandidateByDedupe,
   listActiveJobsForActor,
@@ -63,7 +64,12 @@ import {
   requireTranslatorSearchPricing,
 } from "@/lib/translatorSearch/pricing";
 import { TranslatorSearchConfigError } from "@/lib/translatorSearch/model";
-import { discardResponseBody, safeFetchHtmlCore } from "@/lib/translatorSearch/safeFetchCore";
+import { discardResponseBody, safeFetchDocumentCore, safeFetchHtmlCore } from "@/lib/translatorSearch/safeFetchCore";
+import {
+  bufferLooksLikePdf,
+  extractPdfTextFromBuffer,
+  resolvePdfPageFromEvidence,
+} from "@/lib/translatorSearch/pdfText";
 import { resolveTranslatorStopReason } from "@/lib/translatorSearch/stopReason";
 import {
   assertSafeHttpsUrlSync,
@@ -81,6 +87,9 @@ import {
   webSearchInputCharCount,
 } from "@/lib/translatorSearch/webSearchParse";
 import type { TranslatorSearchRequestParams } from "@/lib/translatorSearch/types";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 type FakeCrmUser = {
   id: string;
@@ -339,7 +348,15 @@ const noSeedOk = validateTranslatorSearchRequest({
   seedUrls: [],
 });
 check(noSeedOk.ok === true, "0 seeds allowed in C1");
-if (noSeedOk.ok) check(noSeedOk.params.seedUrls.length === 0, "empty seed list");
+if (noSeedOk.ok) {
+  check(noSeedOk.params.seedUrls.length === 0, "empty seed list");
+  check(noSeedOk.params.appliedLimits.maxPdfFiles === TRANSLATOR_SEARCH_LIMITS.maxPdfFiles, "appliedLimits.maxPdfFiles");
+  check(noSeedOk.params.appliedLimits.maxPdfBytes === TRANSLATOR_SEARCH_LIMITS.maxPdfBytes, "appliedLimits.maxPdfBytes");
+  check(
+    noSeedOk.params.appliedLimits.maxPdfPagesTotal === TRANSLATOR_SEARCH_LIMITS.maxPdfPagesTotal,
+    "appliedLimits.maxPdfPagesTotal"
+  );
+}
 
 const threeSeeds = validateTranslatorSearchRequest({
   languageFrom: "EN",
@@ -509,6 +526,9 @@ check(!missingCriteria.ok, "criteria still required");
       maxBudgetEur: 5,
       maxWebSearchCalls: 3,
       maxUniqueSourceUrls: 30,
+      maxPdfFiles: 3,
+      maxPdfBytes: 10485760,
+      maxPdfPagesTotal: 30,
     },
   };
 
@@ -636,6 +656,9 @@ check(!missingCriteria.ok, "criteria still required");
       maxBudgetEur: 5,
       maxWebSearchCalls: 3,
       maxUniqueSourceUrls: 30,
+      maxPdfFiles: 3,
+      maxPdfBytes: 10485760,
+      maxPdfPagesTotal: 30,
     },
   };
 
@@ -921,6 +944,9 @@ check(!missingCriteria.ok, "criteria still required");
       maxBudgetEur: 5,
       maxWebSearchCalls: 3,
       maxUniqueSourceUrls: 30,
+      maxPdfFiles: 3,
+      maxPdfBytes: 10485760,
+      maxPdfPagesTotal: 30,
     },
   };
 
@@ -1155,6 +1181,79 @@ async function* slowBody() {
     threwFail = e instanceof DbUpdateError && e.code === "db_update_terminal";
   }
   check(threwFail, "real failJobOrThrow terminal failure");
+}
+
+// --- C2.1 terminal metric patches include pdf_count ---
+{
+  const completedMetrics = buildTranslatorSearchJobMetricFields({
+    search_calls: 1,
+    fetch_url_count: 2,
+    pdf_count: 1,
+    openai_calls: 3,
+    input_tokens: 10,
+    output_tokens: 5,
+    total_tokens: 15,
+    cost_eur_estimated: 0.01,
+  });
+  check(completedMetrics.pdf_count === 1, "completed metrics include pdf_count");
+  check(
+    Object.keys(completedMetrics).sort().join(",") ===
+      "cost_eur_estimated,fetch_url_count,input_tokens,openai_calls,output_tokens,pdf_count,search_calls,total_tokens",
+    "completed metric field set"
+  );
+
+  let failedPatch: Record<string, unknown> | null = null;
+  const captureAdmin: TranslatorAdminClient = {
+    from() {
+      return {
+        update(patch: Record<string, unknown>) {
+          failedPatch = patch;
+          return this;
+        },
+        eq() {
+          return this;
+        },
+        select() {
+          return Promise.resolve({ data: [{ id: "ok" }], error: null });
+        },
+      } as never;
+    },
+  };
+  await failJobOrThrow(captureAdmin, "00000000-0000-4000-8000-000000000099", "job_exception", {
+    search_calls: 2,
+    fetch_url_count: 4,
+    pdf_count: 2,
+    openai_calls: 1,
+    input_tokens: 1,
+    output_tokens: 1,
+    total_tokens: 2,
+    cost_eur_estimated: 0.02,
+    warning: null,
+  });
+  const patch = failedPatch as Record<string, unknown> | null;
+  check(patch !== null && patch.pdf_count === 2, "failed terminal patch stores pdf_count");
+  check(patch !== null && patch.status === "failed", "failed terminal status");
+  check(patch !== null && patch.fetch_url_count === 4, "failed terminal fetch preserved");
+}
+
+// --- C2.1 PDF limit stop reasons ---
+{
+  check(
+    resolveTranslatorStopReason({ sourceLimit: true }) === "source_limit",
+    "PDF file/page limit flag → source_limit"
+  );
+  check(
+    resolveTranslatorStopReason({ sourceLimit: true }) !== "no_more_sources",
+    "PDF limit is not no_more_sources"
+  );
+  check(
+    resolveTranslatorStopReason({}) === "no_more_sources",
+    "no limit flags → no_more_sources"
+  );
+  // Rejected PDF must not advance found / target
+  let found = 0;
+  found = nextFoundCandidatesAfterMatch({ foundSoFar: found, accepted: false });
+  check(found === 0 && !isTargetReached({ foundCandidates: found, targetCandidates: 1 }), "rejected PDF ≠ target");
 }
 
 // --- activeJobs / loadCandidateByDedupe DB read errors are not "not found" ---
@@ -1401,6 +1500,322 @@ async function* slowBody() {
     looksLikeNonPersonTranslatorName("Foo Machine Translation") === true,
     "name heuristic catches machine translation cue"
   );
+}
+
+// --- C2 PDF fetch + text extraction ---
+{
+  const fixturePath = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "fixtures/translator-search/sample-text.pdf"
+  );
+  const samplePdf = fs.readFileSync(fixturePath);
+  check(bufferLooksLikePdf(samplePdf), "fixture starts with %PDF-");
+
+  const parsed = await extractPdfTextFromBuffer({ bytes: samplePdf });
+  check(parsed.ok === true, "sample PDF text extracted");
+  if (parsed.ok) {
+    check(parsed.pageCount === 2, "sample PDF has 2 pages");
+    check(parsed.pages[0]?.text.includes("Inga Jokubauske") === true, "page 1 text kept");
+    check(parsed.pages[1]?.text.includes("English Lithuanian") === true, "page 2 text kept");
+    check(parsed.text.includes("Inga Jokubauske") && parsed.text.includes("English Lithuanian"), "combined text");
+
+    const page = resolvePdfPageFromEvidence({
+      pages: parsed.pages,
+      evidence: [{ field: "display_name", quote: "Inga Jokubauske freelance translator" }],
+    });
+    check(page === 1, "pdf_page from grounded display_name quote");
+
+    const page2 = resolvePdfPageFromEvidence({
+      pages: parsed.pages,
+      evidence: [{ field: "phone", quote: "+37060000000" }],
+    });
+    check(page2 === 2, "pdf_page from page-2 quote");
+
+    const unknownPage = resolvePdfPageFromEvidence({
+      pages: parsed.pages,
+      evidence: [{ field: "display_name", quote: "not present in document at all" }],
+    });
+    check(unknownPage === null, "pdf_page null when quote not grounded");
+  }
+
+  const fakePdf = Buffer.from("%PDF- this is not a real pdf body");
+  const fakeParsed = await extractPdfTextFromBuffer({ bytes: fakePdf });
+  check(
+    fakeParsed.ok === false &&
+      (fakeParsed.code === "pdf_parse_failed" ||
+        fakeParsed.code === "pdf_invalid" ||
+        fakeParsed.code === "pdf_no_text"),
+    "bogus PDF body fails safely"
+  );
+
+  const noMagic = Buffer.from("<html>not pdf</html>");
+  const noMagicParsed = await extractPdfTextFromBuffer({ bytes: noMagic });
+  check(noMagicParsed.ok === false && noMagicParsed.code === "pdf_invalid", "non-PDF magic rejected");
+
+  // Empty content stream → pdf_no_text
+  {
+    const objs: string[] = [];
+    let nextId = 1;
+    const catalogId = nextId++;
+    const pagesId = nextId++;
+    const fontId = nextId++;
+    const pageId = nextId++;
+    const contentId = nextId++;
+    objs[catalogId] = `${catalogId} 0 obj<< /Type /Catalog /Pages ${pagesId} 0 R >>endobj\n`;
+    objs[pagesId] = `${pagesId} 0 obj<< /Type /Pages /Kids [${pageId} 0 R] /Count 1 >>endobj\n`;
+    objs[fontId] = `${fontId} 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj\n`;
+    objs[contentId] = `${contentId} 0 obj<< /Length 0 >>stream\nendstream\nendobj\n`;
+    objs[pageId] = `${pageId} 0 obj<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 612 792] /Contents ${contentId} 0 R /Resources << /Font << /F1 ${fontId} 0 R >> >> >>endobj\n`;
+    let body = "%PDF-1.4\n";
+    const offsets = [0];
+    for (let id = 1; id < objs.length; id++) {
+      offsets[id] = Buffer.byteLength(body, "latin1");
+      body += objs[id]!;
+    }
+    const xrefStart = Buffer.byteLength(body, "latin1");
+    body += `xref\n0 ${objs.length}\n0000000000 65535 f \n`;
+    for (let id = 1; id < objs.length; id++) {
+      body += String(offsets[id]).padStart(10, "0") + " 00000 n \n";
+    }
+    body += `trailer<< /Size ${objs.length} /Root ${catalogId} 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+    const emptyParsed = await extractPdfTextFromBuffer({ bytes: Buffer.from(body, "latin1") });
+    check(emptyParsed.ok === false && emptyParsed.code === "pdf_no_text", "empty PDF → pdf_no_text");
+  }
+
+  const charLimited = await extractPdfTextFromBuffer({
+    bytes: samplePdf,
+    maxChars: 24,
+  });
+  check(charLimited.ok === true, "char-limited PDF still ok");
+  if (charLimited.ok) {
+    check(charLimited.text.length <= 24, "PDF text truncated to maxChars");
+  }
+
+  const oversize = await extractPdfTextFromBuffer({
+    bytes: samplePdf,
+    maxBytes: 10,
+  });
+  check(oversize.ok === false && oversize.code === "pdf_too_large", "maxBytes rejects PDF");
+
+  const pageLimit = await extractPdfTextFromBuffer({
+    bytes: samplePdf,
+    pagesUsedSoFar: TRANSLATOR_SEARCH_LIMITS.maxPdfPagesTotal - 1,
+  });
+  check(pageLimit.ok === false && pageLimit.code === "pdf_page_limit", "job page budget rejects PDF");
+
+  // Fetch: real PDF + correct MIME accepted
+  {
+    const res = await safeFetchDocumentCore("https://example.com/cv.pdf", {
+      allowPdf: true,
+      lookup: async () => ["93.184.216.34"],
+      pinnedRequest: async () => ({
+        statusCode: 200,
+        headers: { "content-type": "application/pdf" },
+        body: (async function* () {
+          yield samplePdf;
+        })(),
+      }),
+    });
+    check(res.ok && res.kind === "pdf", "PDF MIME + magic accepted");
+    if (res.ok && res.kind === "pdf") {
+      check(res.bytes.equals(samplePdf), "PDF bytes preserved");
+    }
+  }
+
+  // Fake PDF with application/pdf rejected
+  {
+    const res = await safeFetchDocumentCore("https://example.com/fake.pdf", {
+      allowPdf: true,
+      lookup: async () => ["93.184.216.34"],
+      pinnedRequest: async () => ({
+        statusCode: 200,
+        headers: { "content-type": "application/pdf" },
+        body: (async function* () {
+          yield Buffer.from("<html>spoof</html>");
+        })(),
+      }),
+    });
+    check(!res.ok && res.code === "pdf_invalid", "MIME pdf without magic rejected");
+  }
+
+  // .pdf URL returning HTML → treated as HTML by MIME (not URL)
+  {
+    const res = await safeFetchDocumentCore("https://example.com/report.pdf", {
+      allowPdf: true,
+      lookup: async () => ["93.184.216.34"],
+      pinnedRequest: async () => ({
+        statusCode: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+        body: (async function* () {
+          yield Buffer.from("<html><title>Not PDF</title><body>ok</body></html>");
+        })(),
+      }),
+    });
+    check(res.ok && res.kind === "html", ".pdf URL + HTML MIME → html kind");
+  }
+
+  // Content-Length over maxPdfBytes discarded early
+  {
+    let destroyed = false;
+    const res = await safeFetchDocumentCore("https://example.com/big.pdf", {
+      allowPdf: true,
+      maxPdfBytes: 100,
+      lookup: async () => ["93.184.216.34"],
+      pinnedRequest: async () => ({
+        statusCode: 200,
+        headers: { "content-type": "application/pdf", "content-length": "999999" },
+        body: (async function* () {
+          yield samplePdf;
+        })(),
+        destroyBody: () => {
+          destroyed = true;
+        },
+      }),
+    });
+    check(!res.ok && res.code === "pdf_too_large", "Content-Length over maxPdfBytes");
+    check(destroyed, "oversized PDF body destroyed");
+  }
+
+  // Redirect to private still blocked for PDF accept path
+  {
+    let destroyed = false;
+    const res = await safeFetchDocumentCore("https://example.com/start.pdf", {
+      allowPdf: true,
+      timeoutMs: 2000,
+      lookup: async () => ["93.184.216.34"],
+      pinnedRequest: async ({ url }) => {
+        if (url.pathname === "/start.pdf") {
+          return {
+            statusCode: 302,
+            headers: { location: "https://169.254.169.254/latest" },
+            body: (async function* () {
+              yield samplePdf;
+            })(),
+            destroyBody: () => {
+              destroyed = true;
+            },
+          };
+        }
+        throw new Error("should not connect");
+      },
+    });
+    check(
+      !res.ok && (res.code === "url_blocked_host" || res.code === "dns_blocked_ip"),
+      "PDF path redirect private blocked"
+    );
+    check(destroyed, "PDF path redirect body destroyed");
+  }
+
+  // Hung body timeout on PDF path
+  {
+    let destroyed = false;
+    let rejectPending: ((err: Error) => void) | null = null;
+    const started = Date.now();
+    const hung = safeFetchDocumentCore("https://example.com/hung.pdf", {
+      allowPdf: true,
+      timeoutMs: 40,
+      lookup: async () => ["93.184.216.34"],
+      pinnedRequest: async () => ({
+        statusCode: 200,
+        headers: { "content-type": "application/pdf" },
+        body: {
+          [Symbol.asyncIterator]() {
+            return {
+              next() {
+                return new Promise<IteratorResult<Uint8Array>>((_resolve, reject) => {
+                  rejectPending = reject;
+                });
+              },
+              return() {
+                return Promise.resolve({ done: true, value: undefined });
+              },
+            };
+          },
+        },
+        destroyBody: () => {
+          destroyed = true;
+          try {
+            rejectPending?.(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          } catch {
+            // ignore
+          }
+        },
+      }),
+    });
+    const res = await hung;
+    const elapsed = Date.now() - started;
+    check(!res.ok && res.code === "fetch_timeout", "PDF hung body → fetch_timeout");
+    check(destroyed, "PDF hung body destroyBody called");
+    check(elapsed < 1500, "PDF hung body returned quickly");
+  }
+
+  // HTML-only API still rejects PDF MIME
+  {
+    let destroyed = false;
+    const res = await safeFetchHtmlCore("https://example.com/a.pdf", {
+      lookup: async () => ["93.184.216.34"],
+      pinnedRequest: async () => ({
+        statusCode: 200,
+        headers: { "content-type": "application/pdf" },
+        body: (async function* () {
+          yield samplePdf;
+        })(),
+        destroyBody: () => {
+          destroyed = true;
+        },
+      }),
+    });
+    check(!res.ok && res.code === "mime_not_html", "safeFetchHtml rejects PDF MIME");
+    check(destroyed, "HTML-only API discards PDF body");
+  }
+
+  // Type filter + dedupe still apply to PDF-originated person
+  {
+    const typeOk = matchesTranslatorCandidateTypeFilter({
+      filter: "freelancer",
+      entityType: "person",
+      displayName: "Inga Jokubauske",
+    });
+    check(typeOk.ok === true, "PDF person passes type filter");
+    const typeBad = matchesTranslatorCandidateTypeFilter({
+      filter: "freelancer",
+      entityType: "agency",
+      displayName: "Acme Agency",
+    });
+    check(typeBad.ok === false, "PDF agency rejected by type filter");
+    const key = computeDedupeKey({
+      email: "test@example.com",
+      websiteUrl: null,
+      displayName: "Inga Jokubauske",
+      country: "Lithuania",
+      canonicalSourceUrl: "https://example.com/cv.pdf",
+    });
+    check(typeof key === "string" && key.length > 8, "PDF candidate dedupe key");
+  }
+
+  // PDF parse failure does not imply target_reached / found increment
+  {
+    let found = 0;
+    const rejected = await extractPdfTextFromBuffer({ bytes: Buffer.from("nope") });
+    check(rejected.ok === false, "bad PDF rejected");
+    found = nextFoundCandidatesAfterMatch({ foundSoFar: found, accepted: false });
+    check(found === 0, "PDF skip does not increment found");
+    check(!isTargetReached({ foundCandidates: found, targetCandidates: 1 }), "PDF skip ≠ target_reached");
+  }
+
+  check(TRANSLATOR_SEARCH_LIMITS.maxPdfFiles === 3, "maxPdfFiles=3");
+  check(TRANSLATOR_SEARCH_LIMITS.maxPdfPagesTotal === 30, "maxPdfPagesTotal=30");
+
+  // Destroy path must not break subsequent successful extraction
+  const again = await extractPdfTextFromBuffer({ bytes: samplePdf });
+  check(again.ok === true, "PDF destroy path allows re-extract");
+
+  // Page-limit rejection still returns safe code (destroy covered in finally)
+  const limitedAgain = await extractPdfTextFromBuffer({
+    bytes: samplePdf,
+    pagesUsedSoFar: TRANSLATOR_SEARCH_LIMITS.maxPdfPagesTotal - 1,
+  });
+  check(limitedAgain.ok === false && limitedAgain.code === "pdf_page_limit", "page limit after destroy wiring");
 }
 
 if (failures.length) {

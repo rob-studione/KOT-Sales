@@ -80,6 +80,11 @@ export function CandidatesPanel({
                       <a className="font-medium text-zinc-800 underline" href={s.canonical_url} target="_blank" rel="noreferrer">
                         {s.title || s.canonical_url}
                       </a>
+                      {typeof s.pdf_page === "number" && Number.isFinite(s.pdf_page) && s.pdf_page > 0 ? (
+                        <span className="ml-2 text-xs text-zinc-500">PDF · psl. {s.pdf_page}</span>
+                      ) : /^PDF\b/i.test(String(s.title ?? "")) ? (
+                        <span className="ml-2 text-xs text-zinc-500">PDF</span>
+                      ) : null}
                       <EvidenceList evidence={s.evidence} />
                     </li>
                   ))}

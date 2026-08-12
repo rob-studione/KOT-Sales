@@ -27,6 +27,7 @@
     "../lib/translatorSearch/limits.ts",
     "../lib/translatorSearch/model.ts",
     "../lib/translatorSearch/openaiRequestOptions.ts",
+    "../lib/translatorSearch/pdfText.ts",
     "../lib/translatorSearch/pricing.ts",
     "../lib/translatorSearch/safeFetchCore.ts",
     "../lib/translatorSearch/stopReason.ts",

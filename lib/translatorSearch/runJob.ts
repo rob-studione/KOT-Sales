@@ -20,9 +20,11 @@ import { htmlToText } from "@/lib/translatorSearch/htmlToText";
 import {
   canStartTimedAction,
   createJobDeadline,
+  isJobDeadlineReached,
 } from "@/lib/translatorSearch/jobDeadline";
 import { assertJobTransition, buildTerminalJobPatch } from "@/lib/translatorSearch/jobStatus";
 import {
+  buildTranslatorSearchJobMetricFields,
   failJobOrThrow,
   insertOrReuseCandidateByDedupe,
   listActiveJobsForActor,
@@ -30,8 +32,13 @@ import {
 } from "@/lib/translatorSearch/jobPersistence";
 import { extractTranslatorCandidateFromText } from "@/lib/translatorSearch/openaiExtractCandidate";
 import { runTranslatorWebSearch } from "@/lib/translatorSearch/openaiWebSearch";
+import {
+  extractPdfTextFromBuffer,
+  resolvePdfPageFromEvidence,
+  type PdfPageText,
+} from "@/lib/translatorSearch/pdfText";
 import { prefilterContacts } from "@/lib/translatorSearch/prefilterContacts";
-import { safeFetchHtml } from "@/lib/translatorSearch/safeFetch";
+import { safeFetchDocument } from "@/lib/translatorSearch/safeFetch";
 import { resolveTranslatorStopReason } from "@/lib/translatorSearch/stopReason";
 import {
   CANDIDATE_TYPE_MISMATCH_WARNING,
@@ -73,6 +80,25 @@ function pushUniqueWarning(warnings: string[], msg: string): void {
   if (!warnings.includes(msg)) warnings.push(msg);
 }
 
+function safePdfSkipWarning(code: string): string {
+  switch (code) {
+    case "pdf_invalid":
+      return "PDF netinkamas arba sugadintas.";
+    case "pdf_too_large":
+      return "PDF per didelis.";
+    case "pdf_page_limit":
+      return "Pasiektas PDF puslapių limitas.";
+    case "pdf_no_text":
+      return "PDF be pasirenkamo teksto.";
+    case "pdf_encrypted":
+      return "PDF užšifruotas.";
+    case "pdf_parse_failed":
+      return "PDF nuskaitymas nepavyko.";
+    default:
+      return `PDF praleistas (${code}).`;
+  }
+}
+
 async function completeJob(params: {
   admin: SupabaseClient;
   jobId: string;
@@ -80,6 +106,7 @@ async function completeJob(params: {
   warning: string | null;
   searchCalls: number;
   fetchCount: number;
+  pdfCount: number;
   openaiCalls: number;
   inputTokens: number;
   outputTokens: number;
@@ -100,13 +127,16 @@ async function completeJob(params: {
         stop_reason: params.stopReason,
         warning: params.warning,
       }),
-      search_calls: params.searchCalls,
-      fetch_url_count: params.fetchCount,
-      openai_calls: params.openaiCalls,
-      input_tokens: params.inputTokens,
-      output_tokens: params.outputTokens,
-      total_tokens: params.totalTokens,
-      cost_eur_estimated: cost,
+      ...buildTranslatorSearchJobMetricFields({
+        search_calls: params.searchCalls,
+        fetch_url_count: params.fetchCount,
+        pdf_count: params.pdfCount,
+        openai_calls: params.openaiCalls,
+        input_tokens: params.inputTokens,
+        output_tokens: params.outputTokens,
+        total_tokens: params.totalTokens,
+        cost_eur_estimated: cost,
+      }),
     },
     "db_update_terminal"
   );
@@ -211,6 +241,7 @@ export async function runTranslatorSearchJob(params: {
 
   let searchCalls = 0;
   let fetchCount = 0;
+  let pdfFilesUsed = 0;
   let openaiCalls = 0;
   let inputTokens = 0;
   let outputTokens = 0;
@@ -281,6 +312,7 @@ export async function runTranslatorSearchJob(params: {
 
     const planned = discovery.sources;
     let foundCandidates = 0;
+    let pdfPagesUsed = 0;
 
     if (planned.length === 0 || costUnknown) {
       // No sources, or unknown cost forbids further OpenAI (extraction) calls.
@@ -303,6 +335,7 @@ export async function runTranslatorSearchJob(params: {
         warning,
         searchCalls,
         fetchCount,
+        pdfCount: 0,
         openaiCalls,
         inputTokens,
         outputTokens,
@@ -372,7 +405,10 @@ export async function runTranslatorSearchJob(params: {
         continue;
       }
 
-      const fetched = await safeFetchHtml(src.originalUrl, { timeoutMs: fetchGate.timeoutMs });
+      const fetched = await safeFetchDocument(src.originalUrl, {
+        timeoutMs: fetchGate.timeoutMs,
+        allowPdf: true,
+      });
       fetchCount += 1;
       domainCounts.set(host, domainN + 1);
       if (!fetched.ok) {
@@ -380,7 +416,60 @@ export async function runTranslatorSearchJob(params: {
         continue;
       }
 
-      const text = htmlToText(fetched.html);
+      let text = "";
+      let titleHint: string | null = fetched.titleHint;
+      let pdfPages: PdfPageText[] | null = null;
+      let pdfPage: number | null = null;
+
+      if (fetched.kind === "pdf") {
+        if (pdfFilesUsed >= TRANSLATOR_SEARCH_LIMITS.maxPdfFiles) {
+          pushUniqueWarning(warnings, "Pasiektas PDF failų limitas.");
+          sourceLimit = true;
+          continue;
+        }
+
+        if (isJobDeadlineReached(deadline)) {
+          warnings.push("Pasiektas vidinis laiko limitas prieš PDF nuskaitymą.");
+          timeLimit = true;
+          break;
+        }
+
+        // Count only MIME+magic-validated PDFs that are handed to the parser.
+        pdfFilesUsed += 1;
+        let pdfParsed;
+        try {
+          pdfParsed = await extractPdfTextFromBuffer({
+            bytes: fetched.bytes,
+            pagesUsedSoFar: pdfPagesUsed,
+          });
+        } catch {
+          warnings.push(safePdfSkipWarning("pdf_parse_failed"));
+          continue;
+        }
+
+        if (isJobDeadlineReached(deadline)) {
+          warnings.push("Pasiektas vidinis laiko limitas po PDF nuskaitymo.");
+          timeLimit = true;
+          break;
+        }
+
+        if (!pdfParsed.ok) {
+          warnings.push(safePdfSkipWarning(pdfParsed.code));
+          if (pdfParsed.code === "pdf_page_limit") {
+            sourceLimit = true;
+          }
+          // Rejected PDF must not advance foundCandidates / target_reached.
+          continue;
+        }
+
+        pdfPagesUsed += pdfParsed.pageCount;
+        text = pdfParsed.text;
+        pdfPages = pdfParsed.pages;
+        titleHint = titleHint ?? `PDF (${pdfParsed.pageCount} psl.)`;
+      } else {
+        text = htmlToText(fetched.html);
+      }
+
       const pre = prefilterContacts(text);
       if (!pre.worthSendingToModel) {
         warnings.push(`Praleistas silpnas šaltinis (${pre.reasonIfSkip}).`);
@@ -420,7 +509,7 @@ export async function runTranslatorSearchJob(params: {
         extracted = await extractTranslatorCandidateFromText({
           pageText: text.slice(0, TRANSLATOR_SEARCH_LIMITS.maxCharsPerSource),
           pageUrl: fetched.finalUrl,
-          pageTitle: fetched.titleHint,
+          pageTitle: titleHint,
           search: requestParams,
           timeoutMs: extractGate.timeoutMs,
         });
@@ -470,6 +559,13 @@ export async function runTranslatorSearchJob(params: {
         // Do not persist; do not advance foundCandidates / target_reached.
         if (costUnknown) break;
         continue;
+      }
+
+      if (pdfPages) {
+        pdfPage = resolvePdfPageFromEvidence({
+          pages: pdfPages,
+          evidence: extracted.parsed.evidence,
+        });
       }
 
       const dedupeKey = computeDedupeKey({
@@ -542,10 +638,10 @@ export async function runTranslatorSearchJob(params: {
           source_type: src.sourceType,
           original_url: src.originalUrl,
           canonical_url: fetched.canonicalUrl,
-          title: fetched.titleHint,
+          title: titleHint,
           snippet: text.slice(0, 400),
           evidence,
-          pdf_page: null,
+          pdf_page: pdfPage,
           retrieved_at: new Date().toISOString(),
         },
         { onConflict: "job_id,candidate_id,canonical_url", ignoreDuplicates: true }
@@ -576,6 +672,7 @@ export async function runTranslatorSearchJob(params: {
       warning,
       searchCalls,
       fetchCount,
+      pdfCount: pdfFilesUsed,
       openaiCalls,
       inputTokens,
       outputTokens,
@@ -601,6 +698,7 @@ export async function runTranslatorSearchJob(params: {
       await failJobOrThrow(admin, jobId, code === "db_update_running" ? "job_exception" : code, {
         search_calls: searchCalls,
         fetch_url_count: fetchCount,
+        pdf_count: pdfFilesUsed,
         openai_calls: openaiCalls,
         input_tokens: inputTokens,
         output_tokens: outputTokens,
