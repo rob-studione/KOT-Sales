@@ -19,7 +19,7 @@ export function ProjectDetailTabNav({
   const hrefFor = (tab: ProjectDetailTab): string =>
     buildProjectDetailHref(projectId, {
       tab,
-      ...(tab === "apzvalga" ? { period: "week" } : {}),
+      ...(tab === "apzvalga" ? { period: "today" } : {}),
       ...(tab === "pajamos" ? { salesPeriod: "all_time" } : {}),
       ...(tab === "darbas" ? { view: "board" } : {}),
     });

@@ -160,10 +160,10 @@ export async function ProjectDetailTabPage({
   const salesFrom = typeof sp.salesFrom === "string" ? sp.salesFrom : undefined;
   const salesTo = typeof sp.salesTo === "string" ? sp.salesTo : undefined;
 
-  // Be `period` URL — kanoninis default `week` (kaip KPI `month`), kad nebeliktų senas `?period=today`.
+  // Be `period` URL — kanoninis default `today`.
   if (tab === "apzvalga" && !periodRaw) {
     const q = new URLSearchParams();
-    q.set("period", "week");
+    q.set("period", "today");
     if (salesPeriodRaw) {
       q.set("salesPeriod", salesPeriod);
       if (salesPeriod === "custom" && salesFrom && salesTo) {
@@ -186,7 +186,7 @@ export async function ProjectDetailTabPage({
     redirect(`/projektai/${id}/apzvalga?${q.toString()}`);
   }
 
-  // Pajamos — atskiras salesPeriod (default visas laikotarpis), ne Apžvalgos veiklos `period=week`.
+  // Pajamos — atskiras salesPeriod (default visas laikotarpis), ne Apžvalgos veiklos `period=today`.
   if (tab === "pajamos" && !salesPeriodRaw) {
     const q = new URLSearchParams();
     // Senas `?period=` ant Pajamų: week/today = sticky iš Apžvalgos → all_time; kitaip perkeliam.

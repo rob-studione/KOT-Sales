@@ -997,7 +997,7 @@ export async function fetchProjectMonthCallsTrend(
 
 export function parseProjectAnalyticsPeriod(raw: string | undefined | null): ProjectAnalyticsPeriod {
   if (raw === "today" || raw === "week" || raw === "month" || raw === "prev_month" || raw === "year" || raw === "all_time" || raw === "custom") return raw;
-  return "week";
+  return "today";
 }
 
 /** Apžvalgos „Pardavimai“ blokas — default visas laikotarpis (motyvuojantys skaičiai). */

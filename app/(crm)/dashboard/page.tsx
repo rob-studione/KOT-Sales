@@ -17,8 +17,8 @@ export default async function DashboardPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const sp = await searchParams;
-  // Veikla: be `period` — šis mėnuo (greitas first paint).
-  const period = parseSalesDashboardPeriod(typeof sp.period === "string" ? sp.period : "month");
+  // Veikla: be `period` — šiandien.
+  const period = parseSalesDashboardPeriod(typeof sp.period === "string" ? sp.period : "today");
   const from = typeof sp.from === "string" ? sp.from : undefined;
   const to = typeof sp.to === "string" ? sp.to : undefined;
   // Pardavimai: be `salesPeriod` — visas laikotarpis (kraunasi atskirame Suspense).
