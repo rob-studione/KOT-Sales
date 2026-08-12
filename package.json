@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "verify:lost-qa": "node scripts/verify-lost-qa-date-regex.mjs",
+    "verify:translator-search": "node --import ./scripts/register-ts-path.mjs --experimental-strip-types scripts/verify-translator-search-core.mts",
+    "verify:translator-search:types": "tsc --noEmit -p scripts/tsconfig.translator-search-verify.json",
     "db:apply:clients-view": "node scripts/run-sql.cjs supabase/migrations/0012_ensure_clients_view_and_rpc.sql",
     "db:verify:clients-view": "node scripts/verify-clients-view.cjs",
     "db:apply:projects": "sh -c 'set -a && . ./.env.local && set +a && node scripts/run-sql.cjs supabase/migrations/0014_projects_snapshot.sql && node scripts/run-sql.cjs supabase/migrations/0015_project_campaign_work_items.sql'",

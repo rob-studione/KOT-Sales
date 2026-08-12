@@ -1,0 +1,29 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@/*": ["../*"]
+    }
+  },
+  "include": [
+    "verify-translator-search-core.mts",
+    "../lib/translatorSearch/apiErrors.ts",
+    "../lib/translatorSearch/auth.ts",
+    "../lib/translatorSearch/dbUpdates.ts",
+    "../lib/translatorSearch/dedupe.ts",
+    "../lib/translatorSearch/evidenceGrounding.ts",
+    "../lib/translatorSearch/extractSchema.ts",
+    "../lib/translatorSearch/jobPersistence.ts",
+    "../lib/translatorSearch/jobStatus.ts",
+    "../lib/translatorSearch/limits.ts",
+    "../lib/translatorSearch/model.ts",
+    "../lib/translatorSearch/pricing.ts",
+    "../lib/translatorSearch/safeFetchCore.ts",
+    "../lib/translatorSearch/types.ts",
+    "../lib/translatorSearch/urlSafety.ts",
+    "../lib/translatorSearch/validateRequest.ts"
+  ],
+  "exclude": ["../node_modules", "../.next"]
+}

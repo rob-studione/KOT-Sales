@@ -29,6 +29,7 @@ import {
   GitBranch,
   Layers,
   Mic,
+  Languages,
   Wrench,
 } from "lucide-react";
 
@@ -68,6 +69,7 @@ const settingsChildren: NavChild[] = [
 
 const irankiaiChildren: NavChild[] = [
   { href: "/scenarijai", label: "Scenarijai" },
+  { href: "/irankiai/verteju-paieska", label: "Vertėjų paieška" },
   { href: "/irankiai/podcastai", label: "Podcastai", aiBadge: true },
 ];
 
@@ -125,6 +127,7 @@ function iconForHref(href: string): LucideIcon {
   if (href === "/klientai/prarasti") return XCircle;
   if (href === "/projektai") return Folder;
   if (href === "/scenarijai") return GitBranch;
+  if (href === "/irankiai/verteju-paieska") return Languages;
   if (href === "/irankiai/podcastai") return Mic;
   if (href === "/klientai/saskaitos") return FileText;
   return Settings;
