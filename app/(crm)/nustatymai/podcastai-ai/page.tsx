@@ -1,14 +1,14 @@
-import { requireAdmin } from "@/lib/crm/currentUser";
 import { YtPodcastAiSettingsPanel } from "@/components/crm/YtPodcastAiSettingsPanel";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { getYtPodcastCurrentMonthAiCostEur } from "@/lib/ytPodcast/aiUsage";
 import { fetchYtPodcastAiSettings } from "@/lib/ytPodcast/settings";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requirePermission } from "@/lib/crm/requirePermission";
 
 export const dynamic = "force-dynamic";
 
 export default async function YtPodcastAiSettingsPage() {
-  await requireAdmin({ mode: "redirect", redirectTo: "/dashboard" });
+  await requirePermission("settings.podcasts_ai", { mode: "redirect", redirectTo: "/dashboard" });
 
   const admin = createSupabaseAdminClient();
   const [settings, monthCost] = await Promise.all([fetchYtPodcastAiSettings(admin), getYtPodcastCurrentMonthAiCostEur(admin)]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ROLE_LABELS, type UserRole } from "@/lib/crm/roles";
+
 import type { AccountListRow } from "@/components/crm/accounts/AccountsCardList";
 import { Mail, Phone } from "lucide-react";
 import { getCrmUserAction, updateCrmUserAction, type CrmUserStatus } from "@/lib/crm/accountActions";
@@ -77,6 +77,7 @@ export function AccountEditDrawer({
   onClose,
   onSaved,
   mode,
+  roleOptions,
 }: {
   open: boolean;
   user: AccountListRow | null;
@@ -87,18 +88,21 @@ export function AccountEditDrawer({
     first_name: string;
     last_name: string;
     phone: string | null;
-    role: UserRole;
+    role: string;
+    role_id: string | null;
+    role_name: string | null;
     status: CrmUserStatus;
     avatar_url?: string | null;
   }) => void;
   mode?: "admin" | "self";
+  roleOptions: Array<{ id: string; key: string; name: string; color: string }>;
 }) {
   const isSelf = mode === "self";
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<UserRole>("sales");
+  const [roleId, setRoleId] = useState<string>("");
   const [status, setStatus] = useState<CrmUserStatus>("active");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -114,11 +118,11 @@ export function AccountEditDrawer({
     setLastName((user.last_name ?? "").trim());
     setEmail(user.email === "—" ? "" : user.email);
     setPhone(user.phone ? String(user.phone) : "");
-    setRole(user.role);
+    setRoleId(user.role_id ?? "");
     setStatus(user.status_raw ?? (user.status === "Neaktyvi" ? "inactive" : "active"));
     setAvatarUrl(user.avatar_url ?? null);
     setError(null);
-  }, [user?.id]); // intentionally only on user change
+  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,14 +143,14 @@ export function AccountEditDrawer({
       const nextLast = res.user.last_name ?? "";
       const nextEmail = res.user.email ?? "";
       const nextPhone = res.user.phone ?? "";
-      const nextRole = res.user.role;
+      const nextRoleId = res.user.role_id ?? "";
       const nextStatus = res.user.status;
 
       setFirstName((prev) => (prev !== nextFirst ? nextFirst : prev));
       setLastName((prev) => (prev !== nextLast ? nextLast : prev));
       setEmail((prev) => (prev !== nextEmail ? nextEmail : prev));
       setPhone((prev) => (prev !== nextPhone ? nextPhone : prev));
-      setRole((prev) => (prev !== nextRole ? nextRole : prev));
+      setRoleId((prev) => (prev !== nextRoleId ? nextRoleId : prev));
       setStatus((prev) => (prev !== nextStatus ? nextStatus : prev));
       setLoading(false);
     }
@@ -266,7 +270,9 @@ export function AccountEditDrawer({
                         first_name: firstName,
                         last_name: lastName,
                         phone: phone.trim() ? phone : null,
-                        role,
+                        role: roleOptions.find((x) => x.id === roleId)?.key || user?.role_key || "sales",
+                        role_id: roleId || null,
+                        role_name: roleOptions.find((x) => x.id === roleId)?.name || user?.role_name || null,
                         status,
                         avatar_url: freshUrl,
                       });
@@ -281,7 +287,7 @@ export function AccountEditDrawer({
                 {user?.name ?? "—"}
               </div>
               <div className="mt-1.5 text-sm font-medium text-zinc-500">
-                {ROLE_LABELS[role] ?? role}
+                {(roleOptions.find((x) => x.id === roleId)?.name || user?.role_name || user?.role_key || "—")}
               </div>
             </div>
           </div>
@@ -300,7 +306,7 @@ export function AccountEditDrawer({
                     first_name: firstName,
                     last_name: lastName,
                     phone: phone.trim() ? phone : null,
-                    role,
+                    role_id: roleId || null,
                     status,
                   });
                   if (!res.ok) {
@@ -352,13 +358,16 @@ export function AccountEditDrawer({
                     <div className={labelClass()}>Rolė</div>
                     <div className="relative">
                       <select
-                        value={role}
-                        onChange={(e) => setRole(e.target.value as UserRole)}
+                        value={roleId}
+                        onChange={(e) => setRoleId(e.target.value)}
                         disabled={isSelf}
                         className={[fieldClass(), "appearance-none pr-10"].join(" ")}
                       >
-                        <option value="admin">{ROLE_LABELS.admin}</option>
-                        <option value="sales">{ROLE_LABELS.sales}</option>
+                        {roleOptions.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.name}
+                          </option>
+                        ))}
                       </select>
                       <IconChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
                     </div>

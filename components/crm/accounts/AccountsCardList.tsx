@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ROLE_LABELS, type UserRole } from "@/lib/crm/roles";
 
 export type AccountListRow = {
   id: string;
@@ -10,7 +9,9 @@ export type AccountListRow = {
   last_name?: string;
   legacy_name?: string;
   email: string;
-  role: UserRole;
+  role_id?: string | null;
+  role_key: string;
+  role_name: string;
   status: string;
   status_raw?: "active" | "inactive";
   lastActivityLabel: string;
@@ -185,7 +186,7 @@ export function AccountsCardList({
                 <div className="truncate text-base font-semibold leading-6 text-zinc-900">{displayNameForRow(r)}</div>
                 <div className="truncate text-sm leading-5 text-zinc-500">{r.email}</div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm leading-5 text-zinc-500">
-                  <span className="text-zinc-600">{ROLE_LABELS[r.role] ?? r.role}</span>
+                  <span className="text-zinc-600">{r.role_name || r.role_key}</span>
                   <span aria-hidden className="text-zinc-300">
                     •
                   </span>

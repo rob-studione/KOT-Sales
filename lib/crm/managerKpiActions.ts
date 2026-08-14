@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
+import { hasPermission } from "@/lib/crm/permissions/check";
 import { isValidUuid } from "@/lib/crm/crmUsers";
 import type { ManagerKpiUserTargets } from "@/lib/crm/managerKpiDashboard";
 import { MANAGER_KPI_DEFAULTS } from "@/lib/crm/managerKpiDashboard";
@@ -15,8 +16,8 @@ function clampInt(n: unknown, fallback: number): number {
 
 export async function saveManagerKpiTargetsAction(rows: ManagerKpiUserTargets[]): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await getCurrentCrmUser();
-  if (!me || me.role !== "admin") {
-    return { ok: false, error: "Tik administratorius gali keisti KPI tikslus." };
+  if (!me || !hasPermission(me, "analytics.kpi.edit_targets")) {
+    return { ok: false, error: "Neturite teisių keisti KPI tikslų." };
   }
 
   let supabase;

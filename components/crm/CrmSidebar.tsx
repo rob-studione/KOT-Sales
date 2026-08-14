@@ -12,6 +12,7 @@ import {
 } from "@/lib/crm/projectCandidateQuery";
 import { effectiveProjectType } from "@/lib/crm/projectType";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { hasPermission } from "@/lib/crm/permissions/check";
 import {
   BarChart3,
   LayoutDashboard,
@@ -38,7 +39,7 @@ type SectionId = "analitika" | "klientai" | "projektai" | "irankiai" | "nustatym
 type NavChild = {
   href: string;
   label: string;
-  adminOnly?: boolean;
+  permission?: string;
   separatorBefore?: boolean;
   aiBadge?: boolean;
   /** Unikalių auto-kandidatų skaičius (tik automatic projektai; 0 → nerodyti). */
@@ -51,30 +52,32 @@ function formatSidebarBadgeCount(n: number): string {
 }
 
 const analitikaChildren: NavChild[] = [
-  { href: "/analitika/kpi", label: "Vadybininkų KPI", adminOnly: true },
-  { href: "/analitika/lost-qa", label: "Lost QA", adminOnly: true, aiBadge: true },
+  { href: "/analitika/kpi", label: "Vadybininkų KPI", permission: "nav.analytics.kpi" },
+  { href: "/analitika/lost-qa", label: "Lost QA", permission: "nav.analytics.lost_qa", aiBadge: true },
 ];
 
 const klientaiChildren: NavChild[] = [
-  { href: "/klientai", label: "Klientai" },
-  { href: "/klientai/saskaitos", label: "Sąskaitos" },
+  { href: "/klientai", label: "Klientai", permission: "nav.clients" },
+  { href: "/klientai/saskaitos", label: "Sąskaitos", permission: "nav.clients.invoices" },
 ];
 
 const settingsChildren: NavChild[] = [
-  { href: "/nustatymai/bendri", label: "Bendri", adminOnly: true },
-  { href: "/nustatymai/paskyros", label: "Paskyros", adminOnly: true },
-  { href: "/nustatymai/lost-qa", label: "Lost QA", adminOnly: true, aiBadge: true },
-  { href: "/nustatymai/podcastai-ai", label: "Podcastai (AI)", adminOnly: true },
+  { href: "/nustatymai/bendri", label: "Bendri", permission: "settings.general" },
+  { href: "/nustatymai/paskyros", label: "Paskyros", permission: "settings.accounts" },
+  { href: "/nustatymai/roles", label: "Rolės", permission: "settings.roles" },
+  { href: "/nustatymai/lost-qa", label: "Lost QA", permission: "settings.lost_qa", aiBadge: true },
+  { href: "/nustatymai/podcastai-ai", label: "Podcastai (AI)", permission: "settings.podcasts_ai" },
 ];
 
 const irankiaiChildren: NavChild[] = [
-  { href: "/scenarijai", label: "Scenarijai" },
-  { href: "/irankiai/verteju-paieska", label: "Vertėjų paieška" },
-  { href: "/irankiai/podcastai", label: "Podcastai", aiBadge: true },
+  { href: "/scenarijai", label: "Scenarijai", permission: "nav.tools.playbooks" },
+  { href: "/irankiai/verteju-paieska", label: "Vertėjų paieška", permission: "nav.tools.translator_search" },
+  { href: "/irankiai/podcastai", label: "Podcastai", permission: "nav.tools.podcasts", aiBadge: true },
 ];
 
 function settingsIconForHref(href: string): LucideIcon {
   if (href === "/nustatymai/paskyros") return Users;
+  if (href === "/nustatymai/roles") return Layers;
   if (href === "/nustatymai/bendri") return Sliders;
   if (href === "/nustatymai/kpi") return Target;
   if (href === "/nustatymai/lost-qa") return FileSearch;
@@ -162,12 +165,20 @@ function activeSectionForPath(pathname: string): SectionId | null {
   return null;
 }
 
+function sectionRootHref(section: SectionId): string {
+  if (section === "analitika") return "/analitika/kpi";
+  if (section === "klientai") return "/klientai";
+  if (section === "projektai") return "/projektai";
+  if (section === "irankiai") return "/scenarijai";
+  return "/nustatymai/bendri";
+}
+
 function sectionIsRouteActive(section: SectionId, pathname: string): boolean {
   return activeSectionForPath(pathname) === section;
 }
 
-function filterChildren(list: NavChild[], isAdmin?: boolean) {
-  return list.filter((c) => !c.adminOnly || Boolean(isAdmin));
+function filterChildren(list: NavChild[], user?: { role: string; role_is_system?: boolean | null; permissionKeys?: string[] }) {
+  return list.filter((c) => !c.permission || hasPermission(user ?? null, c.permission));
 }
 
 function ProjectSidebarLabel({ text }: { text: string }) {
@@ -240,7 +251,11 @@ function ProjectSidebarLabel({ text }: { text: string }) {
 const SUBMENU_EASE = "ease-out";
 const SUBMENU_MS = "duration-[180ms]";
 
-export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
+export function CrmSidebar({
+  user,
+}: {
+  user?: { role: string; role_is_system?: boolean | null; permissionKeys?: string[] } | null;
+}) {
   const pathname = usePathname();
   const routeSection = useMemo(() => activeSectionForPath(pathname), [pathname]);
   const [buildInfo, setBuildInfo] = useState(() => getPublicBuildInfo());
@@ -411,20 +426,20 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
   }[] = useMemo(
     () => {
       const list: { id: SectionId; label: string; icon: LucideIcon; children: NavChild[] }[] = [
-        { id: "analitika", label: "Analitika", icon: BarChart3, children: filterChildren(analitikaChildren, isAdmin) },
-        { id: "klientai", label: "Klientai", icon: Users, children: klientaiChildren },
-        { id: "projektai", label: "Projektai", icon: Folder, children: projektaiChildren },
+        { id: "analitika", label: "Analitika", icon: BarChart3, children: filterChildren(analitikaChildren, user ?? undefined) },
+        { id: "klientai", label: "Klientai", icon: Users, children: filterChildren(klientaiChildren, user ?? undefined) },
+        { id: "projektai", label: "Projektai", icon: Folder, children: hasPermission(user ?? null, "nav.projects") ? projektaiChildren : [] },
         { id: "irankiai", label: "Įrankiai", icon: Wrench, children: irankiaiChildren },
         {
           id: "nustatymai",
           label: "Nustatymai",
           icon: Settings,
-          children: filterChildren(settingsChildren, isAdmin),
+          children: hasPermission(user ?? null, "nav.settings") ? filterChildren(settingsChildren, user ?? undefined) : [],
         },
       ];
       return list.filter((s) => s.id === "projektai" || s.children.length > 0);
     },
-    [isAdmin, projektaiChildren]
+    [user, projektaiChildren]
   );
 
   const [openSectionId, setOpenSectionId] = useState<SectionId | null>(() => routeSection);
@@ -490,73 +505,37 @@ export function CrmSidebar({ isAdmin }: { isAdmin?: boolean }) {
                   routeActive ? "bg-white/12 text-white" : "text-white/90 hover:bg-white/10 hover:text-white",
                 ].join(" ")}
               >
-                {id === "projektai" ? (
-                  <>
-                    <Link
-                      href="/projektai"
-                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left text-inherit focus:outline-none"
-                    >
-                      <SidebarIconSlot icon={SectionIcon} active={routeActive} />
-                      <span className="min-w-0 flex-1 truncate">{label}</span>
-                    </Link>
+                <>
+                  <Link
+                    href={sectionRootHref(id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left text-inherit focus:outline-none"
+                  >
+                    <SidebarIconSlot icon={SectionIcon} active={routeActive} />
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                  </Link>
 
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSection(id);
-                      }}
-                      aria-expanded={expanded}
-                      className="shrink-0 rounded-md p-1.5 text-white/80 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
-                    >
-                      <ChevronDown
-                        size={SIDEBAR_ICON_PX}
-                        strokeWidth={1.75}
-                        className={[
-                          "text-white/70 transition-transform",
-                          SUBMENU_MS,
-                          SUBMENU_EASE,
-                          expanded ? "rotate-180" : "rotate-0",
-                        ].join(" ")}
-                        aria-hidden
-                      />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => toggleSection(id)}
-                      aria-expanded={expanded}
-                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left text-inherit focus:outline-none"
-                    >
-                      <SidebarIconSlot icon={SectionIcon} active={routeActive} />
-                      <span className="min-w-0 flex-1 truncate">{label}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSection(id);
-                      }}
-                      aria-expanded={expanded}
-                      className="shrink-0 rounded-md p-1.5 text-white/80 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
-                    >
-                      <ChevronDown
-                        size={SIDEBAR_ICON_PX}
-                        strokeWidth={1.75}
-                        className={[
-                          "text-white/70 transition-transform",
-                          SUBMENU_MS,
-                          SUBMENU_EASE,
-                          expanded ? "rotate-180" : "rotate-0",
-                        ].join(" ")}
-                        aria-hidden
-                      />
-                    </button>
-                  </>
-                )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSection(id);
+                    }}
+                    aria-expanded={expanded}
+                    className="shrink-0 rounded-md p-1.5 text-white/80 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
+                  >
+                    <ChevronDown
+                      size={SIDEBAR_ICON_PX}
+                      strokeWidth={1.75}
+                      className={[
+                        "text-white/70 transition-transform",
+                        SUBMENU_MS,
+                        SUBMENU_EASE,
+                        expanded ? "rotate-180" : "rotate-0",
+                      ].join(" ")}
+                      aria-hidden
+                    />
+                  </button>
+                </>
               </div>
 
               <div

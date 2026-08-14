@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
+import { hasPermission } from "@/lib/crm/permissions/check";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   const actor = await getCurrentCrmUser();
   if (!actor) return NextResponse.json({ ok: false, error: "Neprisijungę." }, { status: 401 });
 
-  const canEdit = actor.id === targetUserId || actor.role === "admin";
+  const canEdit = actor.id === targetUserId || hasPermission(actor, "settings.accounts");
   if (!canEdit) return NextResponse.json({ ok: false, error: "Neturite teisių keisti nuotraukos." }, { status: 403 });
 
   const form = await request.formData();

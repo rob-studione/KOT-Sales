@@ -13,11 +13,11 @@ type CandidateWithSources = TranslatorCandidateRow & { sources: TranslatorCandid
 
 export function CandidatesPanel({
   candidates,
-  isAdmin,
+  canReview,
   loadError,
 }: {
   candidates: CandidateWithSources[];
-  isAdmin: boolean;
+  canReview: boolean;
   loadError: string | null;
 }) {
   if (loadError) {
@@ -53,7 +53,7 @@ export function CandidatesPanel({
                   {c.entity_type} · {c.review_status} · sworn: {c.sworn_status}
                 </p>
               </div>
-              {isAdmin ? <CandidateReviewControls candidateId={c.id} current={c.review_status} /> : null}
+              {canReview ? <CandidateReviewControls candidateId={c.id} current={c.review_status} /> : null}
             </div>
             <dl className="mt-3 grid grid-cols-1 gap-1 text-sm text-zinc-700 sm:grid-cols-2">
               <div>El. paštas: {c.email ?? "—"}</div>

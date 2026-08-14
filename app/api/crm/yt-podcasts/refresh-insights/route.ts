@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
+import { hasPermission } from "@/lib/crm/permissions/check";
 import { analyzeYtPodcastVideos } from "@/lib/ytPodcast/analyzeVideos";
 import { generateYtPodcastWeeklySummary } from "@/lib/ytPodcast/generateWeeklySummary";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -16,8 +17,8 @@ export async function POST() {
   if (!actor) {
     return NextResponse.json({ ok: false, error: "Neprisijungę." }, { status: 401 });
   }
-  if (actor.role !== "admin") {
-    return NextResponse.json({ ok: false, error: "Reikia administratoriaus teisių." }, { status: 403 });
+  if (!hasPermission(actor, "tools.podcasts.refresh")) {
+    return NextResponse.json({ ok: false, error: "Neturite teisių atlikti šį veiksmą." }, { status: 403 });
   }
 
   try {

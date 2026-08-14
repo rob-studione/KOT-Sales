@@ -6,7 +6,15 @@ import { AccountEditDrawer } from "@/components/crm/accounts/AccountEditDrawer";
 import { useRouter } from "next/navigation";
 import { deleteCrmUserAccountAction } from "@/lib/crm/accountActions";
 
-export function AccountsPageClient({ rows, currentUserId }: { rows: AccountListRow[]; currentUserId: string }) {
+export function AccountsPageClient({
+  rows,
+  roleOptions,
+  currentUserId,
+}: {
+  rows: AccountListRow[];
+  roleOptions: Array<{ id: string; key: string; name: string; color: string }>;
+  currentUserId: string;
+}) {
   const router = useRouter();
   const [localRows, setLocalRows] = useState<AccountListRow[]>(rows);
   const [open, setOpen] = useState(false);
@@ -58,6 +66,7 @@ export function AccountsPageClient({ rows, currentUserId }: { rows: AccountListR
       <AccountEditDrawer
         open={open}
         user={selected}
+        roleOptions={roleOptions}
         onClose={() => {
           setOpen(false);
         }}
@@ -73,7 +82,9 @@ export function AccountsPageClient({ rows, currentUserId }: { rows: AccountListR
                 first_name: updated.first_name,
                 last_name: updated.last_name,
                 phone: updated.phone,
-                role: updated.role,
+                role_key: updated.role,
+                role_id: updated.role_id,
+                role_name: updated.role_name || r.role_name,
                 status_raw: updated.status,
                 status: updated.status === "inactive" ? "Neaktyvi" : "Aktyvi",
                 avatar_url: updated.avatar_url ?? r.avatar_url ?? null,
@@ -169,4 +180,3 @@ export function AccountsPageClient({ rows, currentUserId }: { rows: AccountListR
     </>
   );
 }
-

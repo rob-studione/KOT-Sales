@@ -27,13 +27,15 @@ function buildTabHref(tab: TranslatorSearchPageTab): string {
 
 export function TranslatorSearchPageClient({
   tab,
-  isAdmin,
+  canRun,
+  canReview,
   jobs,
   candidates,
   loadError,
 }: {
   tab: TranslatorSearchPageTab;
-  isAdmin: boolean;
+  canRun: boolean;
+  canReview: boolean;
   jobs: TranslatorSearchJobRow[];
   candidates: Array<TranslatorCandidateRow & { sources: TranslatorCandidateSourceRow[] }>;
   loadError: string | null;
@@ -49,9 +51,9 @@ export function TranslatorSearchPageClient({
       </nav>
 
       <section className="mt-8 pb-16">
-        {tab === "nauja" ? <NewSearchForm isAdmin={isAdmin} /> : null}
+        {tab === "nauja" ? <NewSearchForm canRun={canRun} /> : null}
         {tab === "kandidatai" ? (
-          <CandidatesPanel candidates={candidates} isAdmin={isAdmin} loadError={loadError} />
+          <CandidatesPanel candidates={candidates} canReview={canReview} loadError={loadError} />
         ) : null}
         {tab === "istorija" ? <JobHistoryPanel jobs={jobs} loadError={loadError} /> : null}
       </section>

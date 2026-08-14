@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireAdmin } from "@/lib/crm/currentUser";
+import { requirePermission } from "@/lib/crm/requirePermission";
 import { normalizeYtPodcastAiSettings, replaceYtPodcastAiSettings, type YtPodcastAiSettings } from "@/lib/ytPodcast/settings";
 import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
 
@@ -25,7 +25,7 @@ export async function updateYtPodcastAiSettingsAction(
   formData: FormData
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    await requireAdmin({ mode: "throw" });
+    await requirePermission("settings.podcasts_ai", { mode: "throw" });
   } catch {
     return { ok: false, error: "Neturite teisių." };
   }

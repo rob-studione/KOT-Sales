@@ -1,6 +1,7 @@
 import { TranslatorSearchPageClient } from "@/components/crm/translator-search/TranslatorSearchPageClient";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
+import { hasPermission } from "@/lib/crm/permissions/check";
 import { loadTranslatorSearchPageData } from "@/lib/translatorSearch/loadPageData";
 import { parseTranslatorSearchTab } from "@/lib/translatorSearch/pageTabs";
 
@@ -14,7 +15,8 @@ export default async function VertejuPaieskaPage({
   const sp = await searchParams;
   const tab = parseTranslatorSearchTab(sp.tab);
   const crmUser = await getCurrentCrmUser();
-  const isAdmin = crmUser?.role === "admin";
+  const canRun = hasPermission(crmUser, "tools.translator_search.run");
+  const canReview = hasPermission(crmUser, "tools.translator_search.review");
   const data = await loadTranslatorSearchPageData();
 
   return (
@@ -34,7 +36,8 @@ export default async function VertejuPaieskaPage({
 
         <TranslatorSearchPageClient
           tab={tab}
-          isAdmin={Boolean(isAdmin)}
+          canRun={canRun}
+          canReview={canReview}
           jobs={data.jobs}
           candidates={data.candidates}
           loadError={data.loadError}

@@ -3,6 +3,7 @@ import { PodcastaiFeedToolbar } from "@/components/crm/podcasts/PodcastaiFeedToo
 import { PodcastInsightCardClient } from "@/components/crm/podcasts/PodcastInsightCardClient";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
+import { hasPermission } from "@/lib/crm/permissions/check";
 import { buildPodcastInsightsFeed } from "@/lib/ytPodcast/buildPodcastInsightsFeed";
 import { parsePodcastFeedSearchParams } from "@/lib/ytPodcast/podcastFeedTabs";
 
@@ -16,7 +17,7 @@ export default async function PodcastaiPage({
   const sp = await searchParams;
   const { category, period } = parsePodcastFeedSearchParams(sp);
   const crmUser = await getCurrentCrmUser();
-  const showRefresh = crmUser?.role === "admin";
+  const showRefresh = hasPermission(crmUser, "tools.podcasts.refresh");
 
   const { feed, loadError } = await buildPodcastInsightsFeed({ category, period });
 

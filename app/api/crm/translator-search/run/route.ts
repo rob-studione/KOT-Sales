@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logInternalError, toSafeApiError } from "@/lib/translatorSearch/apiErrors";
-import { authorizeTranslatorSearchAdmin } from "@/lib/translatorSearch/auth";
+import { authorizeTranslatorSearchAction } from "@/lib/translatorSearch/auth";
 import { DbUpdateError } from "@/lib/translatorSearch/dbUpdates";
 import { TranslatorSearchConfigError } from "@/lib/translatorSearch/model";
 import { runTranslatorSearchJob } from "@/lib/translatorSearch/runJob";
@@ -14,7 +14,7 @@ export const maxDuration = 120;
 
 export async function POST(request: Request) {
   const actor = await getCurrentCrmUser();
-  const auth = authorizeTranslatorSearchAdmin(actor);
+  const auth = authorizeTranslatorSearchAction(actor, "tools.translator_search.run");
   if (!auth.ok) {
     return NextResponse.json({ ok: false, error: auth.error, code: auth.status === 401 ? "unauthorized" : "forbidden" }, { status: auth.status });
   }

@@ -3,12 +3,18 @@
 import { useRef, useState, useTransition } from "react";
 import { createAccountAction } from "@/lib/crm/accountActions";
 
-export function CreateAccountButton() {
+export function CreateAccountButton({
+  roleOptions,
+}: {
+  roleOptions: Array<{ id: string; key: string; name: string; color: string }>;
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const defaultRoleId = roleOptions.find((r) => r.key === "sales")?.id ?? roleOptions[0]?.id ?? "";
 
   return (
     <>
@@ -58,9 +64,12 @@ export function CreateAccountButton() {
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-zinc-700">Rolė</span>
-              <select name="role" defaultValue="sales" className="rounded-md border border-zinc-200 px-3 py-2">
-                <option value="sales">Pardavimų vadybininkas</option>
-                <option value="admin">Admin</option>
+              <select name="roleId" defaultValue={defaultRoleId} className="rounded-md border border-zinc-200 px-3 py-2">
+                {roleOptions.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -89,4 +98,3 @@ export function CreateAccountButton() {
     </>
   );
 }
-

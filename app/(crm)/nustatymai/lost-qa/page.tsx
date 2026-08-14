@@ -1,14 +1,14 @@
-import { requireAdmin } from "@/lib/crm/currentUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { getLostQaSettings } from "@/lib/crm/lostQa/lostQaControlSettings";
 import { getLostQaAiUsageStats } from "@/lib/crm/lostQa/aiUsageStats";
 import { LostQaSettingsPanel } from "@/components/crm/LostQaSettingsPanel";
+import { requirePermission } from "@/lib/crm/requirePermission";
 
 export const dynamic = "force-dynamic";
 
 export default async function LostQaSettingsPage() {
-  await requireAdmin({ mode: "redirect", redirectTo: "/dashboard" });
+  await requirePermission("settings.lost_qa", { mode: "redirect", redirectTo: "/dashboard" });
 
   const admin = createSupabaseAdminClient();
   const [settings, stats] = await Promise.all([getLostQaSettings(admin), getLostQaAiUsageStats(admin)]);

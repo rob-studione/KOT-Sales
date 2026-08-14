@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { requireAdmin } from "@/lib/crm/currentUser";
+import { getCurrentCrmUser } from "@/lib/crm/currentUser";
+import { hasPermission } from "@/lib/crm/permissions/check";
 import { buildManagerKpiViewModel } from "@/lib/crm/managerKpiDashboard";
 import { parseManagerKpiPreset } from "@/lib/crm/managerKpiPeriods";
 import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
@@ -18,7 +19,9 @@ export default async function AnalitikaKpiPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  await requireAdmin({ mode: "redirect", redirectTo: "/dashboard" });
+  const me = await getCurrentCrmUser();
+  if (!me) redirect("/login?next=/analitika/kpi");
+  if (!hasPermission(me, "nav.analytics.kpi")) redirect("/dashboard");
 
   const sp = await searchParams;
   const periodRaw = firstString(sp.period);
@@ -51,6 +54,5 @@ export default async function AnalitikaKpiPage({
     compare,
   });
 
-  return <ManagerKpiDashboardClientOnly model={model} />;
+  return <ManagerKpiDashboardClientOnly model={model} canEditTargets={hasPermission(me, "analytics.kpi.edit_targets")} />;
 }
-

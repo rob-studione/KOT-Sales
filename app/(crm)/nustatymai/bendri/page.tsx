@@ -1,7 +1,7 @@
-import { requireAdmin } from "@/lib/crm/currentUser";
 import { createSupabaseSsrReadOnlyClient } from "@/lib/supabase/ssr";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { updateGlobalSettingsAction } from "@/lib/crm/crmSettingsActions";
+import { requirePermission } from "@/lib/crm/requirePermission";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ type GlobalSettings = {
 };
 
 export default async function BendriSettingsPage() {
-  await requireAdmin({ mode: "redirect", redirectTo: "/dashboard" });
+  await requirePermission("settings.general", { mode: "redirect", redirectTo: "/dashboard" });
 
   const supabase = await createSupabaseSsrReadOnlyClient();
   const [{ data: gs }] = await Promise.all([supabase.from("crm_global_settings").select("*").eq("id", 1).maybeSingle()]);
@@ -33,7 +33,7 @@ export default async function BendriSettingsPage() {
       <div className="mx-auto w-full max-w-[900px]">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Bendri</h1>
-          <p className="mt-1 text-sm text-zinc-600">Laiko juosta ir kalba (admin).</p>
+          <p className="mt-1 text-sm text-zinc-600">Laiko juosta ir kalba.</p>
         </div>
 
         <section className={sectionShell} aria-labelledby="global-tz-lang">
@@ -70,4 +70,3 @@ export default async function BendriSettingsPage() {
     </CrmTableContainer>
   );
 }
-

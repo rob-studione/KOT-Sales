@@ -3,14 +3,14 @@ import { NextResponse } from "next/server";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logInternalError, toSafeApiError } from "@/lib/translatorSearch/apiErrors";
-import { authorizeTranslatorSearchAdmin } from "@/lib/translatorSearch/auth";
+import { authorizeTranslatorSearchAction } from "@/lib/translatorSearch/auth";
 import { reviewTranslatorCandidate } from "@/lib/translatorSearch/reviewCandidate";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const actor = await getCurrentCrmUser();
-  const auth = authorizeTranslatorSearchAdmin(actor);
+  const auth = authorizeTranslatorSearchAction(actor, "tools.translator_search.review");
   if (!auth.ok) {
     return NextResponse.json(
       { ok: false, error: auth.error, code: auth.status === 401 ? "unauthorized" : "forbidden" },

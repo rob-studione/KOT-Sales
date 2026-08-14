@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { isUserRole, type UserRole } from "@/lib/crm/roles";
-import { requireAdmin } from "@/lib/crm/currentUser";
+
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
 import { isValidUuid } from "@/lib/crm/crmUsers";
+import { getCurrentCrmUser } from "@/lib/crm/currentUser";
+import { hasPermission } from "@/lib/crm/permissions/check";
 
 export type CrmUserStatus = "active" | "inactive";
 
@@ -35,29 +36,53 @@ function safeName(raw: unknown): string {
   return String(raw ?? "").trim();
 }
 
-function safeRole(raw: unknown): string {
-  const r = String(raw ?? "").trim().toLowerCase();
-  if (!r) return "sales";
-  if (isUserRole(r)) return r;
-  return "__invalid__";
+function safeRoleId(raw: unknown): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  return isValidUuid(s) ? s : null;
+}
+
+async function resolveRoleById(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  roleId: string | null
+): Promise<{ id: string; key: string } | null> {
+  if (roleId && isValidUuid(roleId)) {
+    const { data, error } = await admin.from("crm_roles").select("id,key").eq("id", roleId).maybeSingle();
+    if (!error && data) {
+      return { id: String((data as { id?: string }).id ?? ""), key: String((data as { key?: string }).key ?? "") };
+    }
+  }
+
+  const { data: fallback, error: fallbackErr } = await admin
+    .from("crm_roles")
+    .select("id,key")
+    .eq("key", "sales")
+    .maybeSingle();
+  if (fallbackErr || !fallback) return null;
+  return {
+    id: String((fallback as { id?: string }).id ?? ""),
+    key: String((fallback as { key?: string }).key ?? "sales"),
+  };
+}
+
+function canManageAccounts(user: Awaited<ReturnType<typeof getCurrentCrmUser>>): boolean {
+  return Boolean(user && hasPermission(user, "settings.accounts"));
 }
 
 export async function createAccountAction(
   formData: FormData
 ): Promise<{ ok: true; invitedEmail: string } | { ok: false; error: string }> {
-  try {
-    await requireAdmin({ mode: "throw" });
-  } catch {
+  const actor = await getCurrentCrmUser();
+  if (!canManageAccounts(actor)) {
     return { ok: false, error: "Neturite teisių atlikti šį veiksmą." };
   }
 
   const email = safeEmail(formData.get("email"));
   const name = safeName(formData.get("name"));
-  const role = safeRole(formData.get("role"));
+  const roleId = safeRoleId(formData.get("roleId"));
 
   if (!email || !email.includes("@")) return { ok: false, error: "Įveskite el. paštą." };
   if (!name) return { ok: false, error: "Įveskite vardą." };
-  if (role === "__invalid__") return { ok: false, error: "Neleistina rolė." };
 
   let admin;
   try {
@@ -66,7 +91,9 @@ export async function createAccountAction(
     return { ok: false, error: e instanceof Error ? e.message : "Trūksta Supabase konfigūracijos." };
   }
 
-  // Invite flow: user sets password via email link.
+  const role = await resolveRoleById(admin, roleId);
+  if (!role) return { ok: false, error: "Nepavyko rasti rolės." };
+
   const redirectTo = inviteRedirectTo();
   const { data: inviteData, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
     redirectTo,
@@ -82,8 +109,9 @@ export async function createAccountAction(
       id: userId,
       name,
       email,
-      role: role as UserRole,
-      is_kpi_tracked: role !== "admin",
+      role: role.key,
+      role_id: role.id,
+      is_kpi_tracked: role.key !== "admin",
     },
     { onConflict: "id" }
   );
@@ -102,14 +130,12 @@ export async function deleteCrmUserAccountAction(
   const id = String(userId ?? "").trim();
   if (!id || !isValidUuid(id)) return { ok: false, error: "Neteisingas naudotojas." };
 
-  let actor;
-  try {
-    actor = await requireAdmin({ mode: "throw" });
-  } catch {
+  const actor = await getCurrentCrmUser();
+  if (!canManageAccounts(actor)) {
     return { ok: false, error: "Neturite teisių atlikti šį veiksmą." };
   }
 
-  if (actor.id === id) {
+  if (actor?.id === id) {
     return { ok: false, error: "Negalite ištrinti savo paskyros (administratoriaus)." };
   }
 
@@ -147,39 +173,32 @@ export async function getCrmUserAction(
         first_name: string;
         last_name: string;
         phone: string | null;
-        role: UserRole;
+        role: string;
+        role_id: string | null;
+        role_name: string | null;
         status: CrmUserStatus;
       };
     }
   | { ok: false; error: string }
 > {
-  const actor = await (async () => {
-    try {
-      return await requireAdmin({ mode: "throw" });
-    } catch {
-      return null;
-    }
-  })();
+  const actor = await getCurrentCrmUser();
 
-  // Use cookie-based SSR client: enforces RLS and doesn't require service-role.
   const supabase = await createSupabaseSsrClient();
   const { data: authData } = await supabase.auth.getUser();
   const authId = authData.user?.id ?? null;
-  const canRead = actor?.role === "admin" || (authId != null && authId === id);
+  const canRead = canManageAccounts(actor) || (authId != null && authId === id);
   if (!canRead) return { ok: false, error: "Neturite teisių peržiūrėti šios paskyros." };
 
   const { data, error } = await supabase
     .from("crm_users")
-    .select("id,email,first_name,last_name,phone,role,status")
+    .select("id,email,first_name,last_name,phone,role,role_id,status,crm_roles:role_id(name)")
     .eq("id", id)
     .maybeSingle();
 
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "Naudotojas nerastas." };
 
-  const role = String((data as any).role ?? "").trim().toLowerCase();
   const status = String((data as any).status ?? "").trim().toLowerCase();
-  if (!isUserRole(role)) return { ok: false, error: "Neleistina rolė (DB)." };
   if (!isCrmUserStatus(status)) return { ok: false, error: "Neleistina būsena (DB)." };
 
   return {
@@ -190,7 +209,9 @@ export async function getCrmUserAction(
       first_name: String((data as any).first_name ?? ""),
       last_name: String((data as any).last_name ?? ""),
       phone: (data as any).phone == null ? null : String((data as any).phone),
-      role,
+      role: String((data as any).role ?? "sales"),
+      role_id: (data as any).role_id == null ? null : String((data as any).role_id),
+      role_name: (data as any).crm_roles?.name ? String((data as any).crm_roles.name) : null,
       status,
     },
   };
@@ -201,7 +222,7 @@ export async function updateCrmUserAction(input: {
   first_name: string;
   last_name: string;
   phone: string | null;
-  role: UserRole;
+  role_id: string | null;
   status: CrmUserStatus;
 }): Promise<
   | {
@@ -212,40 +233,31 @@ export async function updateCrmUserAction(input: {
         first_name: string;
         last_name: string;
         phone: string | null;
-        role: UserRole;
+        role: string;
+        role_id: string | null;
+        role_name: string | null;
         status: CrmUserStatus;
       };
     }
   | { ok: false; error: string }
 > {
-  const adminUser = await (async () => {
-    try {
-      return await requireAdmin({ mode: "throw" });
-    } catch {
-      return null;
-    }
-  })();
+  const actor = await getCurrentCrmUser();
 
   const id = String(input.id ?? "").trim();
   const first_name = String(input.first_name ?? "").trim();
   const last_name = String(input.last_name ?? "").trim();
   const phoneRaw = input.phone == null ? "" : String(input.phone).trim();
   const phone = phoneRaw ? phoneRaw : null;
-  const role = String(input.role ?? "").trim().toLowerCase();
+  const role_id = safeRoleId(input.role_id);
   const status = String(input.status ?? "").trim().toLowerCase();
 
   if (!id) return { ok: false, error: "Neteisingas naudotojas." };
   if (!first_name) return { ok: false, error: "Vardas yra privalomas." };
-  if (!isUserRole(role)) return { ok: false, error: "Neleistina rolė." };
   if (!isCrmUserStatus(status)) return { ok: false, error: "Neleistina būsena." };
-  const roleNorm = role as UserRole;
-  const statusNorm = status as CrmUserStatus;
 
-  let allowRoleStatusChange = false;
-  if (adminUser?.role === "admin") {
-    allowRoleStatusChange = true;
-  } else {
-    // Self-edit is allowed for profile fields only.
+  const adminMode = canManageAccounts(actor);
+
+  if (!adminMode) {
     const supabase = await createSupabaseSsrClient();
     const { data: authData } = await supabase.auth.getUser();
     const authId = authData.user?.id ?? null;
@@ -261,23 +273,30 @@ export async function updateCrmUserAction(input: {
     return { ok: false, error: e instanceof Error ? e.message : "Trūksta Supabase konfigūracijos." };
   }
 
-  // For self-edit: keep role/status unchanged.
-  let nextRole: UserRole = roleNorm;
-  let nextStatus: CrmUserStatus = statusNorm;
-  if (!allowRoleStatusChange) {
+  let nextRoleId: string | null = role_id;
+  let nextRoleKey: string | null = null;
+  let nextStatus: CrmUserStatus = status;
+
+  if (!adminMode) {
     const { data: current, error: curErr } = await admin
       .from("crm_users")
-      .select("role,status")
+      .select("role_id,role,status")
       .eq("id", id)
       .maybeSingle();
     if (curErr) return { ok: false, error: curErr.message };
     if (!current) return { ok: false, error: "Naudotojas nerastas." };
-    const dbRole = String((current as any).role ?? "").trim().toLowerCase();
-    const dbStatus = String((current as any).status ?? "").trim().toLowerCase();
-    if (!isUserRole(dbRole)) return { ok: false, error: "Neleistina rolė (DB)." };
-    if (!isCrmUserStatus(dbStatus)) return { ok: false, error: "Neleistina būsena (DB)." };
-    nextRole = dbRole as UserRole;
-    nextStatus = dbStatus as CrmUserStatus;
+
+    nextRoleId = (current as any).role_id == null ? null : String((current as any).role_id);
+    nextRoleKey = String((current as any).role ?? "sales");
+    const dbStatus = String((current as any).status ?? "active").toLowerCase();
+    nextStatus = isCrmUserStatus(dbStatus) ? dbStatus : "active";
+  }
+
+  if (adminMode) {
+    const role = await resolveRoleById(admin, nextRoleId);
+    if (!role) return { ok: false, error: "Nepavyko rasti rolės." };
+    nextRoleId = role.id;
+    nextRoleKey = role.key;
   }
 
   const { error } = await admin
@@ -286,26 +305,25 @@ export async function updateCrmUserAction(input: {
       first_name,
       last_name,
       phone,
-      role: nextRole,
+      role: nextRoleKey,
+      role_id: nextRoleId,
       status: nextStatus,
+      ...(adminMode ? { is_kpi_tracked: nextRoleKey !== "admin" } : {}),
     })
     .eq("id", id);
 
   if (error) return { ok: false, error: error.message };
 
-  // Read back the updated row to return a single source of truth to the client.
   const { data: updated, error: readErr } = await admin
     .from("crm_users")
-    .select("id,email,first_name,last_name,phone,role,status")
+    .select("id,email,first_name,last_name,phone,role,role_id,status,crm_roles:role_id(name)")
     .eq("id", id)
     .maybeSingle();
   if (readErr) return { ok: false, error: readErr.message };
   if (!updated) return { ok: false, error: "Naudotojas nerastas po išsaugojimo." };
 
   revalidatePath("/nustatymai/paskyros");
-  const role2 = String((updated as any).role ?? "").trim().toLowerCase();
   const status2 = String((updated as any).status ?? "").trim().toLowerCase();
-  if (!isUserRole(role2)) return { ok: false, error: "Neleistina rolė (DB)." };
   if (!isCrmUserStatus(status2)) return { ok: false, error: "Neleistina būsena (DB)." };
 
   return {
@@ -316,9 +334,10 @@ export async function updateCrmUserAction(input: {
       first_name: String((updated as any).first_name ?? ""),
       last_name: String((updated as any).last_name ?? ""),
       phone: (updated as any).phone == null ? null : String((updated as any).phone),
-      role: role2,
+      role: String((updated as any).role ?? "sales"),
+      role_id: (updated as any).role_id == null ? null : String((updated as any).role_id),
+      role_name: (updated as any).crm_roles?.name ? String((updated as any).crm_roles.name) : null,
       status: status2,
     },
   };
 }
-

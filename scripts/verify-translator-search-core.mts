@@ -22,7 +22,7 @@ import {
   matchesTranslatorCandidateTypeFilter,
   nextFoundCandidatesAfterMatch,
 } from "@/lib/translatorSearch/candidateTypeMatch";
-import { authorizeTranslatorSearchAdmin } from "@/lib/translatorSearch/auth";
+import { authorizeTranslatorSearchAction } from "@/lib/translatorSearch/auth";
 import { toSafeApiError } from "@/lib/translatorSearch/apiErrors";
 import { buildTranslatorSearchQueries } from "@/lib/translatorSearch/buildSearchQueries";
 import { collectTranslatorSourceUrls } from "@/lib/translatorSearch/collectSourceUrls";
@@ -180,20 +180,37 @@ check(!canTransitionJobStatus("completed", "running"), "completed terminal");
 
 // --- Auth + safe API ---
 {
-  const unauth = authorizeTranslatorSearchAdmin(null);
+  const unauth = authorizeTranslatorSearchAction(null, "tools.translator_search.run");
   check(!unauth.ok && unauth.status === 401, "401");
-  const sales = authorizeTranslatorSearchAdmin({ role: "sales" } as FakeCrmUser);
+  const sales = authorizeTranslatorSearchAction(
+    {
+      role: "sales",
+      id: "00000000-0000-4000-8000-000000000002",
+      email: "s@b.c",
+      first_name: "S",
+      last_name: "A",
+      phone: null,
+      status: "active",
+      avatar_url: null,
+      permissionKeys: [],
+    } as FakeCrmUser,
+    "tools.translator_search.run"
+  );
   check(!sales.ok && sales.status === 403, "403");
-  const admin = authorizeTranslatorSearchAdmin({
-    role: "admin",
-    id: "00000000-0000-4000-8000-000000000001",
-    email: "a@b.c",
-    first_name: "A",
-    last_name: "B",
-    phone: null,
-    status: "active",
-    avatar_url: null,
-  });
+  const admin = authorizeTranslatorSearchAction(
+    {
+      role: "admin",
+      id: "00000000-0000-4000-8000-000000000001",
+      email: "a@b.c",
+      first_name: "A",
+      last_name: "B",
+      phone: null,
+      status: "active",
+      avatar_url: null,
+      permissionKeys: ["tools.translator_search.run"],
+    } as FakeCrmUser,
+    "tools.translator_search.run"
+  );
   check(admin.ok === true, "admin");
 }
 const leaked = toSafeApiError("job_exception");

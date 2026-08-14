@@ -5,13 +5,13 @@ import { useState, useTransition, type FormEvent } from "react";
 
 import { TRANSLATOR_SEARCH_LIMITS } from "@/lib/translatorSearch/limits";
 
-export function NewSearchForm({ isAdmin }: { isAdmin: boolean }) {
+export function NewSearchForm({ canRun }: { canRun: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  if (!isAdmin) {
+  if (!canRun) {
     return (
       <div className="max-w-xl">
         <h2 className="text-lg font-semibold text-zinc-900">Nauja paieška</h2>

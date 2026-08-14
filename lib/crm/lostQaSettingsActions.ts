@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireAdmin } from "@/lib/crm/currentUser";
+import { requirePermission } from "@/lib/crm/requirePermission";
 import { upsertLostQaControlSettings, type LostQaAnalyzeMode } from "@/lib/crm/lostQa/lostQaControlSettings";
 import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
 
@@ -29,7 +29,7 @@ export async function updateLostQaControlSettingsAction(
   formData: FormData
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    await requireAdmin({ mode: "throw" });
+    await requirePermission("settings.lost_qa", { mode: "throw" });
   } catch {
     return { ok: false, error: "Neturite teisių." };
   }

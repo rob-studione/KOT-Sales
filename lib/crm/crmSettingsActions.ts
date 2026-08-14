@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/crm/currentUser";
+import { requirePermission } from "@/lib/crm/requirePermission";
 import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
 
 function safeInt(raw: unknown, fallback: number): number {
@@ -41,7 +41,7 @@ export async function updateGlobalSettingsAction(
   formData: FormData
 ): Promise<void> {
   try {
-    await requireAdmin({ mode: "throw" });
+    await requirePermission("settings.general", { mode: "throw" });
   } catch {
     return;
   }
@@ -127,7 +127,7 @@ export async function upsertStatusAction(
   formData: FormData
 ): Promise<void> {
   try {
-    await requireAdmin({ mode: "throw" });
+    await requirePermission("settings.general", { mode: "throw" });
   } catch {
     return;
   }

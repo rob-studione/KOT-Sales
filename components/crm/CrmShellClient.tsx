@@ -37,7 +37,9 @@ export function CrmShellClient({
       last_name: user.last_name,
       legacy_name: undefined,
       email: user.email,
-      role: user.role,
+      role_id: user.role_id,
+      role_key: user.role,
+      role_name: user.role_name ?? user.role,
       status: user.status === "inactive" ? "Neaktyvi" : "Aktyvi",
       status_raw: user.status,
       lastActivityLabel: "-",
@@ -60,7 +62,7 @@ export function CrmShellClient({
       />
 
       <div className="flex min-h-0 flex-1">
-        <CrmSidebar isAdmin={user?.role === "admin"} />
+        <CrmSidebar user={user} />
         <main className="min-w-0 flex-1 overflow-auto py-4">
           <CrmContentContainer className="min-w-0">{children}</CrmContentContainer>
         </main>
@@ -69,6 +71,7 @@ export function CrmShellClient({
       <AccountEditDrawer
         open={selfDrawerOpen}
         user={selfRow}
+        roleOptions={user?.role_id ? [{ id: user.role_id, key: user.role, name: user.role_name ?? user.role, color: user.role_color ?? "#7C4A57" }] : []}
         onClose={() => setSelfDrawerOpen(false)}
         mode="self"
         onSaved={(updated) => {
@@ -84,7 +87,9 @@ export function CrmShellClient({
               avatar_url: updated.avatar_url ?? prev.avatar_url ?? null,
               status_raw: updated.status,
               status: updated.status === "inactive" ? "Neaktyvi" : "Aktyvi",
-              role: updated.role,
+              role_key: updated.role,
+              role_id: updated.role_id,
+              role_name: updated.role_name || prev.role_name,
             };
           });
           router.refresh();
