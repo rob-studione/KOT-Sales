@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { MouseEvent } from "react";
+import type { ManualLeadRevenueSort } from "@/lib/crm/projectManualLeads";
 import { buildProjectDetailHref, type ProjectDetailTab } from "@/lib/crm/projectPageSearchParams";
 
 type Status = "active" | "netinkamas";
@@ -20,7 +21,7 @@ export function CandidatesListStatusToggle({
   from,
   to,
   pageSize,
-  existingMonths,
+  revenueSort,
 }: {
   projectId: string;
   currentStatus: Status;
@@ -30,7 +31,7 @@ export function CandidatesListStatusToggle({
   from?: string;
   to?: string;
   pageSize?: number;
-  existingMonths?: number;
+  revenueSort?: ManualLeadRevenueSort;
 }) {
   const base = {
     tab,
@@ -40,7 +41,7 @@ export function CandidatesListStatusToggle({
     ...(to ? { to } : {}),
     ...(pageSize && pageSize !== 20 ? { pageSize } : {}),
     ...(q ? { q } : {}),
-    ...(existingMonths != null ? { existingMonths } : {}),
+    ...(revenueSort && revenueSort !== "revenue_desc" ? { revenueSort } : {}),
   };
 
   const hrefActive = buildProjectDetailHref(projectId, {

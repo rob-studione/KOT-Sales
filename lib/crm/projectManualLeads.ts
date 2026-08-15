@@ -2,35 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { logSupabaseError } from "@/lib/supabase/supabaseErrorLog";
 import type { PageSize } from "@/lib/crm/pagination";
 import type { ManualCandidateListStatus } from "@/lib/crm/projectPageSearchParams";
-import { MANUAL_LEAD_EXISTING_CLIENT_MONTHS } from "@/lib/crm/analyticsDates";
-import { computeManualLeadCrmStatus } from "@/lib/crm/manualLeadCrmStatus";
+
+export type ManualLeadRevenueSort = "revenue_desc" | "revenue_asc";
 
 export type ManualCandidatesRpcFilters = {
   candidateStatus?: ManualCandidateListStatus;
   search?: string | null;
-  /** Live Esamas/Buvęs langas (mėn.); default 6. */
-  existingMonths?: number;
+  /** Default: revenue_desc (didžiausia apyvarta pirma). */
+  revenueSort?: ManualLeadRevenueSort;
 };
-
-/** Visada 6 named paramų – PostgREST aiškiai renkasi vieną signatūrą; NULL = be filtro. */
-function rpcManualCandidatesArgs(
-  projectId: string,
-  pageSize: number,
-  offset: number,
-  countOnly: boolean,
-  filters?: ManualCandidatesRpcFilters
-): Record<string, unknown> {
-  const candidateStatus = filters?.candidateStatus === "netinkamas" ? "netinkamas" : "active";
-  const q = (filters?.search ?? "").trim();
-  return {
-    p_project_id: projectId,
-    p_limit: pageSize,
-    p_offset: offset,
-    p_count_only: countOnly,
-    p_candidate_status: candidateStatus,
-    p_search: q === "" ? null : q,
-  };
-}
 
 /** Po migracijos 0044_project_manual_leads_import_fields.sql */
 const PROJECT_MANUAL_LEADS_SELECT_FULL =
@@ -140,11 +120,6 @@ export type ManualCandidatePageRow =
   | { kind: "lead"; lead: ProjectManualLeadRow }
   | { kind: "linked"; linked: ProjectManualLinkedClientRow };
 
-type RpcPageJson = {
-  total_count?: number | string;
-  items?: Array<{ kind?: string; row?: Record<string, unknown> }>;
-};
-
 function parseCrmStatus(raw: unknown): ProjectManualLeadRow["crm_status"] {
   const s = String(raw ?? "").trim();
   if (s === "existing_client" || s === "former_client" || s === "new_lead") return s;
@@ -155,7 +130,7 @@ function parseManualCandidateStatus(raw: unknown): ProjectManualLeadRow["status"
   return String(raw ?? "").trim() === "netinkamas" ? "netinkamas" : "active";
 }
 
-function leadRowFromRpcJson(row: Record<string, unknown>): ProjectManualLeadRow {
+function leadRowFromDb(row: Record<string, unknown>): ProjectManualLeadRow {
   const rev = row.annual_revenue;
   const revNum =
     rev != null && rev !== "" && (typeof rev === "number" || (typeof rev === "string" && rev.trim() !== ""))
@@ -184,22 +159,13 @@ function leadRowFromRpcJson(row: Record<string, unknown>): ProjectManualLeadRow 
   };
 }
 
-function parseRpcPayload(data: unknown): RpcPageJson | null {
-  if (data == null) return null;
-  if (typeof data === "string") {
-    try {
-      return JSON.parse(data) as RpcPageJson;
-    } catch {
-      return null;
-    }
-  }
-  if (typeof data === "object") return data as RpcPageJson;
-  return null;
+function sanitizeManualCandidateSearch(raw: string): string {
+  return raw.replace(/[%_,.()\"'\\]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 /**
- * Vienas puslapis sujungto sąrašo (lead + linked), „blocking“ ir rikiavimas DB pusėje (RPC).
- * Reikia migracijos `0045` + `0047_manual_candidates_rpc_filters.sql` (filtrai).
+ * Cold leads kandidatai: paprasta lentelės užklausa + rikiavimas pagal apyvartą.
+ * Esami/buvę klientai čia neturi būti (valoma importu + sync) — UI nebeskenuoja CRM.
  */
 export async function fetchManualProjectCandidatesPage(
   supabase: SupabaseClient,
@@ -209,107 +175,46 @@ export async function fetchManualProjectCandidatesPage(
   opts?: { countOnly?: boolean } & ManualCandidatesRpcFilters
 ): Promise<{ rows: ManualCandidatePageRow[]; totalCount: number }> {
   const countOnly = opts?.countOnly === true;
-  const offset = countOnly ? 0 : pageIndex0 * pageSize;
-  const rpcArgs = rpcManualCandidatesArgs(projectId, pageSize, offset, countOnly, opts);
+  const candidateStatus = opts?.candidateStatus === "netinkamas" ? "netinkamas" : "active";
+  const q = sanitizeManualCandidateSearch((opts?.search ?? "").trim());
+  const revenueAsc = opts?.revenueSort === "revenue_asc";
+  const start = pageIndex0 * pageSize;
 
-  const { data, error } = await supabase.rpc("fetch_manual_project_candidates_page", rpcArgs);
+  let query: any = supabase
+    .from("project_manual_leads")
+    .select(countOnly ? "id" : PROJECT_MANUAL_LEADS_SELECT_FULL, {
+      count: "exact",
+      head: countOnly,
+    })
+    .eq("project_id", projectId)
+    .eq("status", candidateStatus);
 
+  if (q) {
+    query = query.or(`company_name.ilike.%${q}%,company_code.ilike.%${q}%`);
+  }
+
+  if (!countOnly) {
+    query = query
+      .order("annual_revenue", { ascending: revenueAsc, nullsFirst: false })
+      .order("company_name", { ascending: true })
+      .order("id", { ascending: true })
+      .range(start, start + pageSize - 1);
+  }
+
+  const { data, count, error } = await query;
   if (error) {
-    logSupabaseError("projectManualLeads.rpc fetch_manual_project_candidates_page", error, {
-      rpc: "public.fetch_manual_project_candidates_page",
-      ...rpcArgs,
-    });
+    logSupabaseError("projectManualLeads.fetch page", error);
     return { rows: [], totalCount: 0 };
   }
 
-  const payload = parseRpcPayload(data);
-  const totalRaw = payload?.total_count ?? 0;
-  const totalCount = typeof totalRaw === "string" ? Number(totalRaw) : Number(totalRaw);
-  const safeTotal = Number.isFinite(totalCount) ? Math.max(0, Math.floor(totalCount)) : 0;
-  const rawItems = Array.isArray(payload?.items) ? payload!.items! : [];
+  if (countOnly) return { rows: [], totalCount: count ?? 0 };
 
-  const rows: ManualCandidatePageRow[] = [];
-  for (const it of rawItems) {
-    const kind = String(it?.kind ?? "");
-    const row = it?.row;
-    if (!row || typeof row !== "object") continue;
-    const r = row as Record<string, unknown>;
-    if (kind === "lead") {
-      rows.push({ kind: "lead", lead: leadRowFromRpcJson(r) });
-    } else if (kind === "linked") {
-      const ck = String(r.client_key ?? "");
-      rows.push({
-        kind: "linked",
-        linked: {
-          id: String(r.id ?? ""),
-          project_id: String(r.project_id ?? ""),
-          client_key: ck,
-          created_at: String(r.created_at ?? ""),
-          company_name: ck,
-          company_code: null,
-          email: null,
-          last_invoice_date: null,
-          crm_status: "new_lead",
-        },
-      });
-    }
-  }
+  const rows: ManualCandidatePageRow[] = ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({
+    kind: "lead" as const,
+    lead: leadRowFromDb(r),
+  }));
 
-  const existingMonths =
-    typeof opts?.existingMonths === "number" && Number.isFinite(opts.existingMonths) && opts.existingMonths > 0
-      ? opts.existingMonths
-      : MANUAL_LEAD_EXISTING_CLIENT_MONTHS;
-
-  for (const item of rows) {
-    if (item.kind !== "lead") continue;
-    item.lead.crm_status = computeManualLeadCrmStatus(item.lead.last_order_at, existingMonths);
-  }
-
-  const keys = [...new Set(rows.filter((x): x is Extract<ManualCandidatePageRow, { kind: "linked" }> => x.kind === "linked").map((x) => x.linked.client_key))].filter(Boolean);
-  const viewByKey = new Map<
-    string,
-    { company_name: string | null; company_code: string | null; email: string | null; last_invoice_date: string | null }
-  >();
-  if (keys.length > 0) {
-    const { data: viewRows, error: vErr } = await supabase
-      .from("v_client_list_from_invoices")
-      .select("client_key,company_name,company_code,email,last_invoice_date")
-      .in("client_key", keys);
-    if (!vErr && viewRows) {
-      for (const v of viewRows as Array<{
-        client_key: string;
-        company_name: string | null;
-        company_code: string | null;
-        email: string | null;
-        last_invoice_date: string | null;
-      }>) {
-        const last =
-          v.last_invoice_date != null && String(v.last_invoice_date).trim() !== ""
-            ? String(v.last_invoice_date).slice(0, 10)
-            : null;
-        viewByKey.set(String(v.client_key), {
-          company_name: v.company_name,
-          company_code: v.company_code,
-          email: v.email,
-          last_invoice_date: last,
-        });
-      }
-    }
-  }
-
-  for (const item of rows) {
-    if (item.kind !== "linked") continue;
-    const ck = item.linked.client_key;
-    const meta = viewByKey.get(ck);
-    item.linked.company_name = (meta?.company_name ?? "").trim() || ck;
-    item.linked.company_code =
-      meta?.company_code != null && String(meta.company_code).trim() !== "" ? String(meta.company_code).trim() : null;
-    item.linked.email = meta?.email != null && String(meta.email).trim() !== "" ? String(meta.email).trim() : null;
-    item.linked.last_invoice_date = meta?.last_invoice_date ?? null;
-    item.linked.crm_status = computeManualLeadCrmStatus(item.linked.last_invoice_date, existingMonths);
-  }
-
-  return { rows, totalCount: safeTotal };
+  return { rows, totalCount: count ?? rows.length };
 }
 
 /** Tik bendras matomų kandidatų skaičius (kitiems skirtukams, antraštėms). */

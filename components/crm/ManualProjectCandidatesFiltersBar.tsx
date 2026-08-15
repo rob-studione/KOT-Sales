@@ -1,34 +1,42 @@
-/** Manual kandidatų valdikliai: status toggle + Esamas/Buvęs langas + paieška. */
+/** Manual cold leads: status + rikiavimas pagal apyvartą + paieška. */
 import Link from "next/link";
 import { CandidatesListStatusToggle } from "@/components/crm/CandidatesListStatusToggle";
 import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
-import { MANUAL_LEAD_EXISTING_CLIENT_MONTHS } from "@/lib/crm/analyticsDates";
-import {
-  MANUAL_LEAD_EXISTING_MONTH_PRESETS,
-} from "@/lib/crm/manualLeadCrmStatus";
+import type { ManualLeadRevenueSort } from "@/lib/crm/projectManualLeads";
 import { buildProjectDetailHref } from "@/lib/crm/projectPageSearchParams";
+
+function formatCount(n: number): string {
+  return String(Math.max(0, Math.floor(n))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
 
 export function ManualProjectCandidatesFiltersBar({
   projectId,
   defaultCandidateStatus,
   defaultQuery,
   pageSizeHidden,
-  existingMonths = MANUAL_LEAD_EXISTING_CLIENT_MONTHS,
+  revenueSort = "revenue_desc",
+  totalCount,
 }: {
   projectId: string;
   defaultCandidateStatus: "active" | "netinkamas";
   defaultQuery: string;
   pageSizeHidden?: string;
-  existingMonths?: number;
+  revenueSort?: ManualLeadRevenueSort;
+  totalCount?: number;
 }) {
   const pageSizeNumber =
     pageSizeHidden && Number.isFinite(Number(pageSizeHidden)) ? Math.max(1, Math.floor(Number(pageSizeHidden))) : undefined;
 
-  const monthsQsExtra = {
+  const qsExtra = {
     ...(defaultCandidateStatus === "netinkamas" ? { candidateStatus: "netinkamas" as const } : {}),
     ...(defaultQuery.trim() ? { q: defaultQuery.trim() } : {}),
     ...(pageSizeNumber && pageSizeNumber !== 20 ? { pageSize: pageSizeNumber } : {}),
   };
+
+  const sortOptions: Array<{ value: ManualLeadRevenueSort; label: string }> = [
+    { value: "revenue_desc", label: "Didžiausia apyvarta" },
+    { value: "revenue_asc", label: "Mažiausia apyvarta" },
+  ];
 
   return (
     <div className="flex flex-wrap items-center gap-4">
@@ -37,30 +45,36 @@ export function ManualProjectCandidatesFiltersBar({
         currentStatus={defaultCandidateStatus}
         q={defaultQuery || undefined}
         pageSize={pageSizeNumber}
-        existingMonths={existingMonths}
+        revenueSort={revenueSort}
       />
 
+      {totalCount != null && Number.isFinite(totalCount) ? (
+        <p className="text-xs text-zinc-500">
+          Viso: <span className="font-medium tabular-nums text-zinc-700">{formatCount(totalCount)}</span>
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-zinc-500">Esamas jei per:</span>
-        {MANUAL_LEAD_EXISTING_MONTH_PRESETS.map((m) => {
-          const active = m === existingMonths;
+        <span className="text-xs font-medium text-zinc-500">Rikiuoti:</span>
+        {sortOptions.map((opt) => {
+          const active = opt.value === revenueSort;
           const href = buildProjectDetailHref(projectId, {
             tab: "kandidatai",
             page: 0,
-            existingMonths: m,
-            ...monthsQsExtra,
+            revenueSort: opt.value,
+            ...qsExtra,
           });
           return active ? (
-            <span key={m} className="rounded-md bg-[#7C4A57] px-2.5 py-1 text-xs font-medium text-white">
-              {m} mėn.{m === MANUAL_LEAD_EXISTING_CLIENT_MONTHS ? " (numatytasis)" : ""}
+            <span key={opt.value} className="rounded-md bg-[#7C4A57] px-2.5 py-1 text-xs font-medium text-white">
+              {opt.label}
             </span>
           ) : (
             <Link
-              key={m}
+              key={opt.value}
               href={href}
               className="cursor-pointer rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
             >
-              {m} mėn.
+              {opt.label}
             </Link>
           );
         })}
@@ -76,9 +90,7 @@ export function ManualProjectCandidatesFiltersBar({
           page: "0",
           ...(pageSizeHidden ? { pageSize: pageSizeHidden } : {}),
           ...(defaultCandidateStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
-          ...(existingMonths !== MANUAL_LEAD_EXISTING_CLIENT_MONTHS
-            ? { existingMonths: String(existingMonths) }
-            : {}),
+          ...(revenueSort !== "revenue_desc" ? { sort: revenueSort } : {}),
         }}
       />
     </div>

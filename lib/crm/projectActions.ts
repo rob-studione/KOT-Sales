@@ -35,6 +35,7 @@ import {
   type ExistingProjectLeadMatch,
 } from "@/lib/crm/findMatchingExistingClient";
 import { isManualProjectType, isProcurementProjectType, projectTypeFromDbRow } from "@/lib/crm/projectType";
+import { companyCodeHasInvoices } from "@/lib/crm/manualColdLeads";
 import {
   mapProcurementCsvRows,
   parseProcurementImportCsv,
@@ -51,8 +52,6 @@ import { isMissingWorkItemSourceColumnsError } from "@/lib/crm/projectWorkItemCo
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseDateInputToIso } from "@/lib/crm/format";
 import { resolveNextActionDateForKanbanStatus } from "@/lib/crm/kanbanNextActionDate";
-import { MANUAL_LEAD_EXISTING_CLIENT_MONTHS } from "@/lib/crm/analyticsDates";
-import { computeManualLeadCrmStatus } from "@/lib/crm/manualLeadCrmStatus";
 
 import {
   aggregateSnapshotTotals,
@@ -596,13 +595,27 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
   });
 
   if (matchResult.kind === "strong") {
-    // Stiprus match: tik prijungti esamą CRM klientą.
-    return { ok: false, duplicate: true, match: matchResult.match };
+    return {
+      ok: false,
+      error: "Ši įmonė jau yra klientė (turi sąskaitų). Cold leads skirti tik niekada nepirkusioms.",
+    };
   }
 
   if (matchResult.kind === "suggestions") {
-    // Tikslus pavadinimo sutapimas: force create neleidžiamas.
-    return { ok: false, nameSuggestions: true, suggestions: matchResult.suggestions };
+    return {
+      ok: false,
+      error: "Pavadinimas sutampa su esamu CRM klientu. Cold leads skirti tik niekada nepirkusioms.",
+    };
+  }
+
+  if (companyCode) {
+    const hasInvoices = await companyCodeHasInvoices(supabase, companyCode);
+    if (hasInvoices) {
+      return {
+        ok: false,
+        error: "Šis įmonės kodas jau turi sąskaitų. Cold leads skirti tik niekada nepirkusioms.",
+      };
+    }
   }
 
   const { error } = await supabase.from("project_manual_leads").insert({
@@ -613,6 +626,8 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
     phone,
     contact_name: contactName,
     notes,
+    crm_status: "new_lead",
+    last_order_at: null,
   });
 
   if (error) {
@@ -862,6 +877,8 @@ export type ImportManualProjectLeadsCsvResult =
       updated: number;
       /** Insert-only režime: CSV eilutės (unikalūs kodai), kurie jau buvo projekte ir nebuvo keisti. */
       skippedExisting: number;
+      /** Cold leads: praleisti, nes jau turi sąskaitų (ne nauji). */
+      skippedEverClient: number;
       existingClient: number;
       formerClient: number;
       newLead: number;
@@ -879,6 +896,8 @@ export type PreviewManualProjectLeadsCsvResult =
       wouldInsert: number;
       /** Esami įrašai, kuriuos atnaujintų upsert (jei įjungta „Atnaujinti esamus“). */
       wouldUpdate: number;
+      /** Praleisti, nes jau turi sąskaitų (ne cold leads). */
+      wouldSkipEverClient: number;
     }
   | { ok: false; error: string };
 
@@ -1032,9 +1051,12 @@ export async function previewManualProjectLeadsCsvAction(
   }
   const p = prep;
 
+  const coldOnlyRows = p.uniqueRows.filter((r) => !p.viewByCode.has(r.company_code));
+  const wouldSkipEverClient = p.uniqueRows.length - coldOnlyRows.length;
+
   let wouldInsert = 0;
   let wouldUpdate = 0;
-  for (const r of p.uniqueRows) {
+  for (const r of coldOnlyRows) {
     if (p.existingInProject.has(r.company_code)) wouldUpdate += 1;
     else wouldInsert += 1;
   }
@@ -1046,6 +1068,7 @@ export async function previewManualProjectLeadsCsvAction(
     invalidRevenue: p.invalidRevenue,
     wouldInsert,
     wouldUpdate,
+    wouldSkipEverClient,
   };
 }
 
@@ -1083,11 +1106,6 @@ type ClientViewMatch = {
   client_id: string | null;
   last_invoice_date: string | null;
 };
-
-function crmStatusFromViewRow(row: ClientViewMatch | null): "existing_client" | "former_client" | "new_lead" {
-  if (!row) return "new_lead";
-  return computeManualLeadCrmStatus(row.last_invoice_date, MANUAL_LEAD_EXISTING_CLIENT_MONTHS);
-}
 
 export async function importManualProjectLeadsCsvAction(
   projectId: string,
@@ -1130,18 +1148,20 @@ export async function importManualProjectLeadsCsvAction(
 
   const { totalRows, skippedMissingRequired, invalidRevenue, uniqueRows, existingInProject, viewByCode } = prep;
 
-  const fullPayload = uniqueRows.map((r) => {
-    const match = viewByCode.get(r.company_code) ?? null;
-    const crm_status = crmStatusFromViewRow(match);
+  // Cold leads: neimportuoti nieko, kas jau turi sąskaitų CRM.
+  const coldOnlyRows = uniqueRows.filter((r) => !viewByCode.has(r.company_code));
+  const skippedEverClient = uniqueRows.length - coldOnlyRows.length;
+
+  const fullPayload = coldOnlyRows.map((r) => {
     return {
       project_id: projectId,
       company_name: r.company_name,
       company_code: r.company_code,
       annual_revenue: r.annual_revenue,
       annual_revenue_year: mapping.annualRevenueYear ?? null,
-      crm_status,
-      crm_client_id: match?.client_id ?? null,
-      last_order_at: match?.last_invoice_date ?? null,
+      crm_status: "new_lead" as const,
+      crm_client_id: null,
+      last_order_at: null,
     };
   });
 
@@ -1149,14 +1169,9 @@ export async function importManualProjectLeadsCsvAction(
     ? fullPayload
     : fullPayload.filter((row) => !existingInProject.has(row.company_code));
 
-  let existingClient = 0;
-  let formerClient = 0;
-  let newLead = 0;
-  for (const row of payloadToApply) {
-    if (row.crm_status === "existing_client") existingClient += 1;
-    else if (row.crm_status === "former_client") formerClient += 1;
-    else newLead += 1;
-  }
+  const existingClient = 0;
+  const formerClient = 0;
+  const newLead = payloadToApply.length;
 
   const skippedExisting = updateExisting ? 0 : fullPayload.length - payloadToApply.length;
 
@@ -1187,6 +1202,7 @@ export async function importManualProjectLeadsCsvAction(
     inserted,
     updated,
     skippedExisting,
+    skippedEverClient,
     existingClient,
     formerClient,
     newLead,
@@ -1221,31 +1237,11 @@ export async function linkExistingClientToManualProjectAction(
     return { ok: false, error: "Galima tik rankiniu projektu." };
   }
 
-  const { data: exists } = await supabase
-    .from("v_client_list_from_invoices")
-    .select("client_key")
-    .eq("client_key", ck)
-    .maybeSingle();
-  if (!exists) {
-    return { ok: false, error: "Klientas nerastas CRM sąraše." };
-  }
-
-  const { error } = await supabase.from("project_manual_linked_clients").insert({
-    project_id: projectId,
-    client_key: ck,
-  });
-
-  if (error) {
-    if (error.code === "23505") {
-      return { ok: false, error: "Šis klientas jau pridėtas prie šio projekto." };
-    }
-    console.error("[projectActions] linkExistingClientToManualProject failed", error);
-    return { ok: false, error: error.message ?? "Nepavyko prijungti kliento." };
-  }
-
-  revalidatePath(`/projektai/${projectId}`, "layout");
-  revalidatePath("/projektai");
-  return { ok: true };
+  // Cold leads = niekada nepirkusios; esamų CRM klientų neprijungiame.
+  return {
+    ok: false,
+    error: "Cold leads skirti tik niekada nepirkusioms įmonėms — esamo kliento prijungti negalima.",
+  };
 }
 
 const MANUAL_LEAD_PLACEHOLDER_INVOICE_DATE = "2000-01-01";

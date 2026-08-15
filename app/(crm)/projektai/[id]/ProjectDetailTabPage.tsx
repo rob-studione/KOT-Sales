@@ -17,11 +17,11 @@ import {
   buildProjectDetailHref,
   buildProjectPageQueryPreserve,
   parseManualCandidatesStatus,
+  parseManualRevenueSort,
   parseProjectCompletedPage1Based,
   type ProjectDetailTab,
 } from "@/lib/crm/projectPageSearchParams";
-import { parseManualLeadExistingMonths } from "@/lib/crm/manualLeadCrmStatus";
-import { MANUAL_LEAD_EXISTING_CLIENT_MONTHS } from "@/lib/crm/analyticsDates";
+import type { ManualLeadRevenueSort } from "@/lib/crm/projectManualLeads";
 import { loadProjectDetailCore } from "@/lib/crm/projectDetailLoad";
 import type { SnapshotCandidateRow } from "@/lib/crm/projectSnapshot";
 import { ProjectCandidateCallList } from "@/components/crm/ProjectCandidateCallList";
@@ -123,8 +123,8 @@ export type ProjectDetailTabPageSearchParams = {
   completedQ?: string | string[];
   /** Baigties statuso filtras skirtuke „Užbaigta“. */
   completedStatus?: string | string[];
-  /** Rankinių kandidatų Esamas/Buvęs langas (mėn.). */
-  existingMonths?: string | string[];
+  /** Cold leads rikiavimas: revenue_desc | revenue_asc. */
+  sort?: string | string[];
 };
 
 /**
@@ -177,7 +177,7 @@ export async function ProjectDetailTabPage({
     if (preserve.q) q.set("q", preserve.q);
     if (preserve.status) q.set("status", preserve.status);
     if (preserve.candidateStatus) q.set("candidateStatus", preserve.candidateStatus);
-    if (preserve.existingMonths != null) q.set("existingMonths", String(preserve.existingMonths));
+    if (preserve.revenueSort === "revenue_asc") q.set("sort", "revenue_asc");
     if (preserve.completedPage != null && preserve.completedPage > 1) {
       q.set("completedPage", String(preserve.completedPage));
     }
@@ -359,14 +359,14 @@ export async function ProjectDetailTabPage({
   const manualQRaw = typeof sp.q === "string" ? sp.q : "";
   const manualQueryTrim = manualQRaw.trim();
   const manualSearchFilter = manualQueryTrim.length > 0 ? manualQueryTrim : null;
-  const existingMonthsRaw = Array.isArray(sp.existingMonths) ? sp.existingMonths[0] : sp.existingMonths;
-  const manualExistingMonths = isManual
-    ? parseManualLeadExistingMonths(typeof existingMonthsRaw === "string" ? existingMonthsRaw : undefined)
-    : MANUAL_LEAD_EXISTING_CLIENT_MONTHS;
+  const sortRaw = Array.isArray(sp.sort) ? sp.sort[0] : sp.sort;
+  const manualRevenueSort: ManualLeadRevenueSort = isManual
+    ? parseManualRevenueSort(typeof sortRaw === "string" ? sortRaw : undefined)
+    : "revenue_desc";
   const manualRpcFilters = {
     candidateStatus: manualCandidateListStatus,
     search: manualSearchFilter,
-    existingMonths: manualExistingMonths,
+    revenueSort: manualRevenueSort,
   };
 
   let manualCandidatesTotal = 0;
@@ -376,38 +376,36 @@ export async function ProjectDetailTabPage({
   let manualShowingFrom = 0;
   let manualShowingTo = 0;
 
-  if (isManual) {
-    if (tab === "kandidatai") {
-      const first = await fetchManualProjectCandidatesPage(
-        supabase,
-        id,
-        requestedManualPageIndex0,
-        manualCandidatesPageSize,
-        manualRpcFilters
+  if (isManual && tab === "kandidatai") {
+    const manualT0 = Date.now();
+    const first = await fetchManualProjectCandidatesPage(
+      supabase,
+      id,
+      requestedManualPageIndex0,
+      manualCandidatesPageSize,
+      manualRpcFilters
+    );
+    markMs("candidatesRpcMs", Date.now() - manualT0);
+    manualCandidatesTotal = first.totalCount;
+    manualTotalPages = totalPagesFromCount(manualCandidatesTotal, manualCandidatesPageSize);
+    manualPageIndex0 = clampPageIndex0(requestedManualPageIndex0, manualTotalPages);
+    if (manualPageIndex0 !== requestedManualPageIndex0) {
+      redirect(
+        buildProjectDetailHref(id, {
+          tab: "kandidatai",
+          ...projectLinkOpts,
+          page: manualPageIndex0,
+          pageSize: manualCandidatesPageSize,
+          ...(manualCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
+          ...(manualQueryTrim !== "" ? { q: manualQueryTrim } : {}),
+          ...(manualRevenueSort !== "revenue_desc" ? { revenueSort: manualRevenueSort } : {}),
+        })
       );
-      manualCandidatesTotal = first.totalCount;
-      manualTotalPages = totalPagesFromCount(manualCandidatesTotal, manualCandidatesPageSize);
-      manualPageIndex0 = clampPageIndex0(requestedManualPageIndex0, manualTotalPages);
-      if (manualPageIndex0 !== requestedManualPageIndex0) {
-        redirect(
-          buildProjectDetailHref(id, {
-            tab: "kandidatai",
-            ...projectLinkOpts,
-            page: manualPageIndex0,
-            pageSize: manualCandidatesPageSize,
-            ...(manualCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
-            ...(manualQueryTrim !== "" ? { q: manualQueryTrim } : {}),
-            ...(manualExistingMonths !== MANUAL_LEAD_EXISTING_CLIENT_MONTHS
-              ? { existingMonths: manualExistingMonths }
-              : {}),
-          })
-        );
-      }
-      manualCandidatesPage = first;
-      const sr = showingRange1Based(manualPageIndex0, manualCandidatesPageSize, manualCandidatesTotal);
-      manualShowingFrom = sr.from;
-      manualShowingTo = sr.to;
     }
+    manualCandidatesPage = first;
+    const sr = showingRange1Based(manualPageIndex0, manualCandidatesPageSize, manualCandidatesTotal);
+    manualShowingFrom = sr.from;
+    manualShowingTo = sr.to;
   }
 
   let procurementContractsTotal = 0;
@@ -903,12 +901,13 @@ export async function ProjectDetailTabPage({
               <>
                 <CrmListPageIntro
                   title="Kandidatai"
-                  description="Rankinis projektas: čia rodomi tik jūsų pridėti kandidatai. Jie nėra įrašomi į „Visų klientų“ sąrašą."
+                  count={manualCandidatesTotal}
+                  description="Cold leads: tik įmonės, kurios niekada nebuvo klientės. Jei atsiranda sąskaita — kandidatas automatiškai išimamas."
                 />
                 <CrmListPageMain>
                   <div className="w-full min-w-0">
                     <ManualProjectCandidatesPanel
-                      key={manualCandidateListStatus}
+                      key={`${manualCandidateListStatus}-${manualRevenueSort}`}
                       projectId={p.id}
                       pageRows={manualCandidatesPage.rows}
                       totalCount={manualCandidatesTotal}
@@ -921,9 +920,7 @@ export async function ProjectDetailTabPage({
                       paginationExtraQuery={{
                         ...(manualCandidateListStatus === "netinkamas" ? { candidateStatus: "netinkamas" } : {}),
                         ...(manualQueryTrim !== "" ? { q: manualQueryTrim } : {}),
-                        ...(manualExistingMonths !== MANUAL_LEAD_EXISTING_CLIENT_MONTHS
-                          ? { existingMonths: String(manualExistingMonths) }
-                          : {}),
+                        ...(manualRevenueSort !== "revenue_desc" ? { sort: manualRevenueSort } : {}),
                         ...(manualCandidatesPageSize !== 20
                           ? { pageSize: String(manualCandidatesPageSize) }
                           : {}),
@@ -936,7 +933,8 @@ export async function ProjectDetailTabPage({
                           defaultCandidateStatus={manualCandidateListStatus}
                           defaultQuery={manualQueryTrim}
                           pageSizeHidden={manualCandidatesPageSize !== 20 ? String(manualCandidatesPageSize) : undefined}
-                          existingMonths={manualExistingMonths}
+                          revenueSort={manualRevenueSort}
+                          totalCount={manualCandidatesTotal}
                         />
                       }
                     />
@@ -947,6 +945,7 @@ export async function ProjectDetailTabPage({
               <>
                 <CrmListPageIntro
                   title="Kandidatai"
+                  count={autoCandidatesTotalCount}
                   description="Sąrašas perskaičiuojamas kiekvieną kartą. Jei klientas užsako prieš būdamas paimtas — dingsta iš kandidatų. Jei klientas jau buvo paimtas į „Darbas“ šiame projekte, jis čia neberodomas (nebent darbo eilutė buvo grąžinta į kandidatus)."
                 />
                 <CrmListPageControls>

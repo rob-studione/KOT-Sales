@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { pruneManualColdLeadsByCompanyCodes } from "@/lib/crm/manualColdLeads";
 import {
   asNumber,
   asString,
@@ -138,6 +139,7 @@ export async function syncNeksarInvoices(input: NeksarSyncInput = {}): Promise<N
     insertNew: 0,
     skippedByReason: {},
   };
+  const touchedCompanyCodes = new Set<string>();
 
   const fail = async (error: string, httpStatus: number): Promise<NeksarSyncFailure> => {
     const result: NeksarSyncFailure = {
@@ -328,6 +330,10 @@ export async function syncNeksarInvoices(input: NeksarSyncInput = {}): Promise<N
           const upsertRes = await supabase.from("invoices").upsert(batch, { onConflict: "invoice_id" }).select("invoice_id");
           if (upsertRes.error) return fail(`Upsert failed: ${upsertRes.error.message}`, 502);
           stats.insertedOrUpdated += upsertRes.data?.length ?? 0;
+          for (const row of batch) {
+            const code = asString(row.company_code)?.trim();
+            if (code) touchedCompanyCodes.add(code);
+          }
         }
       } else if (dryRun) {
         stats.insertedOrUpdated += toUpsert.length;
@@ -357,6 +363,16 @@ export async function syncNeksarInvoices(input: NeksarSyncInput = {}): Promise<N
       skippedByReason: stats.skippedByReason,
       tookMs: result.tookMs,
     });
+
+    if (!dryRun && touchedCompanyCodes.size > 0) {
+      const prune = await pruneManualColdLeadsByCompanyCodes(supabase, [...touchedCompanyCodes]);
+      if (prune.deleted > 0) {
+        console.info("[neksar-sync] pruned cold leads after invoice sync", {
+          companyCodes: touchedCompanyCodes.size,
+          deleted: prune.deleted,
+        });
+      }
+    }
 
     await writeSyncState({
       dryRun,

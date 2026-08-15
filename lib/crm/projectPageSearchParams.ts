@@ -1,6 +1,5 @@
 import { parsePageIndex0, parsePageSize, type PageSize } from "@/lib/crm/pagination";
-import { MANUAL_LEAD_EXISTING_CLIENT_MONTHS } from "@/lib/crm/analyticsDates";
-import { parseManualLeadExistingMonths } from "@/lib/crm/manualLeadCrmStatus";
+import type { ManualLeadRevenueSort } from "@/lib/crm/projectManualLeads";
 
 /** Bendri projekto puslapio query parametrai (skirtukai + apžvalgos periodas). */
 
@@ -11,6 +10,13 @@ export function parseManualCandidatesStatus(raw: string | undefined): ManualCand
   const s = typeof raw === "string" ? raw.trim() : "";
   if (s === "netinkamas") return "netinkamas";
   return "active";
+}
+
+/** ?sort=revenue_asc | revenue_desc — cold leads rikiavimas pagal apyvartą. */
+export function parseManualRevenueSort(raw: string | undefined): ManualLeadRevenueSort {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (s === "revenue_asc") return "revenue_asc";
+  return "revenue_desc";
 }
 
 export type ProjectDetailTab = "apzvalga" | "kandidatai" | "sutartys" | "darbas" | "kontaktuota" | "pajamos";
@@ -58,7 +64,7 @@ export function buildProjectPageQueryPreserve(sp: {
   q?: string | string[];
   status?: string | string[];
   candidateStatus?: string | string[];
-  existingMonths?: string | string[];
+  sort?: string | string[];
   completedPage?: string | string[];
   completedQ?: string | string[];
   completedStatus?: string | string[];
@@ -68,7 +74,7 @@ export function buildProjectPageQueryPreserve(sp: {
   q?: string;
   status?: string;
   candidateStatus?: ProjectAutoCandidatesListStatus;
-  existingMonths?: number;
+  revenueSort?: ManualLeadRevenueSort;
   completedPage?: number;
   completedQ?: string;
   completedStatus?: string;
@@ -82,7 +88,7 @@ export function buildProjectPageQueryPreserve(sp: {
     q?: string;
     status?: string;
     candidateStatus?: ProjectAutoCandidatesListStatus;
-    existingMonths?: number;
+    revenueSort?: ManualLeadRevenueSort;
     completedPage?: number;
     completedQ?: string;
     completedStatus?: string;
@@ -96,11 +102,9 @@ export function buildProjectPageQueryPreserve(sp: {
   if (typeof sp.candidateStatus === "string" && sp.candidateStatus === "netinkamas") {
     out.candidateStatus = "netinkamas";
   }
-  const existingMonthsRaw = Array.isArray(sp.existingMonths) ? sp.existingMonths[0] : sp.existingMonths;
-  const existingMonths = parseManualLeadExistingMonths(existingMonthsRaw);
-  if (existingMonths !== MANUAL_LEAD_EXISTING_CLIENT_MONTHS) {
-    out.existingMonths = existingMonths;
-  }
+  const sortRaw = Array.isArray(sp.sort) ? sp.sort[0] : sp.sort;
+  const revenueSort = parseManualRevenueSort(typeof sortRaw === "string" ? sortRaw : undefined);
+  if (revenueSort !== "revenue_desc") out.revenueSort = revenueSort;
   const c1 = parseProjectCompletedPage1Based(
     Array.isArray(sp.completedPage) ? sp.completedPage[0] : sp.completedPage
   );
@@ -133,10 +137,10 @@ export function buildProjectDetailHref(
     candidateStatus?: ProjectAutoCandidatesListStatus;
     /** Paieška (company_name / company_code). */
     q?: string;
-    /** Rankinių kandidatų live Esamas/Buvęs langas (mėn.); URL tik jei ≠ 6. */
-    existingMonths?: number;
+    /** Cold leads rikiavimas pagal apyvartą; URL tik jei ≠ revenue_desc. */
+    revenueSort?: ManualLeadRevenueSort;
     /**
-     * 1-based, skirtukas „Užbaigta“ (kontaktuota) sąrašui. Jei 1, query ne įdedamas.
+     * 1-based, skirtukas „Užbaigta“ (kontaktuota) sąrašui. Jei 1, param ne įdedamas.
      * Kiti tab’ai perduoda `...buildProjectPageQueryPreserve` kad išsaugotų reikšmę.
      */
     completedPage?: number;
@@ -162,13 +166,7 @@ export function buildProjectDetailHref(
   if (candSt !== "" && candSt !== "active") params.set("candidateStatus", candSt);
   const searchQ = opts.q !== undefined ? String(opts.q).trim() : "";
   if (searchQ !== "") params.set("q", searchQ);
-  if (
-    opts.existingMonths !== undefined &&
-    opts.existingMonths !== MANUAL_LEAD_EXISTING_CLIENT_MONTHS &&
-    Number.isFinite(opts.existingMonths)
-  ) {
-    params.set("existingMonths", String(Math.floor(opts.existingMonths)));
-  }
+  if (opts.revenueSort === "revenue_asc") params.set("sort", "revenue_asc");
   if (opts.completedPage !== undefined && opts.completedPage > 1) {
     params.set("completedPage", String(Math.floor(opts.completedPage)));
   }

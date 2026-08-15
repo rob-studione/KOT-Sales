@@ -1258,6 +1258,11 @@ export function ManualProjectCandidatesPanel({
                             {updateExistingLeads ? importPreview.wouldUpdate : 0}
                           </span>
                         </li>
+                        {importPreview.wouldSkipEverClient > 0 ? (
+                          <li className="text-xs text-zinc-500">
+                            Praleista (jau klientai / turi sąskaitų): {importPreview.wouldSkipEverClient}
+                          </li>
+                        ) : null}
                         {!updateExistingLeads && importPreview.wouldUpdate > 0 ? (
                           <li className="text-xs text-zinc-500">
                             Esami įrašai ({importPreview.wouldUpdate}) bus praleisti (tik įterpimas naujų).
@@ -1296,12 +1301,12 @@ export function ManualProjectCandidatesPanel({
                         <span className="font-semibold tabular-nums">{importResult.skippedExisting}</span>
                       </li>
                     ) : null}
-                    <li>
-                      Esami klientai: <span className="font-semibold tabular-nums">{importResult.existingClient}</span>
-                    </li>
-                    <li>
-                      Buvę klientai: <span className="font-semibold tabular-nums">{importResult.formerClient}</span>
-                    </li>
+                    {importResult.skippedEverClient > 0 ? (
+                      <li>
+                        Praleista (jau klientai / turi sąskaitų):{" "}
+                        <span className="font-semibold tabular-nums">{importResult.skippedEverClient}</span>
+                      </li>
+                    ) : null}
                     <li>
                       Nauji lead’ai: <span className="font-semibold tabular-nums">{importResult.newLead}</span>
                     </li>
