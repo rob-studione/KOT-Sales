@@ -169,7 +169,13 @@ function statusDetailText(r: ManagerKpiTableRow): string {
   return `Trūksta: ${answeredMissing.toLocaleString("lt-LT")} ats.`;
 }
 
-export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
+export function ManagerKpiDashboard({
+  model,
+  canEditTargets = false,
+}: {
+  model: ManagerKpiViewModel;
+  canEditTargets?: boolean;
+}) {
   const router = useRouter();
   const sp = useSearchParams();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -392,13 +398,15 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
               />
               <span className="leading-snug">Lyginti su ankstesniu periodu</span>
             </label>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              className="shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 sm:px-3"
-            >
-              KPI nustatymai
-            </button>
+            {canEditTargets ? (
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className="shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 sm:px-3"
+              >
+                KPI nustatymai
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -622,7 +630,7 @@ export function ManagerKpiDashboard({ model }: { model: ManagerKpiViewModel }) {
         </div>
       </section>
 
-      {settingsOpen ? (
+      {canEditTargets && settingsOpen ? (
         <ManagerKpiSettingsDrawer
           key={`${model.range.from}-${model.range.to}-${model.workingDayCount}-${model.rows.map((r) => r.userId).join(",")}`}
           onClose={() => {

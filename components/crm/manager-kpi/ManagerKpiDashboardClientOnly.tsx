@@ -8,7 +8,13 @@ const ManagerKpiDashboard = nextDynamic(
   { ssr: false, loading: () => <p className="text-sm text-zinc-500">Įkeliama…</p> }
 );
 
-export function ManagerKpiDashboardClientOnly({ model }: { model: ManagerKpiViewModel }) {
-  return <ManagerKpiDashboard model={model} />;
+export function ManagerKpiDashboardClientOnly({
+  model,
+  canEditTargets = false,
+}: {
+  model: ManagerKpiViewModel;
+  canEditTargets?: boolean;
+}) {
+  return <ManagerKpiDashboard model={model} canEditTargets={canEditTargets} />;
 }
 
