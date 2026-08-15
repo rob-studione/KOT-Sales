@@ -5,24 +5,18 @@ import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 import type { ManualLeadRevenueSort } from "@/lib/crm/projectManualLeads";
 import { buildProjectDetailHref } from "@/lib/crm/projectPageSearchParams";
 
-function formatCount(n: number): string {
-  return String(Math.max(0, Math.floor(n))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-}
-
 export function ManualProjectCandidatesFiltersBar({
   projectId,
   defaultCandidateStatus,
   defaultQuery,
   pageSizeHidden,
   revenueSort = "revenue_desc",
-  totalCount,
 }: {
   projectId: string;
   defaultCandidateStatus: "active" | "netinkamas";
   defaultQuery: string;
   pageSizeHidden?: string;
   revenueSort?: ManualLeadRevenueSort;
-  totalCount?: number;
 }) {
   const pageSizeNumber =
     pageSizeHidden && Number.isFinite(Number(pageSizeHidden)) ? Math.max(1, Math.floor(Number(pageSizeHidden))) : undefined;
@@ -47,12 +41,6 @@ export function ManualProjectCandidatesFiltersBar({
         pageSize={pageSizeNumber}
         revenueSort={revenueSort}
       />
-
-      {totalCount != null && Number.isFinite(totalCount) ? (
-        <p className="text-xs text-zinc-500">
-          Viso: <span className="font-medium tabular-nums text-zinc-700">{formatCount(totalCount)}</span>
-        </p>
-      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-zinc-500">Rikiuoti:</span>

@@ -934,7 +934,6 @@ export async function ProjectDetailTabPage({
                           defaultQuery={manualQueryTrim}
                           pageSizeHidden={manualCandidatesPageSize !== 20 ? String(manualCandidatesPageSize) : undefined}
                           revenueSort={manualRevenueSort}
-                          totalCount={manualCandidatesTotal}
                         />
                       }
                     />
