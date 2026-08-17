@@ -53,6 +53,7 @@ import { isMissingWorkItemSourceColumnsError } from "@/lib/crm/projectWorkItemCo
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseDateInputToIso } from "@/lib/crm/format";
 import { resolveNextActionDateForKanbanStatus } from "@/lib/crm/kanbanNextActionDate";
+import { isSystemAdminRole } from "@/lib/crm/roles";
 
 import {
   aggregateSnapshotTotals,
@@ -1323,6 +1324,80 @@ async function insertPickedWorkItemRow(
 
   if (insErrFinal || !inserted?.id) {
     if (insErrFinal?.code === "23505") {
+      const { data: existing } = await supabase
+        .from("project_work_items")
+        .select("id,assigned_to,client_name_snapshot,result_status")
+        .eq("project_id", projectId)
+        .eq("client_key", pick.client_key)
+        .limit(20);
+      const open = (existing ?? []).find(
+        (r) => !isProjectWorkItemClosed((r as { result_status?: string | null }).result_status)
+      ) as { id?: string; assigned_to?: string | null } | undefined;
+      const openId = String(open?.id ?? "").trim();
+      const assigneeId = String(open?.assigned_to ?? "").trim();
+
+      // Admin testinis pick: vadybininkas perima tą pačią atvirą eilutę.
+      if (openId && assigneeId && assigneeId !== assignedTo) {
+        const { data: holder } = await supabase.from("crm_users").select("role").eq("id", assigneeId).maybeSingle();
+        const holderRole = String((holder as { role?: string } | null)?.role ?? "");
+        if (isSystemAdminRole(holderRole)) {
+          const { error: takeErr } = await supabase
+            .from("project_work_items")
+            .update({
+              assigned_to: assignedTo,
+              picked_at: new Date().toISOString(),
+              work_updated_at: new Date().toISOString(),
+            })
+            .eq("id", openId);
+          if (takeErr) {
+            return { ok: false, error: takeErr.message ?? "Nepavyko perimti admin darbo eilutės." };
+          }
+          const performedBy = await activityPerformedById();
+          const tAct0 = Date.now();
+          const { error: actErr } = await supabase.from("project_work_item_activities").insert({
+            work_item_id: openId,
+            occurred_at: new Date().toISOString(),
+            action_type: "picked",
+            call_status: BOARD_DEFAULT_CALL_STATUS,
+            next_action: "",
+            next_action_date: null,
+            comment: "Perimta iš admin testinio priskyrimo",
+            performed_by: performedBy,
+          });
+          if (actErr) {
+            return { ok: false, error: `Nepavyko įrašyti perėmimo: ${actErr.message}` };
+          }
+          const tRev0 = Date.now();
+          revalidatePath(`/projektai/${projectId}`, "layout");
+          return {
+            ok: true,
+            insertWorkItemMs: insertWorkItemMs,
+            insertActivityMs: Date.now() - tAct0,
+            revalidateDetailMs: Date.now() - tRev0,
+          };
+        }
+
+        const { data: u } = await supabase
+          .from("crm_users")
+          .select("email,name,first_name,last_name")
+          .eq("id", assigneeId)
+          .maybeSingle();
+        const row = u as {
+          email?: string | null;
+          name?: string | null;
+          first_name?: string | null;
+          last_name?: string | null;
+        } | null;
+        const who =
+          [row?.first_name, row?.last_name].filter(Boolean).join(" ").trim() ||
+          row?.name?.trim() ||
+          row?.email?.trim() ||
+          "kitas vadybininkas";
+        return {
+          ok: false,
+          error: `Šį kandidatą jau paėmė ${who}. Jis dabar „Darbas“ lentoje — čia nebegalima priskirti.`,
+        };
+      }
       return { ok: false, error: "Šiam klientui jau yra atviras darbo įrašas šiame projekte." };
     }
     return { ok: false, error: insErrFinal?.message ?? "Nepavyko sukurti darbo eilutės." };
