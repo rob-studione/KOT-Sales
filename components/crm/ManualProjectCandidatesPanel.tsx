@@ -165,6 +165,7 @@ export function ManualProjectCandidatesPanel({
   const [rowActionPending, startRowActionTransition] = useTransition();
   const [rowError, setRowError] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [copyToastKey, setCopyToastKey] = useState<string | null>(null);
   const invalidDialogRef = useRef<HTMLDialogElement>(null);
   const [pendingInvalidLeadId, setPendingInvalidLeadId] = useState<string | null>(null);
   const [duplicateMatch, setDuplicateMatch] = useState<ExistingClientMatch | null>(null);
@@ -207,6 +208,18 @@ export function ManualProjectCandidatesPanel({
     const t = window.setTimeout(() => setSuccessToast(null), 2600);
     return () => window.clearTimeout(t);
   }, [successToast]);
+
+  useEffect(() => {
+    if (!copyToastKey) return;
+    const t = window.setTimeout(() => setCopyToastKey(null), 1400);
+    return () => window.clearTimeout(t);
+  }, [copyToastKey]);
+
+  function copyToClipboard(value: string, key: string) {
+    const text = String(value ?? "").trim();
+    if (!text) return;
+    void navigator.clipboard.writeText(text).then(() => setCopyToastKey(key));
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -485,13 +498,33 @@ export function ManualProjectCandidatesPanel({
                     <span className={crmStatusBadge(row.lead.crm_status)}>
                       {crmStatusLabel(row.lead.crm_status)}
                     </span>
-                    <div className="font-medium text-zinc-900">{row.lead.company_name}</div>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(row.lead.company_name, `lead-name-${row.lead.id}`)}
+                      className="font-medium text-zinc-900 underline-offset-2 hover:underline"
+                      title="Kopijuoti pavadinimą"
+                    >
+                      {row.lead.company_name}
+                    </button>
+                    {copyToastKey === `lead-name-${row.lead.id}` ? (
+                      <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Nukopijuota</span>
+                    ) : null}
                   </div>
                   <dl className="mt-1.5 grid gap-x-4 gap-y-0.5 text-sm text-zinc-600 sm:grid-cols-2">
                     {row.lead.company_code ? (
                       <div>
                         <span className="text-zinc-400">Įm. kodas: </span>
-                        {row.lead.company_code}
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(row.lead.company_code ?? "", `lead-code-${row.lead.id}`)}
+                          className="text-zinc-700 underline-offset-2 hover:underline"
+                          title="Kopijuoti įmonės kodą"
+                        >
+                          {row.lead.company_code}
+                        </button>
+                        {copyToastKey === `lead-code-${row.lead.id}` ? (
+                          <span className="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700">Nukopijuota</span>
+                        ) : null}
                       </div>
                     ) : null}
                     <div>
