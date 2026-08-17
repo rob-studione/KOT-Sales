@@ -90,6 +90,19 @@ export function isoDateInVilnius(isoUtc: string): string {
   return new Date(isoUtc).toLocaleDateString("en-CA", { timeZone: VILNIUS_TZ });
 }
 
+/** Minutės nuo vidurnakčio pagal Vilnių (0..1439). */
+export function vilniusMinutesFromMidnight(isoUtc: string): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: VILNIUS_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(isoUtc));
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return hour * 60 + minute;
+}
+
 /** Mėnesio pirmoji diena (Vilnius), kai šiandien yra `todayIso`. */
 export function vilniusFirstDayOfMonthIso(todayIso: string): string {
   const [y, m] = todayIso.split("-").map(Number);

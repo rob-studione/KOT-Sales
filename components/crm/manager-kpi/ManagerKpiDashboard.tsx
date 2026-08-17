@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/crm/format";
 import type { ManagerKpiTableRow, ManagerKpiViewModel } from "@/lib/crm/managerKpiDashboard";
 import { managerKpiCompareShortLabel, type ManagerKpiPreset } from "@/lib/crm/managerKpiPeriods";
 import { ManagerKpiSettingsDrawer } from "@/components/crm/manager-kpi/ManagerKpiSettingsDrawer";
+import { ManagerActivityCell } from "@/components/crm/manager-kpi/ManagerActivityCell";
 import { CrmIsoDatePicker } from "@/components/crm/CrmIsoDatePicker";
 import { PeriodFilterCalendarIcon } from "@/components/crm/PeriodFilterCalendarIcon";
 
@@ -301,8 +302,7 @@ export function ManagerKpiDashboard({
     return { total, ok, warn, bad };
   }, [model.rows]);
 
-  // Keep managers table compact and separately controlled.
-  const managersShell = "w-full max-w-[1200px]";
+  const managersShell = "w-full";
 
   return (
     <div className="space-y-8">
@@ -473,20 +473,24 @@ export function ManagerKpiDashboard({
             Atsilieka: <span className="font-semibold text-zinc-700">{summary.bad}</span>
           </span>
         </div>
-        <div className="overflow-x-auto rounded-xl border border-zinc-200/80 bg-white shadow-sm w-full max-w-[1320px]">
+        <p className="mb-2 text-xs text-zinc-400">
+          Aktyvumas — pagal pasirinktą laikotarpį (09:00–18:00, pietūs 13:00–14:00 neįskaitomi). Neįeina į KPI %.
+        </p>
+        <div className="w-full overflow-x-auto rounded-xl border border-zinc-200/80 bg-white shadow-sm">
           <table className="w-full table-fixed text-left text-sm">
             <colgroup>
-              {/* Name: 1.5fr, Calls: 1fr, Answered: 1fr, Status: auto-ish (fixed) */}
-              <col className="w-[42%]" />
-              <col className="w-[29%]" />
-              <col className="w-[29%]" />
-              <col className="w-[200px]" />
-              {compareOn ? <col className="w-[120px]" /> : null}
+              <col className="w-[12%]" />
+              <col className={compareOn ? "w-[49%]" : "w-[53%]"} />
+              <col className={compareOn ? "w-[12%]" : "w-[13%]"} />
+              <col className={compareOn ? "w-[11%]" : "w-[12%]"} />
+              <col className="w-[10%]" />
+              {compareOn ? <col className="w-[6%]" /> : null}
             </colgroup>
             <thead className="border-b border-zinc-100 bg-zinc-50/80 text-xs font-semibold uppercase tracking-wide text-zinc-500">
               <tr>
-                <th className="px-3 py-3 pr-7">Vadybininkas</th>
-                <th className="px-3 py-3 text-right tabular-nums">
+                <th className="px-3 py-3.5">Vadybininkas</th>
+                <th className="px-3 py-3.5">Aktyvumas</th>
+                <th className="px-3 py-3.5 text-right tabular-nums">
                   <div className="flex flex-col items-end">
                     {thBtn("calls", "Skambučiai")}
                     <span className="mt-0.5 text-xs font-medium normal-case tracking-normal text-zinc-400">
@@ -494,7 +498,7 @@ export function ManagerKpiDashboard({
                     </span>
                   </div>
                 </th>
-                <th className="px-3 py-3 text-right tabular-nums">
+                <th className="px-3 py-3.5 text-right tabular-nums">
                   <div className="flex flex-col items-end">
                     {thBtn("answered", "Atsiliepė")}
                     <span className="mt-0.5 text-xs font-medium normal-case tracking-normal text-zinc-400">
@@ -502,14 +506,14 @@ export function ManagerKpiDashboard({
                     </span>
                   </div>
                 </th>
-                <th className="px-3 py-3 text-right whitespace-nowrap">Statusas</th>
-                {compareOn ? <th className="px-3 py-3 text-right">{thBtn("trend", "Pokytis")}</th> : null}
+                <th className="px-3 py-3.5 text-right whitespace-nowrap">Statusas</th>
+                {compareOn ? <th className="px-3 py-3.5 text-right">{thBtn("trend", "Pokytis")}</th> : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {sortedRows.map((r) => (
                 <tr key={r.userId} className="hover:bg-zinc-50/60">
-                  <td className="px-3 py-2.5 pr-7">
+                  <td className="px-3 py-4">
                     <div className="flex items-center gap-2">
                       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600">
                         {r.initials}
@@ -517,7 +521,10 @@ export function ManagerKpiDashboard({
                       <span className="font-medium text-zinc-900">{r.name}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
+                  <td className="cursor-default px-3 py-4 align-top">
+                    <ManagerActivityCell activity={r.activity} />
+                  </td>
+                  <td className="px-3 py-4 text-right tabular-nums">
                     <div className="flex flex-col items-end gap-1">
                       <div className="text-zinc-900" suppressHydrationWarning>
                         <span className="font-medium">{r.calls.toLocaleString("lt-LT")}</span>
@@ -535,7 +542,7 @@ export function ManagerKpiDashboard({
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
+                  <td className="px-3 py-4 text-right tabular-nums">
                     <div className="flex flex-col items-end gap-1">
                       <div className="text-zinc-900" suppressHydrationWarning>
                         <span className="font-medium">{r.answered.toLocaleString("lt-LT")}</span>
@@ -553,14 +560,14 @@ export function ManagerKpiDashboard({
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 pl-6">
+                  <td className="px-3 py-4">
                     <div className="flex flex-col items-end gap-1 text-right">
                       <StatusBadge status={r.status} />
                       <span className="text-xs font-medium text-zinc-500">{statusDetailText(r)}</span>
                     </div>
                   </td>
                   {compareOn ? (
-                    <td className="px-3 py-2.5 text-right text-xs text-zinc-600">
+                    <td className="px-3 py-4 text-right text-xs text-zinc-600">
                       <span>
                         sk.: {fmtDelta(r.trendCallsActual)}
                         <br />

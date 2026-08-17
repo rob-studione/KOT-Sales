@@ -129,12 +129,13 @@ export function isWorkingDayLtYmd(ymd: string): boolean {
  * Darbo dienų skaičius intervale imtinai (pagal Vilniaus kalendorines dienas YYYY-MM-DD).
  */
 export function countWorkingDaysLtIso(fromYmd: string, toYmd: string): number {
-  if (fromYmd > toYmd) return 0;
-  let n = 0;
-  for (const d of eachDayInclusive(fromYmd, toYmd)) {
-    if (isWorkingDayLtYmd(d)) n += 1;
-  }
-  return n;
+  return listWorkingDaysLtIso(fromYmd, toYmd).length;
+}
+
+/** Darbo dienos intervale imtinai (YYYY-MM-DD, Europe/Vilnius). */
+export function listWorkingDaysLtIso(fromYmd: string, toYmd: string): string[] {
+  if (fromYmd > toYmd) return [];
+  return eachDayInclusive(fromYmd, toYmd).filter((d) => isWorkingDayLtYmd(d));
 }
 
 /**

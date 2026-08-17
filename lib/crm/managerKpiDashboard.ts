@@ -13,6 +13,8 @@ import {
 import { initialsFromDisplayName } from "@/lib/crm/crmUsers";
 import { countWorkingDaysLtIso } from "@/lib/crm/workingDaysLt";
 import { eachDayInclusive, isoDateInVilnius, vilniusEndUtc, vilniusStartUtc } from "@/lib/crm/vilniusTime";
+import { loadManagerActivityForRange } from "@/lib/crm/managerActivityLoad";
+import { emptyActivityPeriod, type ActivityPeriodModel } from "@/lib/crm/managerActivity";
 
 const ACTIVITY_PAGE = 5000;
 const MAX_ACTIVITY_ROWS = 80_000;
@@ -43,6 +45,10 @@ type DayAgg = { calls: number; answered: number; commercial: number };
 
 function emptyAgg(): UserAgg {
   return { calls: 0, answered: 0, notAnswered: 0, commercial: 0 };
+}
+
+function emptyActivityPeriodRow(): ActivityPeriodModel {
+  return emptyActivityPeriod();
 }
 
 async function fetchActivitiesWindow(
@@ -200,6 +206,8 @@ export type ManagerKpiTableRow = {
   status: "ok" | "warn" | "bad";
   trendCallsActual: number | null;
   trendAnsweredActual: number | null;
+  /** Pasirinkto intervalo CRM ritmas — diagnostika, ne KPI balas. */
+  activity: ActivityPeriodModel;
 };
 
 export type ManagerKpiTeamSummary = {
@@ -386,6 +394,7 @@ function assembleViewModel(args: {
   teamAgg: UserAgg;
   teamPrev: UserAgg;
   byDay: Map<string, DayAgg>;
+  activityByUser: Map<string, ActivityPeriodModel>;
 }): ManagerKpiViewModel {
   const {
     preset,
@@ -403,6 +412,7 @@ function assembleViewModel(args: {
     teamAgg,
     teamPrev,
     byDay,
+    activityByUser,
   } = args;
 
   const teamAnswerRate = teamAgg.calls > 0 ? Math.round((teamAgg.answered / teamAgg.calls) * 1000) / 10 : null;
@@ -475,6 +485,7 @@ function assembleViewModel(args: {
       status: rowStatus(cPct, aPct),
       trendCallsActual: compareRange ? trendActual(a.calls, p.calls) : null,
       trendAnsweredActual: compareRange ? trendActual(a.answered, p.answered) : null,
+      activity: activityByUser.get(u.id) ?? emptyActivityPeriodRow(),
     };
   });
 
@@ -552,6 +563,15 @@ export async function buildManagerKpiViewModel(
   }
 
   const users = (usersRes.data ?? []) as Array<{ id: string; name: string | null; email: string | null; role: string }>;
+  const activityPack = await loadManagerActivityForRange(
+    supabase,
+    users.map((u) => u.id),
+    range
+  );
+  const activityByUser = activityPack.byUser;
+  if (activityPack.truncated) {
+    warnings.push("Aktyvumo istorijos įrašai apkirpti. Dienų skaičiai gali būti ne pilni.");
+  }
   const targetByUser = new Map<string, ManagerKpiUserTargets>();
   for (const r of targetsRes.data ?? []) {
     const uid = String((r as { user_id?: string }).user_id ?? "");
@@ -616,6 +636,7 @@ export async function buildManagerKpiViewModel(
         commercial: rpc.data.team.prevCommercial,
       },
       byDay,
+      activityByUser,
     });
   }
 
@@ -677,5 +698,6 @@ export async function buildManagerKpiViewModel(
     teamAgg,
     teamPrev,
     byDay: curAgg.byDay,
+    activityByUser,
   });
 }
