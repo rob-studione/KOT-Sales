@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { ClientProjectHistoryList } from "@/components/crm/ClientProjectHistoryList";
 import type { ClientProjectHistoryEntry } from "@/lib/crm/findMatchingExistingClient";
 import {
@@ -51,6 +52,7 @@ function pickTarget(props: ProjectCandidatePickFormProps): ProjectCandidatePickT
 export function ProjectCandidatePickForm(props: ProjectCandidatePickFormProps) {
   const { projectId, defaultAssignee } = props;
   const target = pickTarget(props);
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -84,6 +86,7 @@ export function ProjectCandidatePickForm(props: ProjectCandidatePickFormProps) {
       }
       if (r.ok) {
         setPriorHistory(null);
+        router.refresh();
         if (typeof performance !== "undefined") {
           requestAnimationFrame(() => {
             console.info("[CRM perf] pick first frame after success", {
