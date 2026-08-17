@@ -4,7 +4,6 @@ import type { PageSize } from "@/lib/crm/pagination";
 import type { ManualCandidateListStatus } from "@/lib/crm/projectPageSearchParams";
 import { isProjectWorkItemClosed } from "@/lib/crm/projectBoardConstants";
 import { parseManualLeadIdFromClientKey } from "@/lib/crm/manualLeadClientKey";
-import { isSystemAdminRole } from "@/lib/crm/roles";
 
 export type ManualLeadRevenueSort = "revenue_desc" | "revenue_asc";
 
@@ -24,14 +23,14 @@ const PROJECT_MANUAL_LEADS_SELECT_LEGACY =
   "id,project_id,company_name,company_code,email,phone,contact_name,notes,created_at";
 
 /**
- * Lead'ai, kuriuos blokuoja atvira darbo eilutė (ne admin testinis pick).
- * Admin `assigned_to` neatima kandidato iš pool — vadybininkas gali perimti.
+ * Lead'ai su atvira darbo eilute šiame projekte — nerodomi kandidatuose.
+ * (Bendras kanban: dirbama iš „Darbas“, ne antru pick iš sąrašo.)
  * Netinkami (`status=netinkamas`) filtruojami atskirai užklausoje.
  */
 async function fetchBlockedManualLeadIds(supabase: SupabaseClient, projectId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from("project_work_items")
-    .select("client_key,result_status,source_type,source_id,assigned_to")
+    .select("client_key,result_status,source_type,source_id")
     .eq("project_id", projectId);
 
   if (error) {
@@ -39,50 +38,15 @@ async function fetchBlockedManualLeadIds(supabase: SupabaseClient, projectId: st
     return [];
   }
 
-  const openRows: Array<{
-    client_key?: unknown;
-    result_status?: unknown;
-    source_type?: unknown;
-    source_id?: unknown;
-    assigned_to?: unknown;
-  }> = [];
-  const assigneeIds = new Set<string>();
+  const ids = new Set<string>();
   for (const raw of data ?? []) {
     const row = raw as {
       client_key?: unknown;
       result_status?: unknown;
       source_type?: unknown;
       source_id?: unknown;
-      assigned_to?: unknown;
     };
     if (isProjectWorkItemClosed(row.result_status as string | null | undefined)) continue;
-    openRows.push(row);
-    const a = String(row.assigned_to ?? "").trim();
-    if (a) assigneeIds.add(a);
-  }
-
-  const adminIds = new Set<string>();
-  if (assigneeIds.size > 0) {
-    const { data: users, error: uErr } = await supabase
-      .from("crm_users")
-      .select("id,role")
-      .in("id", [...assigneeIds]);
-    if (uErr) {
-      logSupabaseError("projectManualLeads.blockedWorkItems.assignees", uErr);
-    } else {
-      for (const u of users ?? []) {
-        const id = String((u as { id?: unknown }).id ?? "").trim();
-        const role = String((u as { role?: unknown }).role ?? "");
-        if (id && isSystemAdminRole(role)) adminIds.add(id);
-      }
-    }
-  }
-
-  const ids = new Set<string>();
-  for (const row of openRows) {
-    const assignee = String(row.assigned_to ?? "").trim();
-    // Admin testinis pick — kandidatas lieka pool'e vadybininkams.
-    if (assignee && adminIds.has(assignee)) continue;
 
     const fromKey = parseManualLeadIdFromClientKey(
       row.client_key != null ? String(row.client_key) : null
@@ -270,7 +234,8 @@ export async function fetchManualProjectCandidatesPage(
     .eq("status", candidateStatus);
 
   if (blockedLeadIds.length > 0) {
-    query = query.not("id", "in", `(${blockedLeadIds.join(",")})`);
+    // UUID'ams PostgREST nori kabučių — kitaip filtras gali neveikti.
+    query = query.not("id", "in", `(${blockedLeadIds.map((id) => `"${id}"`).join(",")})`);
   }
 
   if (q) {
