@@ -13,8 +13,9 @@ import {
   callStatusOptionLabel,
   callStatusSelectOptions,
   defaultKanbanCompletedAction,
+  isLeavingKanbanDoneColumn,
   kanbanCompletedActionLabel,
-  KANBAN_COMPLETED_ACTION_VALUES,
+  kanbanCompletedActionsForMove,
   normalizeKanbanCallStatus,
   PROCUREMENT_KANBAN_COLUMNS,
   procurementKanbanColumnTitle,
@@ -56,7 +57,10 @@ export function KanbanMoveConfirmModal({
   const statusOptions = isProcurementWorkItem
     ? [...PROCUREMENT_KANBAN_COLUMNS]
     : callStatusSelectOptions();
-  const completedActionOptions: KanbanCompletedAction[] = [...KANBAN_COMPLETED_ACTION_VALUES];
+  const leavingDone = isLeavingKanbanDoneColumn(pending.fromColumn, pending.toColumn);
+  const completedActionOptions: KanbanCompletedAction[] = [
+    ...kanbanCompletedActionsForMove(pending.fromColumn, pending.toColumn),
+  ];
   const formAction = useCallback(
     async (_prev: { error: string | null }, fd: FormData) => {
       const r = await confirmKanbanMove(fd);
@@ -137,8 +141,9 @@ export function KanbanMoveConfirmModal({
               ))}
             </select>
             <span className="text-xs text-zinc-400">
-              KPI „Skambučiai“ didėja tik pasirinkus skambutį. „Tik pakeisti statusą“ — tik istorijos įrašas be
-              skambučio.
+              {leavingDone
+                ? "Iš stulpelio „Užbaigta“ skambutis į KPI neįrašomas. Tikras perskambinimas fiksuojamas, kai kortelė jau ne Užbaigta."
+                : "KPI „Skambučiai“ didėja tik pasirinkus skambutį. „Tik pakeisti statusą“ — tik istorijos įrašas be skambučio."}
             </span>
           </label>
 

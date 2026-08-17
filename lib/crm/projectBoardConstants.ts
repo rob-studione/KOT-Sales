@@ -231,12 +231,30 @@ export function parseKanbanCompletedAction(raw: string | null | undefined): Kanb
   return "status_only";
 }
 
+export function isLeavingKanbanDoneColumn(fromColumn: string, toColumn: string): boolean {
+  const from = normalizeKanbanCallStatus(fromColumn);
+  const to = normalizeKanbanCallStatus(toColumn);
+  return from === "Užbaigta" && to !== "Užbaigta";
+}
+
+/** Iš Užbaigtos skambučio KPI neįrašome — tik statusas / laiškas / komercinis. */
+export function kanbanCompletedActionsForMove(
+  fromColumn: string,
+  toColumn: string
+): readonly KanbanCompletedAction[] {
+  if (isLeavingKanbanDoneColumn(fromColumn, toColumn)) {
+    return KANBAN_COMPLETED_ACTION_VALUES.filter((v) => v !== "call_answered" && v !== "call_not_answered");
+  }
+  return KANBAN_COMPLETED_ACTION_VALUES;
+}
+
 /**
  * Numatytas „Atliktas veiksmas“ pagal perkėlimą (naudotojas gali pakeisti modale).
  */
 export function defaultKanbanCompletedAction(fromColumn: string, toColumn: string): KanbanCompletedAction {
   const from = normalizeKanbanCallStatus(fromColumn);
   const to = normalizeKanbanCallStatus(toColumn);
+  if (from === "Užbaigta") return "status_only";
   if (to === "Perskambinti") return "call_not_answered";
   const postCallTargets: readonly KanbanNextActionColumn[] = [
     "Siųsti laišką",

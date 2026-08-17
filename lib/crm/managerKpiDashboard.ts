@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isCallAnsweredByStatus, isCallNotAnsweredByStatus } from "@/lib/crm/projectBoardConstants";
+import { recordUniqueCallDay } from "@/lib/crm/uniqueCallKpi";
 import {
   type ManagerKpiDateRange,
   type ManagerKpiPreset,
@@ -126,6 +127,8 @@ function aggregateAssigned(
     fn(byDay.get(day)!);
   }
 
+  const callDays = new Map<string, { userId: string; day: string; answered: boolean; notAnswered: boolean }>();
+
   for (const a of activities) {
     const fromActivity = (a.performed_by ?? "").trim();
     const fromWorkItem = (assignedTo.get(a.work_item_id) ?? "").trim();
@@ -146,14 +149,27 @@ function aggregateAssigned(
     if (a.action_type !== "call") continue;
     if (!fromActivity || !kpiTrackedUserIds.has(fromActivity)) continue;
 
-    bumpUser(fromActivity, (x) => {
+    recordUniqueCallDay(
+      callDays,
+      fromActivity,
+      a.work_item_id,
+      day,
+      isCallAnsweredByStatus(a.call_status),
+      isCallNotAnsweredByStatus(a.call_status)
+    );
+  }
+
+  for (const row of callDays.values()) {
+    const answered = row.answered;
+    const notAnswered = row.notAnswered && !row.answered;
+    bumpUser(row.userId, (x) => {
       x.calls += 1;
-      if (isCallAnsweredByStatus(a.call_status)) x.answered += 1;
-      else if (isCallNotAnsweredByStatus(a.call_status)) x.notAnswered += 1;
+      if (answered) x.answered += 1;
+      else if (notAnswered) x.notAnswered += 1;
     });
-    bumpDay(day, (d) => {
+    bumpDay(row.day, (d) => {
       d.calls += 1;
-      if (isCallAnsweredByStatus(a.call_status)) d.answered += 1;
+      if (answered) d.answered += 1;
     });
   }
 

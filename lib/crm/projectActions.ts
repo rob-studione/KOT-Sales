@@ -23,6 +23,7 @@ import {
   normalizeKanbanCallStatus,
   parseKanbanCompletedAction,
   RESULT_RETURNED_TO_CANDIDATES,
+  type KanbanCompletedAction,
 } from "@/lib/crm/projectBoardConstants";
 import { parseCompletionResult } from "@/lib/crm/projectCompletion";
 import { crmUserExists, isValidUuid, messageForCrmUserExistsFailure } from "@/lib/crm/crmUsers";
@@ -2045,6 +2046,10 @@ export async function saveWorkItemTouchpoint(
     nextResultStatus = "in_progress";
   }
 
+  if (leavingDone && action_type === "call") {
+    action_type = "status_change";
+  }
+
   const performedByTouch = await activityPerformedById();
   const { error: insErr } = await supabase.from("project_work_item_activities").insert({
     work_item_id: workItemId,
@@ -2186,7 +2191,12 @@ export async function confirmKanbanMove(formData: FormData): Promise<{ error: st
   const { error: uErr } = await supabase.from("project_work_items").update(updateRow).eq("id", workItemId);
   if (uErr) return { error: uErr.message };
 
-  const completedAction = parseKanbanCompletedAction(String(formData.get("completed_action") ?? ""));
+  let completedAction: KanbanCompletedAction = parseKanbanCompletedAction(
+    String(formData.get("completed_action") ?? "")
+  );
+  if (leavingDone && (completedAction === "call_answered" || completedAction === "call_not_answered")) {
+    completedAction = "status_only";
+  }
   let activityActionType: string;
   let activityCallStatus: string;
   switch (completedAction) {
