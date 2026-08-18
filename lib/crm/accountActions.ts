@@ -176,6 +176,7 @@ export async function getCrmUserAction(
         role: string;
         role_id: string | null;
         role_name: string | null;
+        job_title: string;
         status: CrmUserStatus;
       };
     }
@@ -191,7 +192,7 @@ export async function getCrmUserAction(
 
   const { data, error } = await supabase
     .from("crm_users")
-    .select("id,email,first_name,last_name,phone,role,role_id,status,crm_roles:role_id(name)")
+    .select("id,email,first_name,last_name,phone,role,role_id,status,job_title,crm_roles:role_id(name)")
     .eq("id", id)
     .maybeSingle();
 
@@ -212,6 +213,7 @@ export async function getCrmUserAction(
       role: String((data as any).role ?? "sales"),
       role_id: (data as any).role_id == null ? null : String((data as any).role_id),
       role_name: (data as any).crm_roles?.name ? String((data as any).crm_roles.name) : null,
+      job_title: String((data as any).job_title ?? "").trim() || "Pardavimų vadybininkas",
       status,
     },
   };
@@ -223,6 +225,7 @@ export async function updateCrmUserAction(input: {
   last_name: string;
   phone: string | null;
   role_id: string | null;
+  job_title?: string | null;
   status: CrmUserStatus;
 }): Promise<
   | {
@@ -236,6 +239,7 @@ export async function updateCrmUserAction(input: {
         role: string;
         role_id: string | null;
         role_name: string | null;
+        job_title: string;
         status: CrmUserStatus;
       };
     }
@@ -246,6 +250,7 @@ export async function updateCrmUserAction(input: {
   const id = String(input.id ?? "").trim();
   const first_name = String(input.first_name ?? "").trim();
   const last_name = String(input.last_name ?? "").trim();
+  const job_title = String(input.job_title ?? "").trim() || "Pardavimų vadybininkas";
   const phoneRaw = input.phone == null ? "" : String(input.phone).trim();
   const phone = phoneRaw ? phoneRaw : null;
   const role_id = safeRoleId(input.role_id);
@@ -305,6 +310,7 @@ export async function updateCrmUserAction(input: {
       first_name,
       last_name,
       phone,
+      job_title,
       role: nextRoleKey,
       role_id: nextRoleId,
       status: nextStatus,
@@ -316,7 +322,7 @@ export async function updateCrmUserAction(input: {
 
   const { data: updated, error: readErr } = await admin
     .from("crm_users")
-    .select("id,email,first_name,last_name,phone,role,role_id,status,crm_roles:role_id(name)")
+    .select("id,email,first_name,last_name,phone,role,role_id,status,job_title,crm_roles:role_id(name)")
     .eq("id", id)
     .maybeSingle();
   if (readErr) return { ok: false, error: readErr.message };
@@ -337,6 +343,7 @@ export async function updateCrmUserAction(input: {
       role: String((updated as any).role ?? "sales"),
       role_id: (updated as any).role_id == null ? null : String((updated as any).role_id),
       role_name: (updated as any).crm_roles?.name ? String((updated as any).crm_roles.name) : null,
+      job_title: String((updated as any).job_title ?? "").trim() || "Pardavimų vadybininkas",
       status: status2,
     },
   };

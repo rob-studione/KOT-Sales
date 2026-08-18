@@ -6,6 +6,8 @@ import { displayInvoiceNumberFromRow } from "@/lib/crm/invoiceDisplayNumber";
 import { clampPageIndex0, parsePageIndex0, parsePageSize, showingRange1Based, totalPagesFromCount } from "@/lib/crm/pagination";
 import { displayClientName, formatCompanyCodeDetail, formatDate, formatInvoiceMoney } from "@/lib/crm/format";
 import { ORPHAN_CLIENT_PATH_SEGMENT } from "@/lib/crm/clientRouting";
+import { createCommercialProposalAction, listClientProposalsAction } from "@/lib/crm/commercialProposalActions";
+import { ProposalHistorySection } from "@/components/crm/commercial-proposal/ProposalHistorySection";
 
 export const dynamic = "force-dynamic";
 
@@ -133,6 +135,15 @@ export default async function ClientDetailPage({
 
   const clientName = displayClientName(filterSummary.company_name, filterSummary.company_code);
 
+  let proposals: Awaited<ReturnType<typeof listClientProposalsAction>> = [];
+  if (segment !== ORPHAN_CLIENT_PATH_SEGMENT) {
+    try {
+      proposals = await listClientProposalsAction(segment);
+    } catch {
+      proposals = [];
+    }
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -143,6 +154,17 @@ export default async function ClientDetailPage({
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900">{clientName}</h1>
           <div className="mt-1 text-sm text-zinc-600">{formatCompanyCodeDetail(filterSummary.company_code)}</div>
         </div>
+        {segment !== ORPHAN_CLIENT_PATH_SEGMENT ? (
+          <form action={createCommercialProposalAction}>
+            <input type="hidden" name="clientId" value={segment} />
+            <button
+              type="submit"
+              className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#693948]"
+            >
+              Create commercial proposal
+            </button>
+          </form>
+        ) : null}
       </div>
 
       <div className="mt-8 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
@@ -198,6 +220,10 @@ export default async function ClientDetailPage({
           />
         </div>
       </div>
+
+      {segment !== ORPHAN_CLIENT_PATH_SEGMENT ? (
+        <ProposalHistorySection clientId={segment} rows={proposals} />
+      ) : null}
     </div>
   );
 }

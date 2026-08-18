@@ -67,6 +67,7 @@ const settingsChildren: NavChild[] = [
   { href: "/nustatymai/roles", label: "Rolės", permission: "settings.roles" },
   { href: "/nustatymai/lost-qa", label: "Lost QA", permission: "settings.lost_qa", aiBadge: true },
   { href: "/nustatymai/podcastai-ai", label: "Podcastai (AI)", permission: "settings.podcasts_ai" },
+  { href: "/nustatymai/komerciniai-pasiulymai", label: "Komerciniai pasiūlymai", permission: "settings.commercial_proposals" },
 ];
 
 const irankiaiChildren: NavChild[] = [
@@ -82,6 +83,7 @@ function settingsIconForHref(href: string): LucideIcon {
   if (href === "/nustatymai/kpi") return Target;
   if (href === "/nustatymai/lost-qa") return FileSearch;
   if (href === "/nustatymai/podcastai-ai") return Mic;
+  if (href === "/nustatymai/komerciniai-pasiulymai") return FileText;
   return Settings;
 }
 

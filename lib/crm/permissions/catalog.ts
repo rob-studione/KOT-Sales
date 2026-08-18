@@ -34,6 +34,7 @@ export const PERMISSION_DEFINITIONS = [
   { key: "settings.roles", label: "Rolių valdymas", group: "settings" },
   { key: "settings.lost_qa", label: "Lost QA nustatymai", group: "settings" },
   { key: "settings.podcasts_ai", label: "Podcastai (AI) nustatymai", group: "settings" },
+  { key: "settings.commercial_proposals", label: "Komerciniai pasiūlymai", group: "settings" },
 ] as const satisfies ReadonlyArray<{ key: string; label: string; group: PermissionGroupKey }>;
 
 export type PermissionKey = (typeof PERMISSION_DEFINITIONS)[number]["key"];

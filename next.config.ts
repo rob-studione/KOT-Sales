@@ -24,8 +24,15 @@ const nextPublicBuildDate =
 const nextPublicAppVersion = String(process.env.NEXT_PUBLIC_APP_VERSION ?? "").trim();
 
 const nextConfig: NextConfig = {
-  // Keep PDF.js (unpdf) on the Node server runtime — avoids bundling worker quirks.
-  serverExternalPackages: ["unpdf"],
+  // Keep PDF.js (unpdf) and pdf-lib on the Node server runtime.
+  serverExternalPackages: ["unpdf", "pdf-lib", "@pdf-lib/fontkit", "fontkit"],
+  outputFileTracingIncludes: {
+    "/api/crm/commercial-proposals/**": [
+      "./lib/commercialProposal/**/*",
+      "./assets/commercial-proposals/**/*",
+    ],
+    "/*": ["./lib/commercialProposal/**/*", "./assets/commercial-proposals/**/*"],
+  },
   env: {
     NEXT_PUBLIC_COMMIT_HASH: nextPublicCommitHash || "",
     NEXT_PUBLIC_BUILD_DATE: nextPublicBuildDate || "",

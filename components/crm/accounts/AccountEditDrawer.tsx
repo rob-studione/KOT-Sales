@@ -100,6 +100,7 @@ export function AccountEditDrawer({
   const isSelf = mode === "self";
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [roleId, setRoleId] = useState<string>("");
@@ -152,6 +153,7 @@ export function AccountEditDrawer({
       setPhone((prev) => (prev !== nextPhone ? nextPhone : prev));
       setRoleId((prev) => (prev !== nextRoleId ? nextRoleId : prev));
       setStatus((prev) => (prev !== nextStatus ? nextStatus : prev));
+      setJobTitle((prev) => (prev !== (res.user.job_title ?? "") ? res.user.job_title ?? "" : prev));
       setLoading(false);
     }
     load();
@@ -307,6 +309,7 @@ export function AccountEditDrawer({
                     last_name: lastName,
                     phone: phone.trim() ? phone : null,
                     role_id: roleId || null,
+                    job_title: jobTitle,
                     status,
                   });
                   if (!res.ok) {
@@ -332,6 +335,15 @@ export function AccountEditDrawer({
                       <div className={labelClass()}>Pavardė</div>
                       <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldClass()} />
                     </div>
+                  </div>
+                  <div>
+                    <div className={labelClass()}>Pareigos (pasiūlyme)</div>
+                    <input
+                      value={jobTitle}
+                      onChange={(e) => setJobTitle(e.target.value)}
+                      className={fieldClass()}
+                      placeholder="Pardavimų vadybininkas"
+                    />
                   </div>
                   <div>
                     <LabelWithIcon icon={Mail}>El. paštas</LabelWithIcon>
