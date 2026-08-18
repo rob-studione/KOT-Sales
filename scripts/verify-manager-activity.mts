@@ -229,8 +229,8 @@ assert(range.summary != null && range.summary.maxGapMin === 8 * 60, "empty day g
 assert(periodMaxGapTooltip(range.summary!, s).startsWith("08-12"), "period tooltip names the day");
 assert(range.days[0]!.actionCount === 2, "action count is in-window significant events");
 assert(range.days[2]!.actionCount === 0, "empty day has 0 actions");
-assert(range.summary.idleDayCount === 1, "one day without activity");
-assert(range.summary.lowActivityDayCount === 3, "yellow/red days include empty and sparse days");
+assert(range.summary != null && range.summary.idleDayCount === 1, "one day without activity");
+assert(range.summary != null && range.summary.lowActivityDayCount === 3, "yellow/red days include empty and sparse days");
 
 const earlyExcluded = buildActivityPeriod({
   isSingleCalendarDay: true,
