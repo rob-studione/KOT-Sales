@@ -33,10 +33,13 @@ import {
 import {
   V2_COVER_TITLE,
   V2_HEADER,
+  V2_PAGE_TITLE_ACCENT,
   V2_QUALITY_STEPS,
   V2_TECH_BLOCKS,
+  V2_TECH_TITLE_GREEN_PREFIX,
   V2_UNIQUE_BLOCKS,
   type V2Box,
+  type V2HeadingAccent,
 } from "@/lib/commercialProposal/layoutV2";
 import { formatProposalPriceCell } from "@/lib/commercialProposal/money";
 import { resolveTemplatePdfPath } from "@/lib/commercialProposal/paths";
@@ -77,6 +80,94 @@ function drawTextTop(
     font: opts.font,
     color: opts.color,
   });
+}
+
+function splitLastWord(text: string): { lead: string; last: string } | null {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  const idx = trimmed.lastIndexOf(" ");
+  if (idx <= 0) return null;
+  return { lead: trimmed.slice(0, idx), last: trimmed.slice(idx + 1) };
+}
+
+function drawAccentHeading(
+  page: PDFPage,
+  fonts: CpFonts,
+  text: string,
+  opts: { x: number; baselineTop: number; size: number; accent: V2HeadingAccent }
+) {
+  const parts = splitLastWord(text);
+  const green = c(COLOR.green);
+  const black = c(COLOR.black);
+  if (!parts) {
+    drawTextTop(page, text.replace(/\s+/g, " ").trim(), {
+      x: opts.x,
+      baselineTop: opts.baselineTop,
+      size: opts.size,
+      font: fonts.bold,
+      color: opts.accent === "last-black" ? green : black,
+    });
+    return;
+  }
+  const lead = `${parts.lead} `;
+  const leadColor = opts.accent === "last-green" ? black : green;
+  const lastColor = opts.accent === "last-green" ? green : black;
+  drawTextTop(page, lead, {
+    x: opts.x,
+    baselineTop: opts.baselineTop,
+    size: opts.size,
+    font: fonts.bold,
+    color: leadColor,
+  });
+  drawTextTop(page, parts.last, {
+    x: opts.x + fonts.bold.widthOfTextAtSize(lead, opts.size),
+    baselineTop: opts.baselineTop,
+    size: opts.size,
+    font: fonts.bold,
+    color: lastColor,
+  });
+}
+
+function drawTechTitle(
+  page: PDFPage,
+  fonts: CpFonts,
+  text: string,
+  box: V2Box,
+  warnings: CpOverflowWarning[],
+  path: string
+) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const prefix = V2_TECH_TITLE_GREEN_PREFIX[normalized];
+  if (!prefix || !normalized.startsWith(prefix)) {
+    drawFittedBox(page, fonts, text, box, warnings, path);
+    return;
+  }
+  const rest = normalized.slice(prefix.length).trim();
+  const font = fonts.bold;
+  const size = box.size;
+  const lead = rest ? `${prefix} ` : prefix;
+  const totalW = font.widthOfTextAtSize(lead, size) + (rest ? font.widthOfTextAtSize(rest, size) : 0);
+  if (totalW > box.width + 0.5) {
+    drawFittedBox(page, fonts, text, box, warnings, path);
+    return;
+  }
+  const x = box.align === "center" ? box.x + (box.width - totalW) / 2 : box.x;
+  const baselineTop = box.yTop + size;
+  drawTextTop(page, lead, {
+    x,
+    baselineTop,
+    size,
+    font,
+    color: c(COLOR.green),
+  });
+  if (rest) {
+    drawTextTop(page, rest, {
+      x: x + font.widthOfTextAtSize(lead, size),
+      baselineTop,
+      size,
+      font,
+      color: c(COLOR.black),
+    });
+  }
 }
 
 function clipCircle(page: PDFPage, cx: number, cy: number, r: number) {
@@ -158,6 +249,7 @@ function drawHeader(page: PDFPage, fonts: CpFonts, company: string) {
   });
 }
 
+/** Cell text only. Header fills and grid stay in the V2 design layer. */
 function drawLangTable(
   page: PDFPage,
   fonts: CpFonts,
@@ -165,7 +257,6 @@ function drawLangTable(
   opts: { top: number; rows: Line[]; startIndex: number }
 ) {
   const t = LANG_TABLE;
-  const tableW = t.right - t.x;
   const headerH = t.headerH;
   const rowH = t.rowH;
   const cols = [
@@ -173,47 +264,6 @@ function drawLangTable(
     { x: t.colNrRight, w: t.colLangRight - t.colNrRight },
     { x: t.colLangRight, w: t.right - t.colLangRight },
   ];
-  const totalH = headerH + opts.rows.length * rowH;
-  page.drawRectangle({
-    x: t.x,
-    y: yBottom(opts.top + totalH),
-    width: tableW,
-    height: totalH,
-    color: c(COLOR.white),
-  });
-  page.drawRectangle({
-    x: t.x,
-    y: yBottom(opts.top + headerH),
-    width: tableW,
-    height: headerH,
-    color: c(COLOR.tableHeader),
-  });
-  const gridColor = c(COLOR.tableBorder);
-  const bottom = opts.top + totalH;
-  for (const vx of [t.x, t.colNrRight, t.colLangRight, t.right]) {
-    page.drawLine({
-      start: { x: vx, y: yBottom(opts.top) },
-      end: { x: vx, y: yBottom(bottom) },
-      thickness: 0.75,
-      color: gridColor,
-    });
-  }
-  for (let i = 0; i <= opts.rows.length + 1; i++) {
-    const yTop = opts.top + (i === 0 ? 0 : headerH + (i - 1) * rowH);
-    page.drawLine({
-      start: { x: t.x, y: yBottom(yTop) },
-      end: { x: t.right, y: yBottom(yTop) },
-      thickness: 0.75,
-      color: gridColor,
-    });
-  }
-  page.drawLine({
-    start: { x: t.x, y: yBottom(bottom) },
-    end: { x: t.right, y: yBottom(bottom) },
-    thickness: 0.75,
-    color: gridColor,
-  });
-
   const nrLines = labels.colNr.split("\n");
   nrLines.forEach((ln, i) => {
     drawTextTop(page, ln, {
@@ -268,6 +318,7 @@ function drawLangTable(
   });
 }
 
+/** Cell text only. Header fills and grid stay in the V2 design layer. */
 function drawExtraTable(
   page: PDFPage,
   fonts: CpFonts,
@@ -275,43 +326,8 @@ function drawExtraTable(
   opts: { top: number; rows: Line[]; startIndex: number }
 ) {
   const t = EXTRA_TABLE;
-  const tableW = t.right - t.x;
   const headerH = t.headerH;
   const rowH = t.rowH;
-  const totalH = headerH + opts.rows.length * rowH;
-  page.drawRectangle({
-    x: t.x,
-    y: yBottom(opts.top + totalH),
-    width: tableW,
-    height: totalH,
-    color: c(COLOR.white),
-  });
-  page.drawRectangle({
-    x: t.x,
-    y: yBottom(opts.top + headerH),
-    width: tableW,
-    height: headerH,
-    color: c(COLOR.tableHeader),
-  });
-  const gridColor = c(COLOR.tableBorder);
-  const bottom = opts.top + totalH;
-  for (const vx of [t.x, t.colNrRight, t.colNameRight, t.right]) {
-    page.drawLine({
-      start: { x: vx, y: yBottom(opts.top) },
-      end: { x: vx, y: yBottom(bottom) },
-      thickness: 0.75,
-      color: gridColor,
-    });
-  }
-  for (let i = 0; i <= opts.rows.length + 1; i++) {
-    const yTop = opts.top + (i === 0 ? 0 : headerH + (i - 1) * rowH);
-    page.drawLine({
-      start: { x: t.x, y: yBottom(yTop) },
-      end: { x: t.right, y: yBottom(yTop) },
-      thickness: 0.75,
-      color: gridColor,
-    });
-  }
   drawTextTop(page, labels.colNr, {
     x: t.x + 6,
     baselineTop: opts.top + 19,
@@ -558,6 +574,8 @@ export async function generateCommercialProposalPdfV2(input: {
   const avatarBytes = input.managerAvatarBytes ?? (await embedAvatar(snapshot.sales_manager.avatar_url));
 
   const cover = await copyTemplatePage(out, src, 0);
+  // Design layer has static cover glyphs removed. Draw text on the original
+  // teal only — no background rectangles (they show as darker patches).
   const titleLines = content.cover.title.split("\n");
   titleLines.forEach((ln, i) => {
     drawTextTop(cover, ln, {
@@ -567,13 +585,6 @@ export async function generateCommercialProposalPdfV2(input: {
       font: fonts.bold,
       color: c(V2_COVER_TITLE.color),
     });
-  });
-  cover.drawRectangle({
-    x: COVER.overlayLeft,
-    y: yBottom(COVER.overlayBottom),
-    width: COVER.overlayRight - COVER.overlayLeft,
-    height: COVER.overlayBottom - COVER.overlayTop,
-    color: c(COLOR.teal),
   });
   const white = c(COLOR.white);
   drawTextTop(cover, content.cover.created_label, {
@@ -681,7 +692,7 @@ export async function generateCommercialProposalPdfV2(input: {
   content.technology.blocks.forEach((block, i) => {
     const titleBox = V2_TECH_BLOCKS[i * 2];
     const bodyBox = V2_TECH_BLOCKS[i * 2 + 1];
-    if (titleBox) drawFittedBox(tech, fonts, block.title, titleBox, warnings, `technology.blocks.${i}.title`);
+    if (titleBox) drawTechTitle(tech, fonts, block.title, titleBox, warnings, `technology.blocks.${i}.title`);
     if (bodyBox) drawFittedBox(tech, fonts, block.body, bodyBox, warnings, `technology.blocks.${i}.body`);
   });
 
@@ -691,12 +702,11 @@ export async function generateCommercialProposalPdfV2(input: {
     const p = await copyTemplatePage(out, src, i === 0 ? 4 : 5);
     drawHeader(p, fonts, content.header_company);
     if (i === 0) {
-      drawTextTop(p, content.translation.heading, {
+      drawAccentHeading(p, fonts, content.translation.heading, {
         x: 37.5,
         baselineTop: 82,
         size: 27,
-        font: fonts.bold,
-        color: c(COLOR.black),
+        accent: V2_PAGE_TITLE_ACCENT.translation,
       });
       wrapText(fonts.regular, content.translation.description, 11.25, 530).forEach((ln, li) => {
         drawTextTop(p, ln, {
@@ -738,12 +748,11 @@ export async function generateCommercialProposalPdfV2(input: {
     const p = await copyTemplatePage(out, src, i === 0 ? 6 : 7);
     drawHeader(p, fonts, content.header_company);
     if (i === 0) {
-      drawTextTop(p, content.ai.heading, {
+      drawAccentHeading(p, fonts, content.ai.heading, {
         x: 37.5,
         baselineTop: 82,
         size: 27,
-        font: fonts.bold,
-        color: c(COLOR.black),
+        accent: V2_PAGE_TITLE_ACCENT.ai,
       });
       drawTextTop(p, content.ai.prices_heading, {
         x: 37.5,
@@ -776,12 +785,11 @@ export async function generateCommercialProposalPdfV2(input: {
     const p = await copyTemplatePage(out, src, 8);
     drawHeader(p, fonts, content.header_company);
     if (i === 0) {
-      drawTextTop(p, content.extras.heading, {
+      drawAccentHeading(p, fonts, content.extras.heading, {
         x: 37.5,
         baselineTop: 78,
         size: 27,
-        font: fonts.bold,
-        color: c(COLOR.black),
+        accent: V2_PAGE_TITLE_ACCENT.extras,
       });
     }
     const top = i === 0 ? EXTRA_TABLE.firstPageTop : LANG_TABLE.contPageTop;
@@ -811,12 +819,11 @@ export async function generateCommercialProposalPdfV2(input: {
 
   const quality = await copyTemplatePage(out, src, 10);
   drawHeader(quality, fonts, content.header_company);
-  drawTextTop(quality, content.quality.heading, {
+  drawAccentHeading(quality, fonts, content.quality.heading, {
     x: 37.5,
     baselineTop: 82,
     size: 27,
-    font: fonts.bold,
-    color: c(COLOR.green),
+    accent: V2_PAGE_TITLE_ACCENT.quality,
   });
   content.quality.steps.forEach((step, i) => {
     const slot = V2_QUALITY_STEPS[i];

@@ -31,6 +31,23 @@ export type V2Box = {
   align?: "left" | "center";
 };
 
+/** Last word is the accent color; used for page titles that match V1. */
+export type V2HeadingAccent = "last-green" | "last-black";
+
+/** V1 page-title color splits. Last word is accented; the rest is the opposite. */
+export const V2_PAGE_TITLE_ACCENT = {
+  translation: "last-green",
+  ai: "last-green",
+  extras: "last-green",
+  quality: "last-black",
+} as const satisfies Record<string, V2HeadingAccent>;
+
+/** V1 technology block titles: green prefix, remaining words black. */
+export const V2_TECH_TITLE_GREEN_PREFIX: Record<string, string> = {
+  "Esame 5 kartus greitesni": "Esame",
+  "Pažangiausias įrankis vertėjams": "Pažangiausias įrankis",
+};
+
 export const V2_TECH_BLOCKS: V2Box[] = [
   { x: 315.86, yTop: 137.57, width: 240, height: 78, size: 15, minSize: 11, lineHeight: 18, weight: "bold", color: COLOR.green },
   { x: 315.86, yTop: 163.46, width: 240, height: 54, size: 11.25, minSize: 8.5, lineHeight: 16.75, weight: "regular", color: COLOR.black },
