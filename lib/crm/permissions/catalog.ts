@@ -18,6 +18,7 @@ export const PERMISSION_DEFINITIONS = [
   { key: "nav.tools.playbooks", label: "Scenarijai", group: "navigation" },
   { key: "nav.tools.translator_search", label: "Vertėjų paieška", group: "navigation" },
   { key: "nav.tools.podcasts", label: "Podcastai", group: "navigation" },
+  { key: "nav.tools.commercial_proposals", label: "Komerciniai pasiūlymai", group: "navigation" },
   { key: "nav.settings", label: "Nustatymų skiltis", group: "navigation" },
 
   { key: "analytics.kpi.edit_targets", label: "KPI tikslų redagavimas", group: "analytics" },
@@ -76,4 +77,5 @@ export const SALES_DEFAULT_PERMISSIONS: PermissionKey[] = [
   "nav.tools.playbooks",
   "nav.tools.translator_search",
   "nav.tools.podcasts",
+  "nav.tools.commercial_proposals",
 ];

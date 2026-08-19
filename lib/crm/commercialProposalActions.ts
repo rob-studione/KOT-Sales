@@ -1,20 +1,34 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
 import { hasPermission } from "@/lib/crm/permissions/check";
 import { displayClientName } from "@/lib/crm/format";
+import { manualLeadClientKey } from "@/lib/crm/manualLeadClientKey";
+import { CP_TOOL_PATH, commercialProposalPath, commercialProposalPricesPath, commercialProposalTemplatePath } from "@/lib/crm/commercialProposalPaths";
+import { buildClientListSearchOrClause, sanitizeForPostgrestOrClause } from "@/lib/crm/postgrestSearch";
+import {
+  defaultTemplateContent,
+  mergeTemplateContent,
+  type CpTemplateContent,
+} from "@/lib/commercialProposal/content";
 import { generateCommercialProposalPdf } from "@/lib/commercialProposal/generatePdf";
+import { generateCommercialProposalPdfV2 } from "@/lib/commercialProposal/generatePdfV2";
 import { applyGlobalDiscount, parseMoneyInput, roundMoney } from "@/lib/commercialProposal/money";
 import {
   buildProposalSnapshot,
   catalogItemToLineFields,
   displayManagerName,
+  recipientFromClientFields,
   recalculateLine,
 } from "@/lib/commercialProposal/snapshot";
-import { CP_TEMPLATE_LT_COMMERCIAL_V1 } from "@/lib/commercialProposal/types";
+import {
+  CP_DEFAULT_TEMPLATE_VERSION,
+  CP_TEMPLATE_LT_COMMERCIAL_V1,
+  CP_TEMPLATE_LT_COMMERCIAL_V2,
+  type CpRecipientType,
+} from "@/lib/commercialProposal/types";
 import type {
   CommercialProposalLine,
   CommercialProposalRow,
@@ -29,7 +43,12 @@ import type {
 const BUCKET = "commercial-proposals";
 
 function canUseProposals(user: Awaited<ReturnType<typeof getCurrentCrmUser>>): boolean {
-  return Boolean(user && hasPermission(user, "nav.clients"));
+  return Boolean(
+    user &&
+      (hasPermission(user, "nav.tools.commercial_proposals") ||
+        hasPermission(user, "nav.clients") ||
+        hasPermission(user, "settings.commercial_proposals"))
+  );
 }
 
 function canAdminCatalog(user: Awaited<ReturnType<typeof getCurrentCrmUser>>): boolean {
@@ -77,6 +96,8 @@ function mapLine(row: Record<string, unknown>): CommercialProposalLine {
 }
 
 function mapProposal(row: Record<string, unknown>): CommercialProposalRow {
+  const clientName = String(row.client_name ?? "");
+  const recipientType: CpRecipientType = row.recipient_type === "lead" ? "lead" : "client";
   return {
     id: String(row.id),
     proposal_number: row.proposal_number == null ? null : String(row.proposal_number),
@@ -85,7 +106,13 @@ function mapProposal(row: Record<string, unknown>): CommercialProposalRow {
     client_key: String(row.client_key ?? ""),
     client_id: row.client_id == null ? null : String(row.client_id),
     company_code: row.company_code == null ? null : String(row.company_code),
-    client_name: String(row.client_name ?? ""),
+    client_name: clientName,
+    recipient_type: recipientType,
+    recipient_id: row.recipient_id == null ? row.client_id == null ? null : String(row.client_id) : String(row.recipient_id),
+    recipient_name: String(row.recipient_name ?? clientName),
+    contact_name: row.contact_name == null ? null : String(row.contact_name),
+    recipient_email: row.recipient_email == null ? null : String(row.recipient_email),
+    recipient_phone: row.recipient_phone == null ? null : String(row.recipient_phone),
     sales_manager_id: row.sales_manager_id == null ? null : String(row.sales_manager_id),
     global_discount_pct: toNum(row.global_discount_pct) ?? 0,
     created_by: row.created_by == null ? null : String(row.created_by),
@@ -97,11 +124,57 @@ function mapProposal(row: Record<string, unknown>): CommercialProposalRow {
   };
 }
 
+function revalidateProposalTool(proposalId?: string) {
+  revalidatePath(CP_TOOL_PATH);
+  if (proposalId) revalidatePath(commercialProposalPath(proposalId));
+  revalidatePath(commercialProposalTemplatePath());
+  revalidatePath(commercialProposalPricesPath());
+}
+
+export type ProposalRecipientOption = {
+  recipientType: CpRecipientType;
+  recipientId: string;
+  recipientName: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  companyCode: string | null;
+  clientKey: string;
+  clientId: string | null;
+  projectName?: string | null;
+};
+
+async function loadLeadSummary(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  leadId: string
+): Promise<ProposalRecipientOption | null> {
+  const { data, error } = await admin
+    .from("project_manual_leads")
+    .select("id,company_name,company_code,contact_name,email,phone,project_id")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const company = String(data.company_name ?? "").trim();
+  const contact = data.contact_name == null ? null : String(data.contact_name);
+  return {
+    recipientType: "lead",
+    recipientId: String(data.id),
+    recipientName: company || contact || "Lead",
+    contactName: contact,
+    email: data.email == null ? null : String(data.email),
+    phone: data.phone == null ? null : String(data.phone),
+    companyCode: data.company_code == null ? null : String(data.company_code),
+    clientKey: manualLeadClientKey(String(data.id)),
+    clientId: null,
+  };
+}
+
 async function loadClientSummary(admin: ReturnType<typeof createSupabaseAdminClient>, clientId: string) {
   const segment = decodeURIComponent(clientId);
   const { data, error } = await admin
     .from("v_client_list_from_invoices")
-    .select("client_key,company_code,client_id,company_name")
+    .select("client_key,company_code,client_id,company_name,email,phone")
     .eq("client_id", segment)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -111,6 +184,8 @@ async function loadClientSummary(admin: ReturnType<typeof createSupabaseAdminCli
     client_id: data.client_id == null ? null : String(data.client_id),
     company_code: data.company_code == null ? null : String(data.company_code),
     name: displayClientName(String(data.company_name ?? ""), data.company_code == null ? null : String(data.company_code)),
+    email: data.email == null ? null : String(data.email),
+    phone: data.phone == null ? null : String(data.phone),
   };
 }
 
@@ -195,33 +270,63 @@ async function ensurePdfBucket(admin: ReturnType<typeof createSupabaseAdminClien
   }
 }
 
-export async function createCommercialProposalAction(formData: FormData): Promise<void> {
+export async function createCommercialProposalAction(input: {
+  recipientType: CpRecipientType;
+  recipientId: string;
+  recipientName?: string;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const actor = await getCurrentCrmUser();
-  if (!canUseProposals(actor) || !actor) throw new Error("Not authorized");
-  const clientId = String(formData.get("clientId") ?? "").trim();
-  if (!clientId) throw new Error("Nenurodytas klientas.");
+  if (!canUseProposals(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const recipientType = input.recipientType === "lead" ? "lead" : "client";
+  const recipientId = String(input.recipientId ?? "").trim();
+  if (!recipientId) return { ok: false, error: "Pasirinkite gavėją." };
 
   const admin = createSupabaseAdminClient();
-  const client = await loadClientSummary(admin, clientId);
-  if (!client) throw new Error("Klientas nerastas.");
+  let recipient: ProposalRecipientOption | null = null;
+  if (recipientType === "client") {
+    const client = await loadClientSummary(admin, recipientId);
+    if (!client) return { ok: false, error: "Klientas nerastas." };
+    recipient = {
+      recipientType: "client",
+      recipientId: client.client_id || client.client_key,
+      recipientName: client.name,
+      contactName: null,
+      email: client.email,
+      phone: client.phone,
+      companyCode: client.company_code,
+      clientKey: client.client_key,
+      clientId: client.client_id,
+    };
+  } else {
+    recipient = await loadLeadSummary(admin, recipientId);
+    if (!recipient) return { ok: false, error: "Lead nerastas." };
+  }
+
+  const recipientName = (input.recipientName ?? recipient.recipientName).trim() || recipient.recipientName;
 
   const catalog = await loadCatalog(admin);
   const { data: inserted, error } = await admin
     .from("commercial_proposals")
     .insert({
       status: "draft",
-      template_version: CP_TEMPLATE_LT_COMMERCIAL_V1,
-      client_key: client.client_key,
-      client_id: client.client_id,
-      company_code: client.company_code,
-      client_name: client.name,
+      template_version: CP_DEFAULT_TEMPLATE_VERSION,
+      client_key: recipient.clientKey,
+      client_id: recipient.clientId,
+      company_code: recipient.companyCode,
+      client_name: recipientName,
+      recipient_type: recipient.recipientType,
+      recipient_id: recipient.recipientId,
+      recipient_name: recipientName,
+      contact_name: recipient.contactName,
+      recipient_email: recipient.email,
+      recipient_phone: recipient.phone,
       sales_manager_id: actor.id,
       global_discount_pct: 0,
       created_by: actor.id,
     })
     .select("id")
     .single();
-  if (error || !inserted) throw new Error(error?.message ?? "Nepavyko sukurti pasiūlymo.");
+  if (error || !inserted) return { ok: false, error: error?.message ?? "Nepavyko sukurti pasiūlymo." };
 
   const lines = catalog.map((item) => ({
     proposal_id: inserted.id,
@@ -229,11 +334,11 @@ export async function createCommercialProposalAction(formData: FormData): Promis
   }));
   if (lines.length) {
     const { error: lErr } = await admin.from("commercial_proposal_lines").insert(lines);
-    if (lErr) throw new Error(lErr.message);
+    if (lErr) return { ok: false, error: lErr.message };
   }
 
-  revalidatePath(`/klientai/${encodeURIComponent(clientId)}`);
-  redirect(`/klientai/${encodeURIComponent(clientId)}/pasiulymai/${inserted.id}`);
+  revalidateProposalTool(inserted.id);
+  return { ok: true, id: inserted.id };
 }
 
 export type ProposalEditorPayload = {
@@ -275,8 +380,116 @@ export async function loadProposalEditorData(proposalId: string): Promise<Propos
     proposal,
     lines,
     managers,
-    canChangeManager: hasPermission(actor, "settings.accounts") || hasPermission(actor, "settings.commercial_proposals") || true,
+    canChangeManager: true,
   };
+}
+
+export async function searchProposalRecipientsAction(input: {
+  recipientType: CpRecipientType;
+  query: string;
+}): Promise<ProposalRecipientOption[]> {
+  const actor = await getCurrentCrmUser();
+  if (!canUseProposals(actor) || !actor) throw new Error("Not authorized");
+  const q = input.query.trim();
+  if (q.length < 2) return [];
+  const admin = createSupabaseAdminClient();
+
+  if (input.recipientType === "client") {
+    const or = buildClientListSearchOrClause(q);
+    if (!or) return [];
+    const { data, error } = await admin
+      .from("v_client_list_from_invoices")
+      .select("client_key,company_code,client_id,company_name,email,phone")
+      .or(or)
+      .order("company_name", { ascending: true })
+      .limit(20);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row) => {
+      const name = displayClientName(
+        String(row.company_name ?? ""),
+        row.company_code == null ? null : String(row.company_code)
+      );
+      return {
+        recipientType: "client" as const,
+        recipientId: String(row.client_id ?? row.client_key ?? ""),
+        recipientName: name,
+        contactName: null,
+        email: row.email == null ? null : String(row.email),
+        phone: row.phone == null ? null : String(row.phone),
+        companyCode: row.company_code == null ? null : String(row.company_code),
+        clientKey: String(row.client_key ?? ""),
+        clientId: row.client_id == null ? null : String(row.client_id),
+      };
+    });
+  }
+
+  const sanitized = sanitizeForPostgrestOrClause(q);
+  if (!sanitized) return [];
+  const like = `%${sanitized.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+  const { data, error } = await admin
+    .from("project_manual_leads")
+    .select("id,company_name,company_code,contact_name,email,phone,status,project_id")
+    .or(`company_name.ilike.${like},contact_name.ilike.${like},email.ilike.${like},company_code.ilike.${like}`)
+    .order("company_name", { ascending: true })
+    .limit(20);
+  if (error) throw new Error(error.message);
+
+  const projectIds = [...new Set((data ?? []).map((r) => String(r.project_id ?? "")).filter(Boolean))];
+  const projectNames = new Map<string, string>();
+  if (projectIds.length) {
+    const { data: projects } = await admin.from("projects").select("id,name").in("id", projectIds);
+    for (const p of projects ?? []) projectNames.set(String(p.id), String(p.name ?? ""));
+  }
+
+  return (data ?? []).map((row) => {
+    const company = String(row.company_name ?? "").trim();
+    const contact = row.contact_name == null ? null : String(row.contact_name);
+    return {
+      recipientType: "lead" as const,
+      recipientId: String(row.id),
+      recipientName: company || contact || "Lead",
+      contactName: contact,
+      email: row.email == null ? null : String(row.email),
+      phone: row.phone == null ? null : String(row.phone),
+      companyCode: row.company_code == null ? null : String(row.company_code),
+      clientKey: manualLeadClientKey(String(row.id)),
+      clientId: null,
+      projectName: row.project_id ? projectNames.get(String(row.project_id)) ?? null : null,
+    };
+  });
+}
+
+export type ProposalListRow = CommercialProposalRow & { manager_name: string | null };
+
+export async function listAllProposalsAction(input?: { search?: string }): Promise<ProposalListRow[]> {
+  const actor = await getCurrentCrmUser();
+  if (!canUseProposals(actor) || !actor) throw new Error("Not authorized");
+  const admin = createSupabaseAdminClient();
+  let q = admin.from("commercial_proposals").select("*").order("created_at", { ascending: false }).limit(500);
+  const search = sanitizeForPostgrestOrClause(input?.search ?? "");
+  if (search) {
+    const like = `%${search.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+    q = q.or(`proposal_number.ilike.${like},recipient_name.ilike.${like},client_name.ilike.${like},contact_name.ilike.${like}`);
+  }
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  const managerIds = [
+    ...new Set((data ?? []).map((row) => String((row as { sales_manager_id?: unknown }).sales_manager_id ?? "")).filter(Boolean)),
+  ];
+  const names = new Map<string, string>();
+  if (managerIds.length) {
+    const { data: users } = await admin.from("crm_users").select("id,first_name,last_name,name").in("id", managerIds);
+    for (const u of users ?? []) {
+      names.set(
+        String(u.id),
+        displayManagerName(String(u.first_name ?? ""), String(u.last_name ?? ""), String(u.name ?? ""))
+      );
+    }
+  }
+  return (data ?? []).map((row) => {
+    const p = mapProposal(row as Record<string, unknown>);
+    return { ...p, manager_name: p.sales_manager_id ? names.get(p.sales_manager_id) ?? null : null };
+  });
 }
 
 export async function listClientProposalsAction(clientId: string): Promise<
@@ -329,6 +542,7 @@ export async function updateProposalSettingsAction(input: {
   proposalId: string;
   globalDiscountPct: number;
   salesManagerId: string;
+  recipientName?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const actor = await getCurrentCrmUser();
   if (!canUseProposals(actor) || !actor) return { ok: false, error: "Neturite teisių." };
@@ -342,10 +556,18 @@ export async function updateProposalSettingsAction(input: {
   if (String(row.status) !== "draft") return { ok: false, error: "Keisti galima tik juodraštį." };
 
   const discount = roundMoney(Math.min(100, Math.max(0, input.globalDiscountPct)));
-  const { error: uErr } = await admin
-    .from("commercial_proposals")
-    .update({ global_discount_pct: discount, sales_manager_id: input.salesManagerId })
-    .eq("id", input.proposalId);
+  const patch: Record<string, unknown> = {
+    global_discount_pct: discount,
+    sales_manager_id: input.salesManagerId,
+  };
+  if (typeof input.recipientName === "string") {
+    const name = input.recipientName.trim();
+    if (name) {
+      patch.recipient_name = name;
+      patch.client_name = name;
+    }
+  }
+  const { error: uErr } = await admin.from("commercial_proposals").update(patch).eq("id", input.proposalId);
   if (uErr) return { ok: false, error: uErr.message };
 
   const lines = await loadLines(admin, input.proposalId);
@@ -358,7 +580,7 @@ export async function updateProposalSettingsAction(input: {
     if (lErr) return { ok: false, error: lErr.message };
   }
 
-  revalidatePath(`/klientai/${encodeURIComponent(String(row.client_id ?? ""))}/pasiulymai/${input.proposalId}`);
+  revalidateProposalTool(input.proposalId);
   return { ok: true };
 }
 
@@ -440,6 +662,11 @@ async function snapshotFromDraft(
   const manager = await loadManagerSnapshot(admin, managerId);
   if (!manager) throw new Error("Vadybininkas nerastas.");
   const history = await loadHistory(admin);
+  const recipientName = proposal.recipient_name || proposal.client_name;
+  const published =
+    proposal.template_version === CP_TEMPLATE_LT_COMMERCIAL_V2
+      ? await loadPublishedTemplateRevision(admin)
+      : null;
   return buildProposalSnapshot({
     proposalNumber,
     createdAt: proposal.created_at,
@@ -450,11 +677,24 @@ async function snapshotFromDraft(
       client_key: proposal.client_key,
       client_id: proposal.client_id,
       company_code: proposal.company_code,
-      name: proposal.client_name,
+      name: recipientName,
     },
+    recipient: recipientFromClientFields({
+      recipientType: proposal.recipient_type,
+      recipientId: proposal.recipient_id,
+      recipientName,
+      contactName: proposal.contact_name,
+      email: proposal.recipient_email,
+      phone: proposal.recipient_phone,
+      clientKey: proposal.client_key,
+      clientId: proposal.client_id,
+      companyCode: proposal.company_code,
+    }),
     salesManager: manager,
     history,
     lines: lines.map(({ id: _id, proposal_id: _pid, ...rest }) => rest),
+    template: published?.content,
+    templateRevisionId: published?.id ?? null,
   });
 }
 
@@ -516,9 +756,7 @@ export async function generateCommercialProposalAction(
       .eq("id", proposal.id);
     if (uErr) return { ok: false, error: uErr.message };
 
-    const clientSeg = proposal.client_id ?? "";
-    revalidatePath(`/klientai/${encodeURIComponent(clientSeg)}`);
-    revalidatePath(`/klientai/${encodeURIComponent(clientSeg)}/pasiulymai/${proposal.id}`);
+    revalidateProposalTool(proposal.id);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Nepavyko sugeneruoti PDF." };
@@ -527,7 +765,7 @@ export async function generateCommercialProposalAction(
 
 export async function duplicateCommercialProposalAction(
   proposalId: string
-): Promise<{ ok: true; id: string; clientId: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const actor = await getCurrentCrmUser();
   if (!canUseProposals(actor) || !actor) return { ok: false, error: "Neturite teisių." };
   const admin = createSupabaseAdminClient();
@@ -545,11 +783,17 @@ export async function duplicateCommercialProposalAction(
     .from("commercial_proposals")
     .insert({
       status: "draft",
-      template_version: source.template_version,
+      template_version: source.template_version || CP_DEFAULT_TEMPLATE_VERSION,
       client_key: source.client_key,
       client_id: source.client_id,
       company_code: source.company_code,
-      client_name: source.client_name,
+      client_name: source.recipient_name || source.client_name,
+      recipient_type: source.recipient_type || "client",
+      recipient_id: source.recipient_id || source.client_id,
+      recipient_name: source.recipient_name || source.client_name,
+      contact_name: source.contact_name,
+      recipient_email: source.recipient_email,
+      recipient_phone: source.recipient_phone,
       sales_manager_id: source.sales_manager_id ?? actor.id,
       global_discount_pct: source.global_discount_pct,
       created_by: actor.id,
@@ -578,9 +822,8 @@ export async function duplicateCommercialProposalAction(
     if (lErr) return { ok: false, error: lErr.message };
   }
 
-  const clientId = source.client_id ?? "";
-  revalidatePath(`/klientai/${encodeURIComponent(clientId)}`);
-  return { ok: true, id: inserted.id, clientId };
+  revalidateProposalTool(inserted.id);
+  return { ok: true, id: inserted.id };
 }
 
 export async function markProposalSentAction(
@@ -598,7 +841,7 @@ export async function markProposalSentAction(
   if (String(data.status) === "draft") return { ok: false, error: "Pirmiausia sugeneruokite PDF." };
   const { error: uErr } = await admin.from("commercial_proposals").update({ status: "sent" }).eq("id", proposalId);
   if (uErr) return { ok: false, error: uErr.message };
-  revalidatePath(`/klientai/${encodeURIComponent(String(data.client_id ?? ""))}`);
+  revalidateProposalTool(proposalId);
   return { ok: true };
 }
 
@@ -667,7 +910,7 @@ export async function upsertCompanyHistoryAction(input: {
     });
     if (error) return { ok: false, error: error.message };
   }
-  revalidatePath("/nustatymai/komerciniai-pasiulymai");
+  revalidateProposalTool();
   return { ok: true };
 }
 
@@ -677,7 +920,7 @@ export async function deleteCompanyHistoryAction(id: string): Promise<{ ok: true
   const admin = createSupabaseAdminClient();
   const { error } = await admin.from("cp_company_history").delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/nustatymai/komerciniai-pasiulymai");
+  revalidateProposalTool();
   return { ok: true };
 }
 
@@ -690,7 +933,7 @@ export async function setCompanyHistoryActiveAction(
   const admin = createSupabaseAdminClient();
   const { error } = await admin.from("cp_company_history").update({ active }).eq("id", id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/nustatymai/komerciniai-pasiulymai");
+  revalidateProposalTool();
   return { ok: true };
 }
 
@@ -707,6 +950,223 @@ export async function reorderCompanyHistoryAction(
       .eq("id", orderedIds[i]);
     if (error) return { ok: false, error: error.message };
   }
-  revalidatePath("/nustatymai/komerciniai-pasiulymai");
+  revalidateProposalTool();
+  return { ok: true };
+}
+
+type PublishedTemplate = { id: string; content: CpTemplateContent };
+
+async function loadPublishedTemplateRevision(
+  admin: ReturnType<typeof createSupabaseAdminClient>
+): Promise<PublishedTemplate> {
+  const { data, error } = await admin
+    .from("cp_template_revisions")
+    .select("id,content")
+    .eq("template_version", CP_TEMPLATE_LT_COMMERCIAL_V2)
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (data) return { id: String(data.id), content: mergeTemplateContent(data.content) };
+
+  const content = defaultTemplateContent();
+  const { data: inserted, error: iErr } = await admin
+    .from("cp_template_revisions")
+    .insert({
+      template_version: CP_TEMPLATE_LT_COMMERCIAL_V2,
+      status: "published",
+      content,
+      published_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+  if (iErr || !inserted) throw new Error(iErr?.message ?? "Nepavyko sukurti šablono.");
+  return { id: String(inserted.id), content };
+}
+
+async function loadOrCreateDraftTemplate(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  actorId: string,
+  published: PublishedTemplate
+): Promise<{ id: string; content: CpTemplateContent }> {
+  const { data, error } = await admin
+    .from("cp_template_revisions")
+    .select("id,content")
+    .eq("template_version", CP_TEMPLATE_LT_COMMERCIAL_V2)
+    .eq("status", "draft")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (data) return { id: String(data.id), content: mergeTemplateContent(data.content) };
+
+  const { data: inserted, error: iErr } = await admin
+    .from("cp_template_revisions")
+    .insert({
+      template_version: CP_TEMPLATE_LT_COMMERCIAL_V2,
+      status: "draft",
+      content: published.content,
+      created_by: actorId,
+    })
+    .select("id")
+    .single();
+  if (iErr || !inserted) throw new Error(iErr?.message ?? "Nepavyko sukurti šablono juodraščio.");
+  return { id: String(inserted.id), content: published.content };
+}
+
+export async function loadTemplateEditorData(): Promise<{
+  draft: { id: string; content: CpTemplateContent };
+  published: PublishedTemplate;
+  history: CpCompanyHistoryEntry[];
+}> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) throw new Error("Not authorized");
+  const admin = createSupabaseAdminClient();
+  const published = await loadPublishedTemplateRevision(admin);
+  const draft = await loadOrCreateDraftTemplate(admin, actor.id, published);
+  const history = await listCompanyHistoryAdmin();
+  return { draft, published, history };
+}
+
+export async function saveTemplateDraftAction(
+  content: CpTemplateContent
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const admin = createSupabaseAdminClient();
+  try {
+    const published = await loadPublishedTemplateRevision(admin);
+    const draft = await loadOrCreateDraftTemplate(admin, actor.id, published);
+    const merged = mergeTemplateContent(content);
+    const { error } = await admin.from("cp_template_revisions").update({ content: merged }).eq("id", draft.id);
+    if (error) return { ok: false, error: error.message };
+    revalidateProposalTool();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko išsaugoti šablono." };
+  }
+}
+
+export async function publishTemplateAction(
+  content: CpTemplateContent
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const admin = createSupabaseAdminClient();
+  try {
+    const merged = mergeTemplateContent(content);
+    const saved = await saveTemplateDraftAction(merged);
+    if (!saved.ok) return saved;
+    const { error } = await admin.from("cp_template_revisions").insert({
+      template_version: CP_TEMPLATE_LT_COMMERCIAL_V2,
+      status: "published",
+      content: merged,
+      created_by: actor.id,
+      published_at: new Date().toISOString(),
+    });
+    if (error) return { ok: false, error: error.message };
+    revalidateProposalTool();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko publikuoti šablono." };
+  }
+}
+
+export async function generateTemplatePreviewPdfBytes(content?: CpTemplateContent): Promise<{
+  bytes: Uint8Array;
+  warnings: Array<{ path: string; message: string }>;
+}> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) throw new Error("Not authorized");
+  const admin = createSupabaseAdminClient();
+  const template = mergeTemplateContent(content ?? (await loadPublishedTemplateRevision(admin)).content);
+  const catalog = await loadCatalog(admin);
+  const history = await loadHistory(admin);
+  const manager =
+    (await loadManagerSnapshot(admin, actor.id)) ??
+    ({
+      id: actor.id,
+      first_name: actor.first_name,
+      last_name: actor.last_name,
+      display_name: displayManagerName(actor.first_name, actor.last_name, actor.email),
+      job_title: "Pardavimų vadybininkas",
+      email: actor.email,
+      phone: actor.phone,
+      avatar_url: actor.avatar_url,
+    } satisfies CommercialProposalSalesManagerSnapshot);
+  const snapshot = buildProposalSnapshot({
+    proposalNumber: "CP-XXXX-0000",
+    createdAt: new Date().toISOString(),
+    generatedAt: new Date().toISOString(),
+    templateVersion: CP_TEMPLATE_LT_COMMERCIAL_V2,
+    globalDiscountPct: 0,
+    client: {
+      client_key: "sample",
+      client_id: "sample",
+      company_code: null,
+      name: "Pavyzdinė įmonė, UAB",
+    },
+    recipient: recipientFromClientFields({
+      recipientType: "client",
+      recipientId: "sample",
+      recipientName: "Pavyzdinė įmonė, UAB",
+      contactName: "Jonas Jonaitis",
+      clientKey: "sample",
+      clientId: "sample",
+      companyCode: null,
+    }),
+    salesManager: manager,
+    history,
+    lines: catalog.map((item) => catalogItemToLineFields(item, 0)),
+    template,
+  });
+  return generateCommercialProposalPdfV2({ snapshot, template });
+}
+
+export async function listPriceCatalogAdmin(): Promise<CpPriceItem[]> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) throw new Error("Not authorized");
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("cp_price_items")
+    .select("id,category,sort_order,label,base_price,currency,unit,is_from_price,is_free,active")
+    .order("category")
+    .order("sort_order");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => mapPriceItem(r as Record<string, unknown>));
+}
+
+export async function updatePriceItemAction(input: {
+  id: string;
+  label: string;
+  basePrice: string;
+  isFromPrice: boolean;
+  isFree: boolean;
+  active: boolean;
+  sortOrder: number;
+  unit: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const label = input.label.trim();
+  if (!label) return { ok: false, error: "Pavadinimas privalomas." };
+  const base = input.isFree ? null : parseMoneyInput(input.basePrice);
+  if (!input.isFree && base == null) return { ok: false, error: "Neteisinga kaina." };
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin
+    .from("cp_price_items")
+    .update({
+      label,
+      base_price: base,
+      is_from_price: input.isFromPrice,
+      is_free: input.isFree,
+      active: input.active,
+      sort_order: input.sortOrder,
+      unit: input.unit,
+    })
+    .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidateProposalTool();
   return { ok: true };
 }

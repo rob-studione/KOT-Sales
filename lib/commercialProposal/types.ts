@@ -1,6 +1,12 @@
+import type { CpTemplateContent } from "@/lib/commercialProposal/content";
 import type { CommercialProposalTemplateVersion } from "@/lib/commercialProposal/paths";
 
 export const CP_TEMPLATE_LT_COMMERCIAL_V1 = "LT_COMMERCIAL_V1" satisfies CommercialProposalTemplateVersion;
+export const CP_TEMPLATE_LT_COMMERCIAL_V2 = "LT_COMMERCIAL_V2" satisfies CommercialProposalTemplateVersion;
+export const CP_DEFAULT_TEMPLATE_VERSION = CP_TEMPLATE_LT_COMMERCIAL_V2;
+
+export const CP_RECIPIENT_TYPES = ["client", "lead"] as const;
+export type CpRecipientType = (typeof CP_RECIPIENT_TYPES)[number];
 
 export const CP_STATUSES = ["draft", "generated", "sent", "accepted", "rejected", "expired"] as const;
 export type CommercialProposalStatus = (typeof CP_STATUSES)[number];
@@ -60,6 +66,18 @@ export type CommercialProposalSalesManagerSnapshot = {
   avatar_url: string | null;
 };
 
+export type CommercialProposalRecipientSnapshot = {
+  recipient_type: CpRecipientType;
+  recipient_source_id: string;
+  recipient_name: string;
+  contact_name: string | null;
+  email: string | null;
+  phone: string | null;
+  client_key: string;
+  client_id: string | null;
+  company_code: string | null;
+};
+
 export type CommercialProposalSnapshot = {
   template_version: string;
   proposal_number: string | null;
@@ -72,6 +90,7 @@ export type CommercialProposalSnapshot = {
     company_code: string | null;
     name: string;
   };
+  recipient?: CommercialProposalRecipientSnapshot;
   sales_manager: CommercialProposalSalesManagerSnapshot;
   company_history: Array<{ year: number; body: string; sort_order: number }>;
   lines: Array<Omit<CommercialProposalLine, "id" | "proposal_id">>;
@@ -79,6 +98,8 @@ export type CommercialProposalSnapshot = {
     issuer_company: string;
     intro_paragraphs: string[];
     standard_page_note: string;
+    template?: CpTemplateContent;
+    template_revision_id?: string | null;
   };
 };
 
@@ -91,6 +112,12 @@ export type CommercialProposalRow = {
   client_id: string | null;
   company_code: string | null;
   client_name: string;
+  recipient_type: CpRecipientType;
+  recipient_id: string | null;
+  recipient_name: string;
+  contact_name: string | null;
+  recipient_email: string | null;
+  recipient_phone: string | null;
   sales_manager_id: string | null;
   global_discount_pct: number;
   created_by: string | null;

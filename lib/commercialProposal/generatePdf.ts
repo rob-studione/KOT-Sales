@@ -13,7 +13,9 @@ import {
   clip,
   endPath,
 } from "pdf-lib";
+import { defaultTemplateContent } from "@/lib/commercialProposal/content";
 import { embedProposalFonts, type CpFonts } from "@/lib/commercialProposal/fonts";
+import { generateCommercialProposalPdfV2 } from "@/lib/commercialProposal/generatePdfV2";
 import {
   COLOR,
   COVER,
@@ -22,11 +24,11 @@ import {
   INTRO,
   ISSUER_COMPANY,
   LANG_TABLE,
-  PAGE_H,
   yBottom,
 } from "@/lib/commercialProposal/layout";
 import { formatProposalPriceCell } from "@/lib/commercialProposal/money";
 import { resolveTemplatePdfPath } from "@/lib/commercialProposal/paths";
+import { CP_TEMPLATE_LT_COMMERCIAL_V2 } from "@/lib/commercialProposal/types";
 import type { CommercialProposalLine, CommercialProposalSnapshot, CpPriceCategory } from "@/lib/commercialProposal/types";
 
 type Line = Omit<CommercialProposalLine, "id" | "proposal_id">;
@@ -627,6 +629,21 @@ async function embedAvatar(url: string | null | undefined): Promise<Uint8Array |
 }
 
 export async function generateCommercialProposalPdf(input: {
+  snapshot: CommercialProposalSnapshot;
+  managerAvatarBytes?: Uint8Array | null;
+}): Promise<Uint8Array> {
+  if (input.snapshot.template_version === CP_TEMPLATE_LT_COMMERCIAL_V2) {
+    const { bytes } = await generateCommercialProposalPdfV2({
+      snapshot: input.snapshot,
+      template: input.snapshot.content.template ?? defaultTemplateContent(),
+      managerAvatarBytes: input.managerAvatarBytes,
+    });
+    return bytes;
+  }
+  return generateCommercialProposalPdfV1(input);
+}
+
+async function generateCommercialProposalPdfV1(input: {
   snapshot: CommercialProposalSnapshot;
   managerAvatarBytes?: Uint8Array | null;
 }): Promise<Uint8Array> {

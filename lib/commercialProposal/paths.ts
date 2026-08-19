@@ -3,10 +3,11 @@ import path from "path";
 
 /**
  * Immutable mapping: template_version → versioned PDF asset in the repo.
- * Add LT_COMMERCIAL_V2 as a new file; never overwrite the V1 asset.
+ * Never overwrite an existing version file; add a new key + file instead.
  */
 export const COMMERCIAL_PROPOSAL_TEMPLATE_ASSETS = {
   LT_COMMERCIAL_V1: "assets/commercial-proposals/LT_COMMERCIAL_V1.pdf",
+  LT_COMMERCIAL_V2: "assets/commercial-proposals/LT_COMMERCIAL_V2_design.pdf",
 } as const;
 
 export type CommercialProposalTemplateVersion = keyof typeof COMMERCIAL_PROPOSAL_TEMPLATE_ASSETS;
@@ -16,7 +17,7 @@ export function isCommercialProposalTemplateVersion(value: string): value is Com
 }
 
 export function resolveTemplatePdfPath(templateVersion: string): string {
-  const version = templateVersion.trim() || "LT_COMMERCIAL_V1";
+  const version = templateVersion.trim() || "LT_COMMERCIAL_V2";
   if (!isCommercialProposalTemplateVersion(version)) {
     throw new Error(`Unknown commercial proposal template version: ${version}`);
   }

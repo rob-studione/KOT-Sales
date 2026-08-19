@@ -67,13 +67,13 @@ const settingsChildren: NavChild[] = [
   { href: "/nustatymai/roles", label: "Rolės", permission: "settings.roles" },
   { href: "/nustatymai/lost-qa", label: "Lost QA", permission: "settings.lost_qa", aiBadge: true },
   { href: "/nustatymai/podcastai-ai", label: "Podcastai (AI)", permission: "settings.podcasts_ai" },
-  { href: "/nustatymai/komerciniai-pasiulymai", label: "Komerciniai pasiūlymai", permission: "settings.commercial_proposals" },
 ];
 
 const irankiaiChildren: NavChild[] = [
   { href: "/scenarijai", label: "Scenarijai", permission: "nav.tools.playbooks" },
   { href: "/irankiai/verteju-paieska", label: "Vertėjų paieška", permission: "nav.tools.translator_search" },
   { href: "/irankiai/podcastai", label: "Podcastai", permission: "nav.tools.podcasts", aiBadge: true },
+  { href: "/irankiai/komerciniai-pasiulymai", label: "Komerciniai pasiūlymai", permission: "nav.tools.commercial_proposals" },
 ];
 
 function settingsIconForHref(href: string): LucideIcon {
@@ -83,7 +83,6 @@ function settingsIconForHref(href: string): LucideIcon {
   if (href === "/nustatymai/kpi") return Target;
   if (href === "/nustatymai/lost-qa") return FileSearch;
   if (href === "/nustatymai/podcastai-ai") return Mic;
-  if (href === "/nustatymai/komerciniai-pasiulymai") return FileText;
   return Settings;
 }
 
@@ -134,6 +133,7 @@ function iconForHref(href: string): LucideIcon {
   if (href === "/scenarijai") return GitBranch;
   if (href === "/irankiai/verteju-paieska") return Languages;
   if (href === "/irankiai/podcastai") return Mic;
+  if (href === "/irankiai/komerciniai-pasiulymai") return FileText;
   if (href === "/klientai/saskaitos") return FileText;
   return Settings;
 }

@@ -134,14 +134,13 @@ function LineRow({
 
 export function ProposalEditorClient({
   initial,
-  clientId,
 }: {
   initial: ProposalEditorPayload;
-  clientId: string;
 }) {
   const [proposal, setProposal] = useState(initial.proposal);
   const [lines, setLines] = useState(initial.lines);
   const [discount, setDiscount] = useState(String(initial.proposal.global_discount_pct));
+  const [recipientName, setRecipientName] = useState(initial.proposal.recipient_name || initial.proposal.client_name);
   const [managerId, setManagerId] = useState(initial.proposal.sales_manager_id ?? "");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
@@ -165,7 +164,9 @@ export function ProposalEditorClient({
             {proposal.proposal_number ?? "Juodraštis"} · {statusLabel(proposal.status)}
           </div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-zinc-900">Komercinis pasiūlymas</h1>
-          <p className="mt-1 text-sm text-zinc-600">{proposal.client_name}</p>
+          <p className="mt-1 text-sm text-zinc-600">
+            {proposal.recipient_type === "lead" ? "Lead" : "Klientas"}: {proposal.recipient_name || proposal.client_name}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -190,6 +191,7 @@ export function ProposalEditorClient({
                     proposalId: proposal.id,
                     globalDiscountPct: Number(discount.replace(",", ".")),
                     salesManagerId: managerId,
+                    recipientName,
                   });
                   if (!settings.ok) {
                     setMessage(settings.error);
@@ -247,8 +249,29 @@ export function ProposalEditorClient({
       <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-zinc-900">Pasiūlymo nustatymai</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm sm:col-span-2">
+            <span className="text-xs font-medium text-zinc-600">Gavėjo pavadinimas PDF</span>
+            <input
+              value={recipientName}
+              disabled={readOnly || pending}
+              onChange={(e) => setRecipientName(e.target.value)}
+              onBlur={() => {
+                if (readOnly) return;
+                start(async () => {
+                  const res = await updateProposalSettingsAction({
+                    proposalId: proposal.id,
+                    globalDiscountPct: Number(String(discount).replace(",", ".")),
+                    salesManagerId: managerId,
+                    recipientName,
+                  });
+                  if (!res.ok) setMessage(res.error);
+                });
+              }}
+              className="mt-1 h-9 w-full rounded-lg border border-zinc-200 px-3 text-sm"
+            />
+          </label>
           <label className="block text-sm">
-            <span className="text-xs font-medium text-zinc-600">Global discount %</span>
+            <span className="text-xs font-medium text-zinc-600">Nuolaida %</span>
             <input
               value={discount}
               disabled={readOnly || pending}
@@ -260,6 +283,7 @@ export function ProposalEditorClient({
                     proposalId: proposal.id,
                     globalDiscountPct: Number(String(discount).replace(",", ".")),
                     salesManagerId: managerId,
+                    recipientName,
                   });
                   if (!res.ok) setMessage(res.error);
                   else window.location.reload();
@@ -281,6 +305,7 @@ export function ProposalEditorClient({
                     proposalId: proposal.id,
                     globalDiscountPct: Number(String(discount).replace(",", ".")),
                     salesManagerId: id,
+                    recipientName,
                   });
                   if (!res.ok) setMessage(res.error);
                 });
@@ -352,7 +377,15 @@ export function ProposalEditorClient({
         </div>
       ) : null}
 
-      <p className="text-xs text-zinc-500">Klientas: {clientId}</p>
+      {proposal.recipient_type === "client" && proposal.client_id ? (
+        <p className="text-xs text-zinc-500">
+          <a href={`/klientai/${encodeURIComponent(proposal.client_id)}`} className="hover:underline">
+            Klientas: {proposal.recipient_name || proposal.client_name}
+          </a>
+        </p>
+      ) : (
+        <p className="text-xs text-zinc-500">Lead: {proposal.recipient_name || proposal.client_name}</p>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { deflateSync } from "zlib";
 import { mkdirSync, writeFileSync } from "fs";
 import path from "path";
+import { defaultTemplateContent } from "@/lib/commercialProposal/content";
 import { generateCommercialProposalPdf } from "@/lib/commercialProposal/generatePdf";
 import { ISSUER_COMPANY, STANDARD_PAGE_NOTE, STATIC_INTRO_PARAGRAPHS } from "@/lib/commercialProposal/layout";
 import { applyGlobalDiscount } from "@/lib/commercialProposal/money";
@@ -187,21 +188,57 @@ export function buildReferenceFixtureSnapshot(opts?: {
   firstName?: string;
   lastName?: string;
   displayName?: string;
+  templateVersion?: "LT_COMMERCIAL_V1" | "LT_COMMERCIAL_V2";
+  recipientType?: "client" | "lead";
+  recipientName?: string;
+  contactName?: string;
+  discountPct?: number;
+  overrideLabel?: string;
+  overridePrice?: number;
 }): CommercialProposalSnapshot {
   const first_name = opts?.firstName ?? "Vaidotas";
   const last_name = opts?.lastName ?? "Rimeikis";
   const display_name = opts?.displayName ?? `${first_name} ${last_name}`;
+  const recipientName = opts?.recipientName ?? "MOTIEKA IR AUDZEVIČIUS";
+  const recipientType = opts?.recipientType ?? "client";
+  const discount = opts?.discountPct ?? 0;
+  const lines = [
+    ...catLines("translation", TRANSLATION),
+    ...catLines("ai_translation", AI),
+    ...catLines("additional_service", EXTRA),
+  ].map((line) => {
+    const calculated = line.is_free || line.base_price == null ? null : applyGlobalDiscount(line.base_price, discount);
+    const overridden = opts?.overrideLabel && line.label === opts.overrideLabel;
+    return {
+      ...line,
+      calculated_price: calculated,
+      final_price: overridden ? (opts.overridePrice ?? calculated) : calculated,
+      is_manual_override: Boolean(overridden),
+    };
+  });
+  const template = defaultTemplateContent();
   return {
-    template_version: "LT_COMMERCIAL_V1",
+    template_version: opts?.templateVersion ?? "LT_COMMERCIAL_V1",
     proposal_number: "CP-2026-0001",
     created_at: "2026-08-18T12:00:00.000Z",
     generated_at: "2026-08-18T12:00:00.000Z",
-    global_discount_pct: 0,
+    global_discount_pct: discount,
     client: {
-      client_key: "fixture",
-      client_id: "fixture",
+      client_key: recipientType === "lead" ? "ml:fixture" : "fixture",
+      client_id: recipientType === "lead" ? null : "fixture",
       company_code: null,
-      name: "MOTIEKA IR AUDZEVIČIUS",
+      name: recipientName,
+    },
+    recipient: {
+      recipient_type: recipientType,
+      recipient_source_id: recipientType === "lead" ? "lead-fixture" : "fixture",
+      recipient_name: recipientName,
+      contact_name: opts?.contactName ?? null,
+      email: null,
+      phone: null,
+      client_key: recipientType === "lead" ? "ml:fixture" : "fixture",
+      client_id: recipientType === "lead" ? null : "fixture",
+      company_code: null,
     },
     sales_manager: {
       id: "fixture",
@@ -214,15 +251,12 @@ export function buildReferenceFixtureSnapshot(opts?: {
       avatar_url: null,
     },
     company_history: HISTORY.map(([year, body], i) => ({ year, body, sort_order: (i + 1) * 10 })),
-    lines: [
-      ...catLines("translation", TRANSLATION),
-      ...catLines("ai_translation", AI),
-      ...catLines("additional_service", EXTRA),
-    ],
+    lines,
     content: {
       issuer_company: ISSUER_COMPANY,
       intro_paragraphs: [...STATIC_INTRO_PARAGRAPHS],
       standard_page_note: STANDARD_PAGE_NOTE,
+      template,
     },
   };
 }
@@ -267,6 +301,70 @@ async function main() {
   console.log("wrote", noAvatarPath, noAvatar.byteLength);
   console.log("wrote", withAvatarPath, withAvatar.byteLength);
   console.log("wrote", visualPath, visual.byteLength);
+
+  const v2Client = await generateCommercialProposalPdf({
+    snapshot: buildReferenceFixtureSnapshot({
+      templateVersion: "LT_COMMERCIAL_V2",
+      recipientType: "client",
+      recipientName: "MOTIEKA IR AUDZEVIČIUS",
+      firstName: "Jonas",
+      lastName: "Jonaitis",
+      displayName: "Jonas Jonaitis",
+      discountPct: 10,
+      overrideLabel: "Lietuvių ↔ Anglų",
+      overridePrice: 9.5,
+    }),
+    managerAvatarBytes: solidPng(94, 187, 149),
+  });
+  const v2ClientPath = path.join(outDir, "generated-v2-client.pdf");
+  writeFileSync(v2ClientPath, v2Client);
+
+  const v2Lead = await generateCommercialProposalPdf({
+    snapshot: buildReferenceFixtureSnapshot({
+      templateVersion: "LT_COMMERCIAL_V2",
+      recipientType: "lead",
+      recipientName: "ABC Legal, UAB",
+      contactName: "Jonas Jonaitis",
+      firstName: "Ieva",
+      lastName: "Petraitytė",
+      displayName: "Ieva Petraitytė",
+    }),
+  });
+  const v2LeadPath = path.join(outDir, "generated-v2-lead.pdf");
+  writeFileSync(v2LeadPath, v2Lead);
+
+  const frozen = defaultTemplateContent();
+  frozen.technology.blocks[0]!.title = "Esame 5 kartus greitesni";
+  const historical = await generateCommercialProposalPdf({
+    snapshot: {
+      ...buildReferenceFixtureSnapshot({ templateVersion: "LT_COMMERCIAL_V2" }),
+      content: {
+        issuer_company: ISSUER_COMPANY,
+        intro_paragraphs: [...STATIC_INTRO_PARAGRAPHS],
+        standard_page_note: STANDARD_PAGE_NOTE,
+        template: frozen,
+      },
+    },
+  });
+  writeFileSync(path.join(outDir, "generated-v2-historical.pdf"), historical);
+
+  const edited = defaultTemplateContent();
+  edited.technology.blocks[0]!.title = "Technologijomis paremtas vertimo procesas";
+  const current = await generateCommercialProposalPdf({
+    snapshot: {
+      ...buildReferenceFixtureSnapshot({ templateVersion: "LT_COMMERCIAL_V2" }),
+      content: {
+        issuer_company: ISSUER_COMPANY,
+        intro_paragraphs: [...STATIC_INTRO_PARAGRAPHS],
+        standard_page_note: STANDARD_PAGE_NOTE,
+        template: edited,
+      },
+    },
+  });
+  writeFileSync(path.join(outDir, "generated-v2-edited.pdf"), current);
+
+  console.log("wrote", v2ClientPath, v2Client.byteLength);
+  console.log("wrote", v2LeadPath, v2Lead.byteLength);
 }
 
 main().catch((e) => {

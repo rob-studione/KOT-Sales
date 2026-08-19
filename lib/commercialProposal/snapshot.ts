@@ -1,3 +1,5 @@
+import type { CpTemplateContent } from "@/lib/commercialProposal/content";
+import { defaultTemplateContent } from "@/lib/commercialProposal/content";
 import { isCommercialProposalTemplateVersion } from "@/lib/commercialProposal/paths";
 import { applyGlobalDiscount } from "@/lib/commercialProposal/money";
 import {
@@ -7,10 +9,12 @@ import {
 } from "@/lib/commercialProposal/layout";
 import type {
   CommercialProposalLine,
+  CommercialProposalRecipientSnapshot,
   CommercialProposalSalesManagerSnapshot,
   CommercialProposalSnapshot,
   CpCompanyHistoryEntry,
   CpPriceItem,
+  CpRecipientType,
 } from "@/lib/commercialProposal/types";
 
 export function displayManagerName(first: string, last: string, fallback = ""): string {
@@ -71,6 +75,43 @@ export function recalculateLine(
   };
 }
 
+export function recipientFromClientFields(input: {
+  recipientType?: CpRecipientType;
+  recipientId?: string | null;
+  recipientName: string;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  clientKey: string;
+  clientId: string | null;
+  companyCode: string | null;
+}): CommercialProposalRecipientSnapshot {
+  const recipientType = input.recipientType === "lead" ? "lead" : "client";
+  return {
+    recipient_type: recipientType,
+    recipient_source_id: (input.recipientId || input.clientId || input.clientKey || "").trim(),
+    recipient_name: input.recipientName,
+    contact_name: input.contactName ?? null,
+    email: input.email ?? null,
+    phone: input.phone ?? null,
+    client_key: input.clientKey,
+    client_id: input.clientId,
+    company_code: input.companyCode,
+  };
+}
+
+export function snapshotRecipient(snapshot: CommercialProposalSnapshot): CommercialProposalRecipientSnapshot {
+  if (snapshot.recipient) return snapshot.recipient;
+  return recipientFromClientFields({
+    recipientType: "client",
+    recipientId: snapshot.client.client_id,
+    recipientName: snapshot.client.name,
+    clientKey: snapshot.client.client_key,
+    clientId: snapshot.client.client_id,
+    companyCode: snapshot.client.company_code,
+  });
+}
+
 export function buildProposalSnapshot(params: {
   proposalNumber: string | null;
   createdAt: string;
@@ -78,13 +119,25 @@ export function buildProposalSnapshot(params: {
   templateVersion: string;
   globalDiscountPct: number;
   client: CommercialProposalSnapshot["client"];
+  recipient?: CommercialProposalRecipientSnapshot;
   salesManager: CommercialProposalSalesManagerSnapshot;
   history: Array<Pick<CpCompanyHistoryEntry, "year" | "body" | "sort_order">>;
   lines: Array<Omit<CommercialProposalLine, "id" | "proposal_id">>;
+  template?: CpTemplateContent;
+  templateRevisionId?: string | null;
 }): CommercialProposalSnapshot {
   if (!isCommercialProposalTemplateVersion(params.templateVersion)) {
     throw new Error(`Unknown commercial proposal template version: ${params.templateVersion}`);
   }
+  const recipient =
+    params.recipient ??
+    recipientFromClientFields({
+      recipientName: params.client.name,
+      clientKey: params.client.client_key,
+      clientId: params.client.client_id,
+      companyCode: params.client.company_code,
+    });
+  const template = params.template ?? defaultTemplateContent();
   return {
     template_version: params.templateVersion,
     proposal_number: params.proposalNumber,
@@ -92,6 +145,7 @@ export function buildProposalSnapshot(params: {
     generated_at: params.generatedAt,
     global_discount_pct: params.globalDiscountPct,
     client: params.client,
+    recipient,
     sales_manager: params.salesManager,
     company_history: params.history.map((h) => ({
       year: h.year,
@@ -100,9 +154,11 @@ export function buildProposalSnapshot(params: {
     })),
     lines: params.lines,
     content: {
-      issuer_company: ISSUER_COMPANY,
-      intro_paragraphs: [...STATIC_INTRO_PARAGRAPHS],
-      standard_page_note: STANDARD_PAGE_NOTE,
+      issuer_company: template.header_company || ISSUER_COMPANY,
+      intro_paragraphs: template.intro.paragraphs.length ? [...template.intro.paragraphs] : [...STATIC_INTRO_PARAGRAPHS],
+      standard_page_note: template.translation.footnote || STANDARD_PAGE_NOTE,
+      template,
+      template_revision_id: params.templateRevisionId ?? null,
     },
   };
 }
