@@ -6,6 +6,7 @@ import { ProposalListActions } from "@/components/crm/commercial-proposal/Propos
 import { ProposalToolNav } from "@/components/crm/commercial-proposal/ProposalToolNav";
 import { listAllProposalsAction } from "@/lib/crm/commercialProposalActions";
 import { CP_TOOL_PATH } from "@/lib/crm/commercialProposalPaths";
+import { uniformDiscountPct } from "@/lib/commercialProposal/discounts";
 import { formatDate } from "@/lib/crm/format";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
 import { hasPermission } from "@/lib/crm/permissions/check";
@@ -82,7 +83,12 @@ export default async function CommercialProposalsToolPage({
                   <td className="px-4 py-3 text-zinc-700">{r.recipient_type === "lead" ? "Lead" : "Klientas"}</td>
                   <td className="px-4 py-3 text-zinc-700">{r.manager_name ?? "—"}</td>
                   <td className="px-4 py-3 text-zinc-700">{formatDate(r.created_at)}</td>
-                  <td className="px-4 py-3 tabular-nums text-zinc-700">{Number(r.global_discount_pct)} %</td>
+                  <td className="px-4 py-3 tabular-nums text-zinc-700">
+                    {(() => {
+                      const same = uniformDiscountPct(r.discounts);
+                      return same != null ? `${same} %` : `${r.discounts.translation} / ${r.discounts.ai_translation} / ${r.discounts.additional_service} %`;
+                    })()}
+                  </td>
                   <td className="px-4 py-3 text-zinc-700">{statusLabel(r.status)}</td>
                   <td className="px-4 py-3 text-zinc-600">{r.template_version}</td>
                   <td className="px-4 py-3">

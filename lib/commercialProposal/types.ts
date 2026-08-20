@@ -17,6 +17,8 @@ export type CommercialProposalV1Status = (typeof CP_V1_STATUSES)[number];
 export const CP_CATEGORIES = ["translation", "ai_translation", "additional_service"] as const;
 export type CpPriceCategory = (typeof CP_CATEGORIES)[number];
 
+export type CpCategoryDiscounts = Record<CpPriceCategory, number>;
+
 export type CpPriceItem = {
   id: string;
   category: CpPriceCategory;
@@ -51,6 +53,7 @@ export type CommercialProposalLine = {
   is_manual_override: boolean;
   is_from_price: boolean;
   is_free: boolean;
+  included?: boolean;
   currency: string;
   unit: string | null;
 };
@@ -84,6 +87,8 @@ export type CommercialProposalSnapshot = {
   created_at: string;
   generated_at: string | null;
   global_discount_pct: number;
+  discounts?: CpCategoryDiscounts;
+  included_services?: Record<CpPriceCategory, boolean>;
   client: {
     client_key: string;
     client_id: string | null;
@@ -120,6 +125,7 @@ export type CommercialProposalRow = {
   recipient_phone: string | null;
   sales_manager_id: string | null;
   global_discount_pct: number;
+  discounts: CpCategoryDiscounts;
   created_by: string | null;
   generated_at: string | null;
   pdf_storage_path: string | null;

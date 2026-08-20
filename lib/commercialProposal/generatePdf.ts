@@ -92,7 +92,9 @@ async function copyTemplatePage(out: PDFDocument, src: PDFDocument, index: numbe
 }
 
 function linesFor(snapshot: CommercialProposalSnapshot, category: CpPriceCategory): Line[] {
-  return snapshot.lines.filter((l) => l.category === category).sort((a, b) => a.sort_order - b.sort_order);
+  return snapshot.lines
+    .filter((l) => l.category === category && l.included !== false)
+    .sort((a, b) => a.sort_order - b.sort_order);
 }
 
 function priceLabel(line: Line): string {
@@ -672,7 +674,7 @@ async function generateCommercialProposalPdfV1(input: {
   await copyTemplatePage(out, src, 3);
 
   const translation = linesFor(snapshot, "translation");
-  const tChunks = chunk(translation, LANG_TABLE.firstPageRows, LANG_TABLE.contPageRows);
+  const tChunks = translation.length ? chunk(translation, LANG_TABLE.firstPageRows, LANG_TABLE.contPageRows) : [];
   for (let i = 0; i < tChunks.length; i++) {
     const templateIndex = i === 0 ? 4 : 5;
     const p = await copyTemplatePage(out, src, templateIndex);
@@ -683,7 +685,7 @@ async function generateCommercialProposalPdfV1(input: {
   }
 
   const ai = linesFor(snapshot, "ai_translation");
-  const aChunks = chunk(ai, LANG_TABLE.firstPageRows, LANG_TABLE.contPageRows);
+  const aChunks = ai.length ? chunk(ai, LANG_TABLE.firstPageRows, LANG_TABLE.contPageRows) : [];
   for (let i = 0; i < aChunks.length; i++) {
     const templateIndex = i === 0 ? 6 : 7;
     const p = await copyTemplatePage(out, src, templateIndex);
@@ -694,7 +696,7 @@ async function generateCommercialProposalPdfV1(input: {
   }
 
   const extra = linesFor(snapshot, "additional_service");
-  const eChunks = chunk(extra, EXTRA_TABLE.firstPageRows, EXTRA_TABLE.firstPageRows);
+  const eChunks = extra.length ? chunk(extra, EXTRA_TABLE.firstPageRows, EXTRA_TABLE.firstPageRows) : [];
   for (let i = 0; i < eChunks.length; i++) {
     const p = await copyTemplatePage(out, src, 8);
     const top = i === 0 ? EXTRA_TABLE.firstPageTop : LANG_TABLE.contPageTop;

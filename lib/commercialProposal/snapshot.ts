@@ -3,6 +3,13 @@ import { defaultTemplateContent } from "@/lib/commercialProposal/content";
 import { isCommercialProposalTemplateVersion } from "@/lib/commercialProposal/paths";
 import { applyGlobalDiscount } from "@/lib/commercialProposal/money";
 import {
+  includedServicesFromLines,
+  isLineIncluded,
+  normalizeCategoryDiscounts,
+  uniformDiscountPct,
+  type CpCategoryDiscounts,
+} from "@/lib/commercialProposal/discounts";
+import {
   ISSUER_COMPANY,
   STANDARD_PAGE_NOTE,
   STATIC_INTRO_PARAGRAPHS,
@@ -37,6 +44,7 @@ export function catalogItemToLineFields(
   | "is_manual_override"
   | "is_from_price"
   | "is_free"
+  | "included"
   | "currency"
   | "unit"
 > {
@@ -53,6 +61,7 @@ export function catalogItemToLineFields(
     is_manual_override: false,
     is_from_price: item.is_from_price,
     is_free: item.is_free,
+    included: true,
     currency: item.currency || "EUR",
     unit: item.unit,
   };
@@ -117,7 +126,8 @@ export function buildProposalSnapshot(params: {
   createdAt: string;
   generatedAt: string | null;
   templateVersion: string;
-  globalDiscountPct: number;
+  globalDiscountPct?: number;
+  discounts?: Partial<CpCategoryDiscounts> | null;
   client: CommercialProposalSnapshot["client"];
   recipient?: CommercialProposalRecipientSnapshot;
   salesManager: CommercialProposalSalesManagerSnapshot;
@@ -138,12 +148,16 @@ export function buildProposalSnapshot(params: {
       companyCode: params.client.company_code,
     });
   const template = params.template ?? defaultTemplateContent();
+  const discounts = normalizeCategoryDiscounts(params.discounts, params.globalDiscountPct ?? 0);
+  const lines = params.lines.filter((line) => isLineIncluded(line));
   return {
     template_version: params.templateVersion,
     proposal_number: params.proposalNumber,
     created_at: params.createdAt,
     generated_at: params.generatedAt,
-    global_discount_pct: params.globalDiscountPct,
+    global_discount_pct: uniformDiscountPct(discounts) ?? params.globalDiscountPct ?? 0,
+    discounts,
+    included_services: includedServicesFromLines(lines),
     client: params.client,
     recipient,
     sales_manager: params.salesManager,
@@ -152,7 +166,7 @@ export function buildProposalSnapshot(params: {
       body: h.body,
       sort_order: h.sort_order,
     })),
-    lines: params.lines,
+    lines,
     content: {
       issuer_company: template.header_company || ISSUER_COMPANY,
       intro_paragraphs: template.intro.paragraphs.length ? [...template.intro.paragraphs] : [...STATIC_INTRO_PARAGRAPHS],

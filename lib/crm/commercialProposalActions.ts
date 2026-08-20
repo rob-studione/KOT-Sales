@@ -15,7 +15,15 @@ import {
 } from "@/lib/commercialProposal/content";
 import { generateCommercialProposalPdf } from "@/lib/commercialProposal/generatePdf";
 import { generateCommercialProposalPdfV2 } from "@/lib/commercialProposal/generatePdfV2";
-import { applyGlobalDiscount, parseMoneyInput, roundMoney } from "@/lib/commercialProposal/money";
+import {
+  categoryDiscount,
+  discountsFromSnapshot,
+  normalizeCategoryDiscounts,
+  uniformDiscountPct,
+  ZERO_CATEGORY_DISCOUNTS,
+  type CpCategoryDiscounts,
+} from "@/lib/commercialProposal/discounts";
+import { applyGlobalDiscount, parseMoneyInput } from "@/lib/commercialProposal/money";
 import {
   buildProposalSnapshot,
   catalogItemToLineFields,
@@ -24,6 +32,7 @@ import {
   recalculateLine,
 } from "@/lib/commercialProposal/snapshot";
 import {
+  CP_CATEGORIES,
   CP_DEFAULT_TEMPLATE_VERSION,
   CP_TEMPLATE_LT_COMMERCIAL_V1,
   CP_TEMPLATE_LT_COMMERCIAL_V2,
@@ -90,6 +99,7 @@ function mapLine(row: Record<string, unknown>): CommercialProposalLine {
     is_manual_override: Boolean(row.is_manual_override),
     is_from_price: Boolean(row.is_from_price),
     is_free: Boolean(row.is_free),
+    included: row.included == null ? true : Boolean(row.included),
     currency: String(row.currency ?? "EUR"),
     unit: row.unit == null ? null : String(row.unit),
   };
@@ -115,6 +125,10 @@ function mapProposal(row: Record<string, unknown>): CommercialProposalRow {
     recipient_phone: row.recipient_phone == null ? null : String(row.recipient_phone),
     sales_manager_id: row.sales_manager_id == null ? null : String(row.sales_manager_id),
     global_discount_pct: toNum(row.global_discount_pct) ?? 0,
+    discounts: discountsFromSnapshot({
+      discounts: (row.snapshot as CommercialProposalSnapshot | null)?.discounts,
+      global_discount_pct: toNum(row.global_discount_pct) ?? 0,
+    }),
     created_by: row.created_by == null ? null : String(row.created_by),
     generated_at: row.generated_at == null ? null : String(row.generated_at),
     pdf_storage_path: row.pdf_storage_path == null ? null : String(row.pdf_storage_path),
@@ -251,13 +265,86 @@ async function loadLines(
   const { data, error } = await admin
     .from("commercial_proposal_lines")
     .select(
-      "id,proposal_id,category,catalog_item_id,sort_order,label,base_price,calculated_price,final_price,is_manual_override,is_from_price,is_free,currency,unit"
+      "id,proposal_id,category,catalog_item_id,sort_order,label,base_price,calculated_price,final_price,is_manual_override,is_from_price,is_free,included,currency,unit"
     )
     .eq("proposal_id", proposalId)
     .order("category")
     .order("sort_order");
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) => mapLine(r as Record<string, unknown>));
+}
+
+async function loadDiscounts(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  proposalId: string,
+  fallback = 0
+): Promise<CpCategoryDiscounts> {
+  const { data, error } = await admin
+    .from("commercial_proposal_discounts")
+    .select("category,percentage")
+    .eq("proposal_id", proposalId);
+  if (error) throw new Error(error.message);
+  const raw: Partial<Record<string, number>> = {};
+  for (const row of data ?? []) {
+    raw[String(row.category)] = toNum(row.percentage) ?? 0;
+  }
+  return normalizeCategoryDiscounts(raw, fallback);
+}
+
+async function loadDiscountsForProposals(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  proposalIds: string[]
+): Promise<Map<string, CpCategoryDiscounts>> {
+  const out = new Map<string, CpCategoryDiscounts>();
+  if (proposalIds.length === 0) return out;
+  const { data, error } = await admin
+    .from("commercial_proposal_discounts")
+    .select("proposal_id,category,percentage")
+    .in("proposal_id", proposalIds);
+  if (error) throw new Error(error.message);
+  const grouped = new Map<string, Partial<Record<string, number>>>();
+  for (const row of data ?? []) {
+    const id = String(row.proposal_id);
+    const cur = grouped.get(id) ?? {};
+    cur[String(row.category)] = toNum(row.percentage) ?? 0;
+    grouped.set(id, cur);
+  }
+  for (const [id, raw] of grouped) {
+    out.set(id, normalizeCategoryDiscounts(raw, 0));
+  }
+  return out;
+}
+
+async function upsertDiscounts(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  proposalId: string,
+  discounts: CpCategoryDiscounts
+): Promise<void> {
+  const rows = CP_CATEGORIES.map((category) => ({
+    proposal_id: proposalId,
+    category,
+    percentage: discounts[category],
+  }));
+  const { error } = await admin.from("commercial_proposal_discounts").upsert(rows, {
+    onConflict: "proposal_id,category",
+  });
+  if (error) throw new Error(error.message);
+}
+
+async function recalculateProposalLines(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  proposalId: string,
+  discounts: CpCategoryDiscounts
+): Promise<void> {
+  const lines = await loadLines(admin, proposalId);
+  for (const line of lines) {
+    const next = recalculateLine(line, categoryDiscount(discounts, line.category));
+    const { error } = await admin
+      .from("commercial_proposal_lines")
+      .update({ calculated_price: next.calculated_price, final_price: next.final_price })
+      .eq("id", line.id);
+    if (error) throw new Error(error.message);
+  }
 }
 
 async function ensurePdfBucket(admin: ReturnType<typeof createSupabaseAdminClient>) {
@@ -328,6 +415,12 @@ export async function createCommercialProposalAction(input: {
     .single();
   if (error || !inserted) return { ok: false, error: error?.message ?? "Nepavyko sukurti pasiūlymo." };
 
+  try {
+    await upsertDiscounts(admin, inserted.id, ZERO_CATEGORY_DISCOUNTS);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko įrašyti nuolaidų." };
+  }
+
   const lines = catalog.map((item) => ({
     proposal_id: inserted.id,
     ...catalogItemToLineFields(item, 0),
@@ -344,6 +437,7 @@ export async function createCommercialProposalAction(input: {
 export type ProposalEditorPayload = {
   proposal: CommercialProposalRow;
   lines: CommercialProposalLine[];
+  discounts: CpCategoryDiscounts;
   managers: Array<{ id: string; name: string; job_title: string }>;
   canChangeManager: boolean;
 };
@@ -356,11 +450,16 @@ export async function loadProposalEditorData(proposalId: string): Promise<Propos
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Pasiūlymas nerastas.");
   const proposal = mapProposal(data as Record<string, unknown>);
+  const discounts = proposal.snapshot
+    ? discountsFromSnapshot(proposal.snapshot)
+    : await loadDiscounts(admin, proposal.id, proposal.global_discount_pct);
+  proposal.discounts = discounts;
   const lines = proposal.snapshot?.lines
     ? proposal.snapshot.lines.map((l, i) => ({
         id: `snap-${i}`,
         proposal_id: proposal.id,
         ...l,
+        included: l.included !== false,
       }))
     : await loadLines(admin, proposal.id);
 
@@ -379,6 +478,7 @@ export async function loadProposalEditorData(proposalId: string): Promise<Propos
   return {
     proposal,
     lines,
+    discounts,
     managers,
     canChangeManager: true,
   };
@@ -486,8 +586,11 @@ export async function listAllProposalsAction(input?: { search?: string }): Promi
       );
     }
   }
+  const proposalIds = (data ?? []).map((row) => String((row as { id: unknown }).id));
+  const discountMap = await loadDiscountsForProposals(admin, proposalIds);
   return (data ?? []).map((row) => {
     const p = mapProposal(row as Record<string, unknown>);
+    p.discounts = discountMap.get(p.id) ?? p.discounts;
     return { ...p, manager_name: p.sales_manager_id ? names.get(p.sales_manager_id) ?? null : null };
   });
 }
@@ -529,8 +632,11 @@ export async function listClientProposalsAction(clientId: string): Promise<
       );
     }
   }
+  const proposalIds = (data ?? []).map((row) => String((row as { id: unknown }).id));
+  const discountMap = await loadDiscountsForProposals(admin, proposalIds);
   return (data ?? []).map((row) => {
     const p = mapProposal(row as Record<string, unknown>);
+    p.discounts = discountMap.get(p.id) ?? p.discounts;
     return {
       ...p,
       manager_name: p.sales_manager_id ? names.get(p.sales_manager_id) ?? null : null,
@@ -540,25 +646,28 @@ export async function listClientProposalsAction(clientId: string): Promise<
 
 export async function updateProposalSettingsAction(input: {
   proposalId: string;
-  globalDiscountPct: number;
   salesManagerId: string;
   recipientName?: string;
+  categoryDiscounts?: Partial<CpCategoryDiscounts>;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const actor = await getCurrentCrmUser();
   if (!canUseProposals(actor) || !actor) return { ok: false, error: "Neturite teisių." };
   const admin = createSupabaseAdminClient();
   const { data: row, error } = await admin
     .from("commercial_proposals")
-    .select("id,status,client_id")
+    .select("id,status,global_discount_pct")
     .eq("id", input.proposalId)
     .maybeSingle();
   if (error || !row) return { ok: false, error: error?.message ?? "Pasiūlymas nerastas." };
   if (String(row.status) !== "draft") return { ok: false, error: "Keisti galima tik juodraštį." };
 
-  const discount = roundMoney(Math.min(100, Math.max(0, input.globalDiscountPct)));
+  const current = await loadDiscounts(admin, input.proposalId, toNum(row.global_discount_pct) ?? 0);
+  const discounts = input.categoryDiscounts
+    ? normalizeCategoryDiscounts({ ...current, ...input.categoryDiscounts })
+    : current;
   const patch: Record<string, unknown> = {
-    global_discount_pct: discount,
     sales_manager_id: input.salesManagerId,
+    global_discount_pct: uniformDiscountPct(discounts) ?? 0,
   };
   if (typeof input.recipientName === "string") {
     const name = input.recipientName.trim();
@@ -570,14 +679,13 @@ export async function updateProposalSettingsAction(input: {
   const { error: uErr } = await admin.from("commercial_proposals").update(patch).eq("id", input.proposalId);
   if (uErr) return { ok: false, error: uErr.message };
 
-  const lines = await loadLines(admin, input.proposalId);
-  for (const line of lines) {
-    const next = recalculateLine(line, discount);
-    const { error: lErr } = await admin
-      .from("commercial_proposal_lines")
-      .update({ calculated_price: next.calculated_price, final_price: next.final_price })
-      .eq("id", line.id);
-    if (lErr) return { ok: false, error: lErr.message };
+  if (input.categoryDiscounts) {
+    try {
+      await upsertDiscounts(admin, input.proposalId, discounts);
+      await recalculateProposalLines(admin, input.proposalId, discounts);
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Nepavyko perskaičiuoti kainų." };
+    }
   }
 
   revalidateProposalTool(input.proposalId);
@@ -634,10 +742,11 @@ export async function resetProposalLineAction(input: {
     .maybeSingle();
   if (lErr || !line) return { ok: false, error: "Eilutė nerasta." };
   const mapped = mapLine(line as Record<string, unknown>);
+  const discounts = await loadDiscounts(admin, input.proposalId, toNum(proposal.global_discount_pct) ?? 0);
   const calculated =
     mapped.is_free || mapped.base_price == null
       ? null
-      : applyGlobalDiscount(mapped.base_price, toNum(proposal.global_discount_pct) ?? 0);
+      : applyGlobalDiscount(mapped.base_price, categoryDiscount(discounts, mapped.category));
   const { error } = await admin
     .from("commercial_proposal_lines")
     .update({
@@ -647,6 +756,40 @@ export async function resetProposalLineAction(input: {
     })
     .eq("id", input.lineId);
   if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export async function updateProposalLineInclusionAction(input: {
+  proposalId: string;
+  included: boolean;
+  lineIds?: string[];
+  category?: CpPriceCategory;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const actor = await getCurrentCrmUser();
+  if (!canUseProposals(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const admin = createSupabaseAdminClient();
+  const { data: proposal, error: pErr } = await admin
+    .from("commercial_proposals")
+    .select("id,status")
+    .eq("id", input.proposalId)
+    .maybeSingle();
+  if (pErr || !proposal) return { ok: false, error: "Pasiūlymas nerastas." };
+  if (String(proposal.status) !== "draft") return { ok: false, error: "Keisti galima tik juodraštį." };
+
+  const lineIds = (input.lineIds ?? []).filter(Boolean);
+  if (lineIds.length === 0 && !input.category) {
+    return { ok: false, error: "Nepasirinktos eilutės." };
+  }
+
+  let q = admin
+    .from("commercial_proposal_lines")
+    .update({ included: input.included })
+    .eq("proposal_id", input.proposalId);
+  if (lineIds.length) q = q.in("id", lineIds);
+  if (input.category) q = q.eq("category", input.category);
+  const { error } = await q;
+  if (error) return { ok: false, error: error.message };
+  revalidateProposalTool(input.proposalId);
   return { ok: true };
 }
 
@@ -667,12 +810,18 @@ async function snapshotFromDraft(
     proposal.template_version === CP_TEMPLATE_LT_COMMERCIAL_V2
       ? await loadPublishedTemplateRevision(admin)
       : null;
+  const discounts = await loadDiscounts(admin, proposal.id, proposal.global_discount_pct);
+  const includedLines = lines.filter((line) => line.included !== false);
+  if (includedLines.length === 0) {
+    throw new Error("Pasirinkite bent vieną paslaugą.");
+  }
   return buildProposalSnapshot({
     proposalNumber,
     createdAt: proposal.created_at,
     generatedAt,
     templateVersion: proposal.template_version,
-    globalDiscountPct: proposal.global_discount_pct,
+    globalDiscountPct: uniformDiscountPct(discounts) ?? 0,
+    discounts,
     client: {
       client_key: proposal.client_key,
       client_id: proposal.client_id,
@@ -692,7 +841,7 @@ async function snapshotFromDraft(
     }),
     salesManager: manager,
     history,
-    lines: lines.map(({ id: _id, proposal_id: _pid, ...rest }) => rest),
+    lines: includedLines.map(({ id: _id, proposal_id: _pid, ...rest }) => rest),
     template: published?.content,
     templateRevisionId: published?.id ?? null,
   });
@@ -772,12 +921,10 @@ export async function duplicateCommercialProposalAction(
   const { data, error } = await admin.from("commercial_proposals").select("*").eq("id", proposalId).maybeSingle();
   if (error || !data) return { ok: false, error: error?.message ?? "Pasiūlymas nerastas." };
   const source = mapProposal(data as Record<string, unknown>);
-  const sourceLines =
-    source.snapshot?.lines?.map((l, i) => ({
-      id: `snap-${i}`,
-      proposal_id: source.id,
-      ...l,
-    })) ?? (await loadLines(admin, source.id));
+  const sourceLines = await loadLines(admin, source.id);
+  const discounts = source.snapshot
+    ? discountsFromSnapshot(source.snapshot)
+    : await loadDiscounts(admin, source.id, source.global_discount_pct);
 
   const { data: inserted, error: iErr } = await admin
     .from("commercial_proposals")
@@ -795,12 +942,17 @@ export async function duplicateCommercialProposalAction(
       recipient_email: source.recipient_email,
       recipient_phone: source.recipient_phone,
       sales_manager_id: source.sales_manager_id ?? actor.id,
-      global_discount_pct: source.global_discount_pct,
+      global_discount_pct: uniformDiscountPct(discounts) ?? source.global_discount_pct,
       created_by: actor.id,
     })
     .select("id")
     .single();
   if (iErr || !inserted) return { ok: false, error: iErr?.message ?? "Nepavyko dubliuoti." };
+  try {
+    await upsertDiscounts(admin, inserted.id, discounts);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko nukopijuoti nuolaidų." };
+  }
 
   const lines = sourceLines.map((l) => ({
     proposal_id: inserted.id,
@@ -814,6 +966,7 @@ export async function duplicateCommercialProposalAction(
     is_manual_override: l.is_manual_override,
     is_from_price: l.is_from_price,
     is_free: l.is_free,
+    included: l.included !== false,
     currency: l.currency,
     unit: l.unit,
   }));
@@ -1101,6 +1254,7 @@ export async function generateTemplatePreviewPdfBytes(content?: CpTemplateConten
     generatedAt: new Date().toISOString(),
     templateVersion: CP_TEMPLATE_LT_COMMERCIAL_V2,
     globalDiscountPct: 0,
+    discounts: ZERO_CATEGORY_DISCOUNTS,
     client: {
       client_key: "sample",
       client_id: "sample",
