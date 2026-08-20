@@ -19,7 +19,7 @@ export function CompanyHistoryAdminClient({ initial }: { initial: CpCompanyHisto
 
   return (
     <section className="mt-8 rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm">
-      <h2 className="text-sm font-semibold text-zinc-900">Company history</h2>
+      <h2 className="text-sm font-semibold text-zinc-900">Istorijos įrašai</h2>
       <p className="mt-1 text-xs text-zinc-500">
         Šie įrašai patenka į komercinio pasiūlymo skiltį „Mūsų istorija“. Nauji metai (2025, 2026, …) pridedami čia —
         PDF generatoriaus keisti nereikia.

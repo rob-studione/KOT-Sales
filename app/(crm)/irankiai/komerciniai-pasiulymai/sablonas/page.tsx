@@ -14,13 +14,18 @@ export default async function CommercialProposalTemplatePage() {
     <CrmTableContainer className="pb-10 pt-5">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Šablonas</h1>
       <p className="mt-1 text-sm text-zinc-600">
-        Redaguojamas viso komercinio pasiūlymo tekstas. Maketo koordinatės slepiamos — keičiami tik turinio laukai.
+        Kairėje — tikras PDF. Dešinėje — tik to puslapio tekstai. Publikuotas šablonas nesikeičia, kol nepaspausite
+        „Publikuoti“.
       </p>
       <div className="mt-4">
         <ProposalToolNav active="template" canAdmin />
       </div>
       <div className="mt-6">
-        <TemplateEditorClient initial={data.draft.content} history={data.history} />
+        <TemplateEditorClient
+          initial={data.draft.content}
+          published={data.published.content}
+          history={data.history}
+        />
       </div>
     </CrmTableContainer>
   );

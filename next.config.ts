@@ -26,6 +26,7 @@ const nextPublicAppVersion = String(process.env.NEXT_PUBLIC_APP_VERSION ?? "").t
 const nextConfig: NextConfig = {
   // Keep PDF.js (unpdf) and pdf-lib on the Node server runtime.
   serverExternalPackages: ["unpdf", "pdf-lib", "@pdf-lib/fontkit", "fontkit"],
+  transpilePackages: ["pdfjs-dist"],
   outputFileTracingIncludes: {
     "/api/crm/commercial-proposals/**": [
       "./lib/commercialProposal/**/*",
