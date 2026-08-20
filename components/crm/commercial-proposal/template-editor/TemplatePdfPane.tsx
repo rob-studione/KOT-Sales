@@ -120,18 +120,17 @@ export function TemplatePdfPane({
       return;
     }
     let cancelled = false;
+    let loadingTask: ReturnType<PdfjsModule["getDocument"]> | null = null;
     (async () => {
       try {
         const pdfjs = await loadPdfjs();
-        const doc = await pdfjs.getDocument({ data: pdfBytes.slice() }).promise;
+        loadingTask = pdfjs.getDocument({ data: pdfBytes.slice() });
+        const doc = await loadingTask.promise;
         if (cancelled) {
-          doc.destroy();
+          void loadingTask.destroy();
           return;
         }
-        setPdf((prev) => {
-          prev?.destroy();
-          return doc;
-        });
+        setPdf(doc);
         setError(null);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Nepavyko parodyti PDF.");
@@ -139,6 +138,7 @@ export function TemplatePdfPane({
     })();
     return () => {
       cancelled = true;
+      void loadingTask?.destroy();
     };
   }, [pdfBytes]);
 
