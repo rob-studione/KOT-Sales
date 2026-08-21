@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { ProposalDeleteControl } from "@/components/crm/commercial-proposal/ProposalDeleteControl";
 import {
   generateCommercialProposalAction,
   markProposalSentAction,
@@ -10,6 +12,7 @@ import {
   updateProposalSettingsAction,
   type ProposalEditorPayload,
 } from "@/lib/crm/commercialProposalActions";
+import { CP_TOOL_PATH } from "@/lib/crm/commercialProposalPaths";
 import {
   categoryDiscount,
   clampDiscountPct,
@@ -197,6 +200,7 @@ export function ProposalEditorClient({
 }: {
   initial: ProposalEditorPayload;
 }) {
+  const router = useRouter();
   const [proposal] = useState(initial.proposal);
   const [lines, setLines] = useState(initial.lines);
   const initialDiscounts = normalizeCategoryDiscounts(initial.discounts ?? initial.proposal.discounts);
@@ -360,6 +364,15 @@ export function ProposalEditorClient({
               ) : null}
             </>
           )}
+          {initial.canDelete ? (
+            <ProposalDeleteControl
+              proposalId={proposal.id}
+              proposalNumber={proposal.proposal_number}
+              status={proposal.status}
+              variant="button"
+              onDeleted={() => router.push(`${CP_TOOL_PATH}?deleted=1`)}
+            />
+          ) : null}
         </div>
       </div>
 

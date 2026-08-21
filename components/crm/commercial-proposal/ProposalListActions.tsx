@@ -5,13 +5,22 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { duplicateCommercialProposalAction } from "@/lib/crm/commercialProposalActions";
 import { commercialProposalPath } from "@/lib/crm/commercialProposalPaths";
+import { ProposalDeleteControl } from "@/components/crm/commercial-proposal/ProposalDeleteControl";
 
 export function ProposalListActions({
   proposalId,
+  proposalNumber,
+  status,
   hasPdf,
+  canDelete,
+  onDeleted,
 }: {
   proposalId: string;
+  proposalNumber: string | null;
+  status: string;
   hasPdf: boolean;
+  canDelete: boolean;
+  onDeleted: () => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -52,6 +61,15 @@ export function ProposalListActions({
       >
         Dubliuoti
       </button>
+      {canDelete ? (
+        <ProposalDeleteControl
+          proposalId={proposalId}
+          proposalNumber={proposalNumber}
+          status={status}
+          variant="link"
+          onDeleted={onDeleted}
+        />
+      ) : null}
     </div>
   );
 }

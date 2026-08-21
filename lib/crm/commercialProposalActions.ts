@@ -13,6 +13,7 @@ import {
   mergeTemplateContent,
   type CpTemplateContent,
 } from "@/lib/commercialProposal/content";
+import { CP_PDF_BUCKET, deleteProposalStorageAndRow } from "@/lib/commercialProposal/deleteProposalData";
 import { generateCommercialProposalPdf } from "@/lib/commercialProposal/generatePdf";
 import { generateCommercialProposalPdfV2 } from "@/lib/commercialProposal/generatePdfV2";
 import {
@@ -49,7 +50,7 @@ import type {
   CpPriceItem,
 } from "@/lib/commercialProposal/types";
 
-const BUCKET = "commercial-proposals";
+const BUCKET = CP_PDF_BUCKET;
 
 function canUseProposals(user: Awaited<ReturnType<typeof getCurrentCrmUser>>): boolean {
   return Boolean(
@@ -62,6 +63,15 @@ function canUseProposals(user: Awaited<ReturnType<typeof getCurrentCrmUser>>): b
 
 function canAdminCatalog(user: Awaited<ReturnType<typeof getCurrentCrmUser>>): boolean {
   return Boolean(user && hasPermission(user, "settings.commercial_proposals"));
+}
+
+function canDeleteProposal(
+  user: Awaited<ReturnType<typeof getCurrentCrmUser>>,
+  status: string
+): boolean {
+  if (!canUseProposals(user)) return false;
+  if (status === "draft") return true;
+  return canAdminCatalog(user);
 }
 
 function toNum(v: unknown): number | null {
@@ -440,6 +450,7 @@ export type ProposalEditorPayload = {
   discounts: CpCategoryDiscounts;
   managers: Array<{ id: string; name: string; job_title: string }>;
   canChangeManager: boolean;
+  canDelete: boolean;
 };
 
 export async function loadProposalEditorData(proposalId: string): Promise<ProposalEditorPayload> {
@@ -481,6 +492,7 @@ export async function loadProposalEditorData(proposalId: string): Promise<Propos
     discounts,
     managers,
     canChangeManager: true,
+    canDelete: canDeleteProposal(actor, proposal.status),
   };
 }
 
@@ -977,6 +989,39 @@ export async function duplicateCommercialProposalAction(
 
   revalidateProposalTool(inserted.id);
   return { ok: true, id: inserted.id };
+}
+
+export async function deleteCommercialProposalAction(
+  proposalId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const actor = await getCurrentCrmUser();
+  if (!canUseProposals(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("commercial_proposals")
+    .select("id,status,proposal_number,pdf_storage_path")
+    .eq("id", proposalId)
+    .maybeSingle();
+  if (error || !data) return { ok: false, error: error?.message ?? "Pasiūlymas nerastas." };
+  const status = String(data.status ?? "draft");
+  if (!canDeleteProposal(actor, status)) {
+    return {
+      ok: false,
+      error:
+        status === "draft"
+          ? "Neturite teisių ištrinti šio pasiūlymo."
+          : "Sugeneruotą pasiūlymą gali ištrinti tik administratorius.",
+    };
+  }
+
+  const removed = await deleteProposalStorageAndRow(admin, {
+    id: String(data.id),
+    pdf_storage_path: data.pdf_storage_path == null ? null : String(data.pdf_storage_path),
+  });
+  if (!removed.ok) return removed;
+
+  revalidateProposalTool(String(data.id));
+  return { ok: true };
 }
 
 export async function markProposalSentAction(
