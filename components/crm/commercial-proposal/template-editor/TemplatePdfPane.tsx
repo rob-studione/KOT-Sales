@@ -157,19 +157,19 @@ export function TemplatePdfPane({
                   type="button"
                   onClick={() => onSelectPage(editorPageForPdfIndex(i, pageCount))}
                   className={[
-                    "shrink-0 overflow-hidden rounded-lg border bg-white text-left",
+                    "shrink-0 overflow-hidden rounded-md border bg-white text-left",
                     active ? "border-[#7C4A57] ring-2 ring-[#7C4A57]/30" : "border-zinc-200 hover:border-zinc-300",
                   ].join(" ")}
                 >
-                  <PdfCanvas pdf={pdf} pageNumber={i + 1} width={72} className="block h-auto w-[72px]" />
-                  <div className="max-w-[72px] px-1 py-1 text-[10px] leading-tight text-zinc-600">
+                  <PdfCanvas pdf={pdf} pageNumber={i + 1} width={58} className="block h-auto w-[58px]" />
+                  <div className="max-w-[58px] px-1 py-0.5 text-[10px] leading-tight text-zinc-600">
                     {i + 1}. {labelForPdfIndex(i, pageCount)}
                   </div>
                 </button>
               );
             })
           : TEMPLATE_SKELETON.map((label, i) => (
-              <div key={label} className="h-[118px] w-[72px] shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 text-[10px] text-zinc-400">
+              <div key={label} className="h-[96px] w-[58px] shrink-0 rounded-md border border-zinc-200 bg-zinc-50 text-[10px] text-zinc-400">
                 <div className="px-1 py-1">
                   {i + 1}. {label}
                 </div>
@@ -184,7 +184,7 @@ export function TemplatePdfPane({
           </div>
         ) : null}
         {loading ? (
-          <div className="flex aspect-[612/792] items-center justify-center text-sm text-zinc-500">Ruošiamas preview…</div>
+          <div className="flex aspect-[612/792] items-center justify-center text-sm text-zinc-500">Ruošiama peržiūra…</div>
         ) : error ? (
           <div className="flex aspect-[612/792] items-center justify-center px-4 text-center text-sm text-red-700">{error}</div>
         ) : pdf ? (
@@ -194,7 +194,7 @@ export function TemplatePdfPane({
           </div>
         ) : (
           <div className="flex aspect-[612/792] items-center justify-center text-sm text-zinc-500">
-            Preview dar neparuoštas.
+            Peržiūra dar neparuošta.
           </div>
         )}
       </div>

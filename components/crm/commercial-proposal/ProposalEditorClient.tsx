@@ -295,7 +295,7 @@ export function ProposalEditorClient({
               setPreviewOpen(true);
             }}
           >
-            Preview PDF
+            Peržiūrėti PDF
           </button>
           {proposal.status === "draft" ? (
             <button

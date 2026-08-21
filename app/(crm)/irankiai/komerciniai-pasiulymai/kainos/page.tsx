@@ -13,9 +13,6 @@ export default async function CommercialProposalPricesPage() {
   return (
     <CrmTableContainer className="pb-10 pt-5">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Kainos</h1>
-      <p className="mt-1 text-sm text-zinc-600">
-        Tas pats kainynas, kurį naudoja pasiūlymai. Rankiniai pakeitimai juodraštyje nekeičia šio sąrašo.
-      </p>
       <div className="mt-4">
         <ProposalToolNav active="prices" canAdmin />
       </div>

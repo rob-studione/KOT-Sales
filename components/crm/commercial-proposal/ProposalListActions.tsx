@@ -17,7 +17,7 @@ export function ProposalListActions({
   const [pending, start] = useTransition();
 
   return (
-    <div className="flex flex-wrap gap-2 text-sm">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm whitespace-nowrap">
       <Link href={commercialProposalPath(proposalId)} className="text-[#7C4A57] hover:underline">
         Atidaryti
       </Link>
@@ -27,7 +27,7 @@ export function ProposalListActions({
         rel="noreferrer"
         className="text-[#7C4A57] hover:underline"
       >
-        Preview
+        Peržiūrėti
       </a>
       {hasPdf ? (
         <a
@@ -36,7 +36,7 @@ export function ProposalListActions({
           rel="noreferrer"
           className="text-[#7C4A57] hover:underline"
         >
-          PDF
+          Atsisiųsti PDF
         </a>
       ) : null}
       <button

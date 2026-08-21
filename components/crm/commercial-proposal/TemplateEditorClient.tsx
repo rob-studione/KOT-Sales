@@ -73,6 +73,8 @@ export function TemplateEditorClient({
   history: CpCompanyHistoryEntry[];
 }) {
   const [content, setContent] = useState(initial);
+  const [savedDraft, setSavedDraft] = useState(initial);
+  const [publishedContent, setPublishedContent] = useState(published);
   const [pageId, setPageId] = useState<TemplatePageId>("cover");
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>("cover.title");
   const [message, setMessage] = useState<string | null>(null);
@@ -83,10 +85,6 @@ export function TemplateEditorClient({
   const previewTimer = useRef<number | null>(null);
   const previewSeq = useRef(0);
 
-  const variableHint = useMemo(
-    () => CP_TEMPLATE_VARIABLES.map((v) => `{{${v.key}}} — ${v.label}`).join(" · "),
-    []
-  );
   const pageBlocks = useMemo(() => blocksForPage(content, pageId), [content, pageId]);
   const selectedBlock = useMemo(
     () => findTemplateBlock(content, selectedBlockId),
@@ -96,8 +94,12 @@ export function TemplateEditorClient({
     () => highlightBoxesForBlock(selectedBlock?.pageId === pageId ? selectedBlock : null),
     [pageId, selectedBlock]
   );
-  const draftDirty = useMemo(() => JSON.stringify(content) !== JSON.stringify(initial), [content, initial]);
-  const unpublished = useMemo(() => JSON.stringify(content) !== JSON.stringify(published), [content, published]);
+  const draftDirty = useMemo(() => JSON.stringify(content) !== JSON.stringify(savedDraft), [content, savedDraft]);
+  const unpublished = useMemo(
+    () => JSON.stringify(content) !== JSON.stringify(publishedContent),
+    [content, publishedContent]
+  );
+  const statusLabel = unpublished || draftDirty ? "Juodraštis" : "Publikuota versija";
 
   async function refreshPreview(next: CpTemplateContent) {
     const seq = ++previewSeq.current;
@@ -111,7 +113,7 @@ export function TemplateEditorClient({
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        if (seq === previewSeq.current) setMessage(body?.error ?? "Nepavyko paruošti preview.");
+        if (seq === previewSeq.current) setMessage(body?.error ?? "Nepavyko paruošti peržiūros.");
         return;
       }
       const raw = res.headers.get("X-CP-Warnings");
@@ -162,12 +164,14 @@ export function TemplateEditorClient({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="max-w-2xl text-xs text-zinc-500">
-          Dinaminiai laukai: {variableHint}. Keitimai lieka juodraštyje, kol publikuosite.
-          {unpublished ? " Yra nepublikuotų pakeitimų." : " Publikuotas šablonas sutampa su peržiūra."}
-          {draftDirty ? " Juodraštis neišsaugotas." : ""}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Šablonas</h1>
+          <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700">
+            {statusLabel}
+          </span>
+          {draftDirty ? <span className="text-xs text-zinc-500">neišsaugota</span> : null}
+        </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -178,7 +182,7 @@ export function TemplateEditorClient({
               void refreshPreview(content);
             }}
           >
-            Peržiūrėti juodraščio PDF
+            Peržiūrėti PDF
           </button>
           <button
             type="button"
@@ -187,6 +191,7 @@ export function TemplateEditorClient({
             onClick={() => {
               start(async () => {
                 const res = await saveTemplateDraftAction(content);
+                if (res.ok) setSavedDraft(content);
                 setMessage(res.ok ? "Juodraštis išsaugotas." : res.error);
               });
             }}
@@ -200,6 +205,10 @@ export function TemplateEditorClient({
             onClick={() => {
               start(async () => {
                 const res = await publishTemplateAction(content);
+                if (res.ok) {
+                  setSavedDraft(content);
+                  setPublishedContent(content);
+                }
                 setMessage(res.ok ? "Šablonas publikuotas. Nauji pasiūlymai naudos šį turinį." : res.error);
               });
             }}
@@ -215,9 +224,22 @@ export function TemplateEditorClient({
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm xl:sticky xl:top-4">
-          <div className="mb-3 text-sm font-semibold text-zinc-900">PDF peržiūra</div>
+      <details className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <summary className="cursor-pointer list-none px-4 py-2.5 text-sm font-medium text-zinc-700 marker:content-none [&::-webkit-details-marker]:hidden [&::after]:float-right [&::after]:text-zinc-400 [&::after]:content-['▾']">
+          Galimi dinaminiai laukai
+        </summary>
+        <ul className="space-y-1.5 border-t border-zinc-100 px-4 py-3 text-sm text-zinc-600">
+          {CP_TEMPLATE_VARIABLES.map((v) => (
+            <li key={v.key}>
+              <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-[12px] text-zinc-800">{`{{${v.key}}}`}</code>
+              <span className="text-zinc-500"> — {v.label}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
+
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,1fr)]">
+        <section className="min-w-0 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm lg:sticky lg:top-4">
           <TemplatePdfPane
             pdfBytes={pdfBytes}
             loading={previewing && !pdfBytes}
@@ -228,64 +250,39 @@ export function TemplateEditorClient({
           />
         </section>
 
-        <section className="min-w-0 space-y-4">
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Puslapis</div>
-            <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-              {TEMPLATE_EDITOR_PAGES.map((page) => {
-                const active = page.id === pageId;
+        <section className="min-w-0 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+          <h2 className="text-sm font-semibold text-zinc-900">
+            {currentPage ? `${currentPage.number}. ${currentPage.label}` : "Turinys"}
+          </h2>
+          <div className="mt-4 grid gap-3">
+            {pageBlocks.map((block) => {
+              if (block.kind === "history_entries") {
                 return (
-                  <button
-                    key={page.id}
-                    type="button"
-                    onClick={() => selectPage(page.id)}
-                    className={[
-                      "rounded-lg px-3 py-2 text-left text-sm",
-                      active ? "bg-[#7C4A57] text-white" : "bg-zinc-50 text-zinc-800 hover:bg-zinc-100",
-                    ].join(" ")}
-                  >
-                    <span className={active ? "text-white/70" : "text-zinc-500"}>{page.number}.</span> {page.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-zinc-900">
-              {currentPage ? `${currentPage.number}. ${currentPage.label}` : "Turinys"}
-            </h2>
-            <p className="mt-1 text-xs text-zinc-500">Rodomi tik šio puslapio laukai. Pasirinktas blokas paryškinamas PDF.</p>
-            <div className="mt-4 grid gap-3">
-              {pageBlocks.map((block) => {
-                if (block.kind === "history_entries") {
-                  return (
-                    <div
-                      key={block.id}
-                      className={selectedBlockId === block.id ? "rounded-lg ring-2 ring-[#7C4A57]/30" : ""}
-                      onClick={() => setSelectedBlockId(block.id)}
-                    >
-                      <CompanyHistoryAdminClient initial={history} />
-                    </div>
-                  );
-                }
-                return (
-                  <Field
+                  <div
                     key={block.id}
-                    label={block.label}
-                    hint={block.hint}
-                    selected={selectedBlockId === block.id}
-                    onSelect={() => setSelectedBlockId(block.id)}
+                    className={selectedBlockId === block.id ? "rounded-lg ring-2 ring-[#7C4A57]/30" : ""}
+                    onClick={() => setSelectedBlockId(block.id)}
                   >
-                    <TextInput
-                      value={getTemplateString(content, block.path)}
-                      multiline={block.multiline}
-                      onChange={(v) => updateBlock(block.path, v)}
-                    />
-                  </Field>
+                    <CompanyHistoryAdminClient initial={history} />
+                  </div>
                 );
-              })}
-            </div>
+              }
+              return (
+                <Field
+                  key={block.id}
+                  label={block.label}
+                  hint={block.hint}
+                  selected={selectedBlockId === block.id}
+                  onSelect={() => setSelectedBlockId(block.id)}
+                >
+                  <TextInput
+                    value={getTemplateString(content, block.path)}
+                    multiline={block.multiline}
+                    onChange={(v) => updateBlock(block.path, v)}
+                  />
+                </Field>
+              );
+            })}
           </div>
         </section>
       </div>
