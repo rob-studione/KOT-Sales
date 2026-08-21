@@ -43,6 +43,7 @@ import {
 } from "@/lib/commercialProposal/layoutV2";
 import { formatProposalPriceCell } from "@/lib/commercialProposal/money";
 import { resolveTemplatePdfPath } from "@/lib/commercialProposal/paths";
+import { prepareManagerPortrait } from "@/lib/commercialProposal/prepareManagerPortrait";
 import type { CommercialProposalLine, CommercialProposalSnapshot, CpPriceCategory } from "@/lib/commercialProposal/types";
 
 type Line = Omit<CommercialProposalLine, "id" | "proposal_id">;
@@ -503,6 +504,22 @@ async function embedAvatar(url: string | null | undefined): Promise<Uint8Array |
   }
 }
 
+function drawCoverImage(
+  page: PDFPage,
+  img: { width: number; height: number },
+  cx: number,
+  cy: number,
+  r: number
+) {
+  const side = r * 2;
+  const scale = Math.max(side / Math.max(img.width, 1), side / Math.max(img.height, 1));
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  clipCircle(page, cx, cy, r);
+  page.drawImage(img, { x: cx - dw / 2, y: cy - dh / 2, width: dw, height: dh });
+  page.pushOperators(popGraphicsState());
+}
+
 async function tryPaintManagerAvatar(
   page: PDFPage,
   cx: number,
@@ -512,12 +529,11 @@ async function tryPaintManagerAvatar(
 ): Promise<boolean> {
   if (!avatarBytes || avatarBytes.byteLength <= 0) return false;
   try {
-    const head = avatarBytes.slice(0, 4);
+    const photo = prepareManagerPortrait(avatarBytes);
+    const head = photo.slice(0, 4);
     const isPng = head[0] === 0x89 && head[1] === 0x50;
-    const img = isPng ? await page.doc.embedPng(avatarBytes) : await page.doc.embedJpg(avatarBytes);
-    clipCircle(page, cx, cy, r);
-    page.drawImage(img, { x: cx - r, y: cy - r, width: r * 2, height: r * 2 });
-    page.pushOperators(popGraphicsState());
+    const img = isPng ? await page.doc.embedPng(photo) : await page.doc.embedJpg(photo);
+    drawCoverImage(page, img, cx, cy, r);
     return true;
   } catch {
     return false;
@@ -667,10 +683,11 @@ export async function generateCommercialProposalPdfV2(input: {
     font: fonts.regular,
     color: c(COLOR.jobGray),
   });
-  const photo = INTRO.photo;
-  const cx = photo.x + photo.w / 2;
-  const cy = yBottom(photo.yTop + photo.h / 2);
-  const r = Math.max(photo.overlayRadius, Math.min(photo.w, photo.h) / 2 + 2);
+  // CRM avatar is the person photo only. Arc + KOT badge stay on the design page.
+  const slot = INTRO.photoSlot;
+  const cx = slot.cx;
+  const cy = yBottom(slot.yTop);
+  const r = slot.r;
   pageTealCover(intro, cx, cy, r);
   const painted = await tryPaintManagerAvatar(intro, cx, cy, r, avatarBytes);
   if (!painted) paintPlaceholder(intro, fonts, snapshot.sales_manager.display_name, cx, cy, r);

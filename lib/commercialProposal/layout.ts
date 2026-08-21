@@ -37,6 +37,12 @@ export const INTRO = {
   nameSize: 11.25,
   titleSize: 10.5,
   photo: { x: 37.5, yTop: 261.31, w: 95.25, h: 92.87, overlayRadius: 40 },
+  /**
+   * Inner portrait hole of LT_COMMERCIAL_V2_design.pdf.
+   * The template already draws the teal arc and KOT badge outside this circle.
+   * Runtime paints only the CRM photo (and a teal fill / initials fallback) here.
+   */
+  photoSlot: { cx: 91.0, yTop: 301.0, r: 37.0 },
 };
 
 export const HISTORY = {
