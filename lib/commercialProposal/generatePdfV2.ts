@@ -3,6 +3,7 @@ import {
   PDFDocument,
   rgb,
   type PDFFont,
+  type PDFImage,
   type PDFPage,
   type RGB,
   pushGraphicsState,
@@ -504,13 +505,7 @@ async function embedAvatar(url: string | null | undefined): Promise<Uint8Array |
   }
 }
 
-function drawCoverImage(
-  page: PDFPage,
-  img: { width: number; height: number },
-  cx: number,
-  cy: number,
-  r: number
-) {
+function drawCoverImage(page: PDFPage, img: PDFImage, cx: number, cy: number, r: number) {
   const side = r * 2;
   const scale = Math.max(side / Math.max(img.width, 1), side / Math.max(img.height, 1));
   const dw = img.width * scale;
