@@ -11,7 +11,6 @@ import {
   scheduleFromSettings,
   type ActivityEvent,
   type ActivityPeriodModel,
-  type ActivitySchedule,
 } from "@/lib/crm/managerActivity";
 import { isoDateInVilnius, vilniusEndUtc, vilniusMinutesFromMidnight, vilniusStartUtc, vilniusTodayDateString } from "@/lib/crm/vilniusTime";
 import { listWorkingDaysLtIso } from "@/lib/crm/workingDaysLt";
@@ -36,8 +35,6 @@ export async function loadManagerActivityForRange(
   const ids = [...new Set(userIds)].filter(Boolean);
   const today = vilniusTodayDateString();
   const liveNowMin = vilniusMinutesFromMidnight(new Date().toISOString());
-  const schedule = await loadActivitySchedule(supabase);
-  const empty = () => emptyActivityPeriod(schedule);
   const toYmd = range.to > today ? today : range.to;
   const workingDays = range.from > toYmd ? [] : listWorkingDaysLtIso(range.from, toYmd);
   const isSingleCalendarDay = range.from === range.to;
@@ -47,8 +44,9 @@ export async function loadManagerActivityForRange(
   const eventsByUserDay = new Map<string, Map<string, ActivityEvent[]>>();
   for (const id of ids) eventsByUserDay.set(id, new Map());
 
-  let truncated = false;
-  if (range.from <= toYmd) {
+  async function fetchEvents(): Promise<{ truncated: boolean; error: boolean }> {
+    let truncated = false;
+    if (range.from > toYmd) return { truncated, error: false };
     const startIso = vilniusStartUtc(range.from);
     const endIso = vilniusEndUtc(toYmd);
     let from = 0;
@@ -64,8 +62,7 @@ export async function loadManagerActivityForRange(
         .range(from, from + ACTIVITY_PAGE - 1);
       if (error) {
         console.error("[managerActivity] range fetch", error);
-        for (const id of ids) byUser.set(id, empty());
-        return { byUser, truncated };
+        return { truncated, error: true };
       }
       const chunk = data ?? [];
       if (chunk.length === 0) break;
@@ -92,6 +89,14 @@ export async function loadManagerActivityForRange(
         break;
       }
     }
+    return { truncated, error: false };
+  }
+
+  const [schedule, fetched] = await Promise.all([loadActivitySchedule(supabase), fetchEvents()]);
+  const truncated = fetched.truncated;
+  if (fetched.error) {
+    for (const id of ids) byUser.set(id, emptyActivityPeriod(schedule));
+    return { byUser, truncated };
   }
 
   for (const id of ids) {

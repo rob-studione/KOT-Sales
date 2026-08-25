@@ -540,15 +540,32 @@ export async function buildManagerKpiViewModel(
   const workingDayCount = Math.max(0, countWorkingDaysLtIso(range.from, range.to));
   const compareRange = opts.compare ? comparisonRangeForPreset(opts.preset, range, opts.customFrom, opts.customTo) : null;
 
-  const [usersRes, targetsRes, rpc] = await Promise.all([
+  const usersPromise = Promise.resolve(
     supabase
       .from("crm_users")
       .select("id,name,email,role,status,is_kpi_tracked")
       .eq("status", "active")
       .eq("is_kpi_tracked", true)
-      .order("name", { ascending: true }),
-    supabase.from("crm_user_kpi_targets").select("user_id,daily_call_target,daily_answered_target,daily_commercial_target"),
-    rpcManagerKpiDashboard(supabase, range, compareRange),
+      .order("name", { ascending: true })
+  );
+  const targetsPromise = Promise.resolve(
+    supabase
+      .from("crm_user_kpi_targets")
+      .select("user_id,daily_call_target,daily_answered_target,daily_commercial_target")
+  );
+  const rpcPromise = rpcManagerKpiDashboard(supabase, range, compareRange);
+
+  const usersRes = await usersPromise;
+  const users = (usersRes.data ?? []) as Array<{ id: string; name: string | null; email: string | null; role: string }>;
+
+  const [targetsRes, rpc, activityPack] = await Promise.all([
+    targetsPromise,
+    rpcPromise,
+    loadManagerActivityForRange(
+      supabase,
+      users.map((u) => u.id),
+      range
+    ),
   ]);
 
   if (targetsRes.error) {
@@ -562,12 +579,6 @@ export async function buildManagerKpiViewModel(
     }
   }
 
-  const users = (usersRes.data ?? []) as Array<{ id: string; name: string | null; email: string | null; role: string }>;
-  const activityPack = await loadManagerActivityForRange(
-    supabase,
-    users.map((u) => u.id),
-    range
-  );
   const activityByUser = activityPack.byUser;
   if (activityPack.truncated) {
     warnings.push("Aktyvumo istorijos įrašai apkirpti. Dienų skaičiai gali būti ne pilni.");
