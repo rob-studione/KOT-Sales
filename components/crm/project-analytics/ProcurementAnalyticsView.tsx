@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { formatDate, formatMoney } from "@/lib/crm/format";
 import type { ProjectAnalyticsPeriod } from "@/lib/crm/projectAnalytics";
 import type { ProcurementDashboardAnalyticsDto } from "@/lib/crm/procurementAnalytics";
@@ -8,14 +9,17 @@ function KpiCard({
   value,
   sub,
   compact,
+  title,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   compact?: boolean;
+  title?: string;
 }) {
   return (
     <div
+      title={title}
       className={`group cursor-pointer rounded-xl border border-zinc-200/80 bg-white shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98] ${
         compact ? "p-3" : "p-4"
       }`}
@@ -29,6 +33,34 @@ function KpiCard({
         {value}
       </div>
       {sub ? <div className="mt-0.5 text-xs text-zinc-500">{sub}</div> : null}
+    </div>
+  );
+}
+
+function FunnelStep({
+  label,
+  value,
+  hint,
+  ratio,
+  title,
+}: {
+  label: string;
+  value: number;
+  hint: string;
+  ratio?: ReactNode;
+  title?: string;
+}) {
+  return (
+    <div
+      title={title}
+      className="group cursor-pointer rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98]"
+    >
+      <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</div>
+      <div className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950">
+        {value}
+      </div>
+      <div className="mt-0.5 text-xs text-zinc-500">{hint}</div>
+      {ratio ? <div className="mt-1 text-sm font-semibold text-zinc-800">{ratio}</div> : null}
     </div>
   );
 }
@@ -83,47 +115,56 @@ export function ProcurementAnalyticsView({
       <section>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Funnel</h3>
+            <div className="mb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Funnel</h3>
+              <p className="mt-1 text-xs text-zinc-500">Skaičiuojamos unikalios organizacijos, ne atskiri skambučiai.</p>
+            </div>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] lg:items-stretch">
-              <div className="group cursor-pointer rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98]">
-                <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Organizacijos</div>
-                <div className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950">
-                  {totals.organizations}
-                </div>
-              </div>
+              <FunnelStep
+                label="Organizacijos"
+                value={totals.organizations}
+                hint="visos projekto įstaigos"
+                title="Unikalios organizacijos projekte (pagal įstaigos kodą arba pavadinimą)."
+              />
               <div className="hidden items-center justify-center text-2xl text-zinc-300 lg:flex">→</div>
-              <div className="group cursor-pointer rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98]">
-                <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Skambinta</div>
-                <div className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950">
-                  {totals.calledWorkItems}
-                </div>
-                <div className="mt-1 text-sm font-semibold text-zinc-800">
-                  {pct(totals.calledWorkItems, totals.organizations)}{" "}
-                  <span className="font-medium text-zinc-500">nuo visų</span>
-                </div>
-              </div>
+              <FunnelStep
+                label="Skambinta"
+                value={totals.calledWorkItems}
+                hint="unikalios įstaigos"
+                title="Kiek unikalių organizacijų buvo skambinta bent kartą. Pakartotiniai skambučiai tai pačiai įstaigai neskaičiuojami."
+                ratio={
+                  <>
+                    {pct(totals.calledWorkItems, totals.organizations)}{" "}
+                    <span className="font-medium text-zinc-500">nuo visų</span>
+                  </>
+                }
+              />
               <div className="hidden items-center justify-center text-2xl text-zinc-300 lg:flex">→</div>
-              <div className="group cursor-pointer rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98]">
-                <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Susisiekta</div>
-                <div className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950">
-                  {totals.contacted}
-                </div>
-                <div className="mt-1 text-sm font-semibold text-zinc-800">
-                  {pct(totals.contacted, totals.calledWorkItems)}{" "}
-                  <span className="font-medium text-zinc-500">nuo skambinta</span>
-                </div>
-              </div>
+              <FunnelStep
+                label="Susisiekta"
+                value={totals.contacted}
+                hint="unikalios įstaigos"
+                title="Kiek unikalių organizacijų pavyko pasiekti (atsiliepė arba tolesnis veiksmas po skambučio)."
+                ratio={
+                  <>
+                    {pct(totals.contacted, totals.calledWorkItems)}{" "}
+                    <span className="font-medium text-zinc-500">nuo skambinta</span>
+                  </>
+                }
+              />
               <div className="hidden items-center justify-center text-2xl text-zinc-300 lg:flex">→</div>
-              <div className="group cursor-pointer rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-1 hover:border-zinc-300/90 hover:shadow-lg active:translate-y-0 active:scale-[0.98]">
-                <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Pakviesta / įtraukti</div>
-                <div className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-zinc-900 transition-colors duration-150 ease-out group-hover:text-zinc-950">
-                  {totals.invitedOrIncluded}
-                </div>
-                <div className="mt-1 text-sm font-semibold text-zinc-800">
-                  {pct(totals.invitedOrIncluded, totals.contacted)}{" "}
-                  <span className="font-medium text-zinc-500">nuo susisiekta</span>
-                </div>
-              </div>
+              <FunnelStep
+                label="Pakviesta / įtraukti"
+                value={totals.invitedOrIncluded}
+                hint="unikalios įstaigos"
+                title="Kiek unikalių organizacijų pakviesta dalyvauti arba įtraukta į pirkimą."
+                ratio={
+                  <>
+                    {pct(totals.invitedOrIncluded, totals.contacted)}{" "}
+                    <span className="font-medium text-zinc-500">nuo susisiekta</span>
+                  </>
+                }
+              />
             </div>
           </div>
 
@@ -132,10 +173,27 @@ export function ProcurementAnalyticsView({
       </section>
 
       <section>
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Aktyvumas (pasirinktas laikotarpis)</h3>
+        <div className="mb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Aktyvumas (pasirinktas laikotarpis)
+          </h3>
+          <p className="mt-1 text-xs text-zinc-500">
+            Skambučiai — visi veiksmai; konversija — pagal unikalias įstaigas, kaip funnel.
+          </p>
+        </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-2">
-          <KpiCard label="Skambučiai" value={per.calls} sub="per laikotarpį" />
-          <KpiCard label="Susisiekimo konversija" value={conv} sub="susisiekta / skambinta" />
+          <KpiCard
+            label="Skambučiai"
+            value={per.calls}
+            sub="visi skambučiai, įskaitant pakartojimus"
+            title="Kiek kartų skambinta per laikotarpį. Ta pati įstaiga gali būti skambinta kelis kartus."
+          />
+          <KpiCard
+            label="Susisiekimo konversija"
+            value={conv}
+            sub="unikalios įstaigos: susisiekta / skambinta"
+            title="Skaičiuojama iš unikalių organizacijų, ne iš visų skambučių skaičiaus."
+          />
         </div>
       </section>
     </div>
