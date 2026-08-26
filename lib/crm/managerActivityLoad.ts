@@ -11,6 +11,7 @@ import {
   scheduleFromSettings,
   type ActivityEvent,
   type ActivityPeriodModel,
+  type ActivitySchedule,
 } from "@/lib/crm/managerActivity";
 import { isoDateInVilnius, vilniusEndUtc, vilniusMinutesFromMidnight, vilniusStartUtc, vilniusTodayDateString } from "@/lib/crm/vilniusTime";
 import { listWorkingDaysLtIso } from "@/lib/crm/workingDaysLt";
