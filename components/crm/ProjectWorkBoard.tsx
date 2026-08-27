@@ -14,6 +14,7 @@ import {
 } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { notifyCrmObligationsRefresh } from "@/lib/crm/crmObligationsRefresh";
 import { FileText, Mail, Phone } from "lucide-react";
 import { formatDate, formatMoneyExVat } from "@/lib/crm/format";
 import { kanbanCardClientTotalEuros, kanbanCardInvoiceBlockText } from "@/lib/crm/kanbanCardClientFooter";
@@ -409,6 +410,7 @@ export function ProjectWorkBoard({
 
   const onMoveSuccess = useCallback(() => {
     setPendingMove(null);
+    notifyCrmObligationsRefresh();
     router.refresh();
   }, [router]);
 

@@ -70,21 +70,24 @@ export function resolveNextActionDateForKanbanStatus(opts: {
     return { iso: null, error: null };
   }
 
-  if (col === "Perskambinti") {
+  if (
+    col === "Perskambinti" ||
+    col === "Skubus veiksmas" ||
+    col === "Siųsti laišką" ||
+    col === "Siųsti komercinį"
+  ) {
     if (!parsed) {
       return {
         iso: null,
         error: `Stulpeliui „${col}“ nurodykite planuojamos veiksmo datą (YYYY-MM-DD).`,
       };
     }
-    return { iso: parsed, error: null };
-  }
-
-  if (col === "Skubus veiksmas" || col === "Siųsti laišką" || col === "Siųsti komercinį") {
-    if (!parsed) {
+    const today = vilniusTodayDateString();
+    const ymd = parsed.slice(0, 10);
+    if (ymd < today) {
       return {
         iso: null,
-        error: `Stulpeliui „${col}“ nurodykite planuojamos veiksmo datą (YYYY-MM-DD).`,
+        error: `Data negali būti praeityje. Nurodykite šiandienos ar vėlesnę datą (YYYY-MM-DD).`,
       };
     }
     return { iso: parsed, error: null };

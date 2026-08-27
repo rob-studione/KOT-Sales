@@ -30,6 +30,7 @@ import {
   workItemActionTypeLabel,
   type WorkItemTouchActionType,
 } from "@/lib/crm/projectBoardConstants";
+import { notifyCrmObligationsRefresh } from "@/lib/crm/crmObligationsRefresh";
 import { loadCandidateExpandDetailsAction, saveWorkItemTouchpoint } from "@/lib/crm/projectActions";
 import { isProcurementOrgClientKey, parseProcurementContractIdFromClientKey } from "@/lib/crm/procurementContractClientKey";
 import type { CandidateExpandDetails } from "@/lib/crm/candidateExpandTypes";
@@ -369,10 +370,11 @@ function WorkItemCard({
     return { label: outcomeLabel, at };
   }, [activities, item.call_status, item.result_status, item.source_type]);
 
-  const formAction = useCallback(
-    async (_prev: { error: string | null }, formData: FormData) => saveWorkItemTouchpoint(item.id, formData),
-    [item.id]
-  );
+  const formAction = useCallback(async (_prev: { error: string | null }, formData: FormData) => {
+    const r = await saveWorkItemTouchpoint(item.id, formData);
+    if (!r.error) notifyCrmObligationsRefresh();
+    return r;
+  }, [item.id]);
 
   const toggle = () => setOpen((prev) => !prev);
 

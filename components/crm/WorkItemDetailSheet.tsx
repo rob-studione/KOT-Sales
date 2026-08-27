@@ -26,6 +26,7 @@ import {
   workItemActionTypeLabel,
   type WorkItemTouchActionType,
 } from "@/lib/crm/projectBoardConstants";
+import { notifyCrmObligationsRefresh } from "@/lib/crm/crmObligationsRefresh";
 import { saveWorkItemTouchpoint } from "@/lib/crm/projectActions";
 import type { ProjectWorkItemActivityDto } from "@/lib/crm/projectWorkItemActivityDto";
 import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
@@ -75,7 +76,10 @@ export function WorkItemDetailSheet({
   const formAction = useCallback(
     async (_prev: { error: string | null }, fd: FormData) => {
       const r = await saveWorkItemTouchpoint(item.id, fd);
-      if (!r.error) router.refresh();
+      if (!r.error) {
+        notifyCrmObligationsRefresh();
+        router.refresh();
+      }
       return r;
     },
     [item.id, router]

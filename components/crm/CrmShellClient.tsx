@@ -7,6 +7,7 @@ import { CrmSidebar } from "@/components/crm/CrmSidebar";
 import { SupabaseSessionRecoveryClient } from "@/components/crm/SupabaseSessionRecoveryClient";
 import { CrmContentContainer } from "@/components/crm/CrmContentContainer";
 import { AccountEditDrawer } from "@/components/crm/accounts/AccountEditDrawer";
+import { ManagerObligationsBar } from "@/components/crm/manager-obligations/ManagerObligationsBar";
 import type { AccountListRow } from "@/components/crm/accounts/AccountsCardList";
 import type { CurrentCrmUser } from "@/lib/crm/currentUser";
 
@@ -60,6 +61,8 @@ export function CrmShellClient({
           setSelfDrawerOpen(true);
         }}
       />
+
+      {user?.id ? <ManagerObligationsBar userId={user.id} /> : null}
 
       <div className="flex min-h-0 flex-1">
         <CrmSidebar user={user} />
