@@ -497,6 +497,7 @@ export function CrmSidebar({
             userId={obligationsUserId}
             itemBase={itemBase}
             itemInactive={itemInactive}
+            itemActive={itemActive}
           />
         ) : null}
 

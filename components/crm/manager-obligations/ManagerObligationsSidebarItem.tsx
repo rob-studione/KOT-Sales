@@ -1,10 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { AlertCircle } from "lucide-react";
-import { useState } from "react";
-import { ManagerObligationsDrawer } from "@/components/crm/manager-obligations/ManagerObligationsDrawer";
 import { useManagerObligations } from "@/components/crm/manager-obligations/useManagerObligations";
-import type { ManagerObligationKind } from "@/lib/crm/managerObligations";
 
 const SIDEBAR_ICON_PX = 14;
 
@@ -17,54 +16,44 @@ export function ManagerObligationsSidebarItem({
   userId,
   itemBase,
   itemInactive,
+  itemActive,
 }: {
   userId: string;
   itemBase: string;
   itemInactive: string;
+  itemActive: string;
 }) {
-  const { items, counts, hasOverdue } = useManagerObligations(userId);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [filterKind, setFilterKind] = useState<ManagerObligationKind | null>(null);
+  const pathname = usePathname();
+  const { counts, hasOverdue } = useManagerObligations(userId);
+  const active = pathname === "/neatlikta";
 
   if (counts.total === 0) return null;
 
-  function openDrawer(kind: ManagerObligationKind | null) {
-    setFilterKind(kind);
-    setDrawerOpen(true);
-  }
-
   return (
-    <>
-      <div className="pb-1.5">
-        <button
-          type="button"
-          onClick={() => openDrawer(null)}
-          className={`${itemBase} ${itemInactive} w-full`}
-          aria-live="polite"
+    <div className="pb-1.5">
+      <Link
+        href="/neatlikta"
+        className={`${itemBase} ${active ? itemActive : itemInactive}`}
+        aria-live="polite"
+      >
+        {active ? (
+          <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-white" aria-hidden />
+        ) : null}
+        <AlertCircle
+          size={SIDEBAR_ICON_PX}
+          strokeWidth={1.5}
+          className={hasOverdue ? "shrink-0 text-red-300" : "shrink-0 text-white/65"}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate">Neatlikta</span>
+        <span
+          className={`ml-auto shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-white ${
+            hasOverdue ? "bg-red-500/85" : "bg-white/20"
+          }`}
         >
-          <AlertCircle
-            size={SIDEBAR_ICON_PX}
-            strokeWidth={1.5}
-            className={hasOverdue ? "shrink-0 text-red-300" : "shrink-0 text-white/65"}
-            aria-hidden
-          />
-          <span className="min-w-0 flex-1 truncate text-left">Neatlikta</span>
-          <span
-            className={`ml-auto shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-white ${
-              hasOverdue ? "bg-red-500/85" : "bg-white/20"
-            }`}
-          >
-            {formatSidebarBadgeCount(counts.total)}
-          </span>
-        </button>
-      </div>
-
-      <ManagerObligationsDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        items={items}
-        filterKind={filterKind}
-      />
-    </>
+          {formatSidebarBadgeCount(counts.total)}
+        </span>
+      </Link>
+    </div>
   );
 }
