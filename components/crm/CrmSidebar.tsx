@@ -495,9 +495,9 @@ export function CrmSidebar({
         {obligationsUserId ? (
           <ManagerObligationsSidebarItem
             userId={obligationsUserId}
-            itemBase={itemBase}
+            headerBase={headerBase}
+            submenuItemBase={submenuItemBase}
             itemInactive={itemInactive}
-            itemActive={itemActive}
           />
         ) : null}
 
