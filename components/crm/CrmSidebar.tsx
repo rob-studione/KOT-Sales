@@ -12,6 +12,7 @@ import {
 } from "@/lib/crm/projectCandidateQuery";
 import { effectiveProjectType } from "@/lib/crm/projectType";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { ManagerObligationsSidebarItem } from "@/components/crm/manager-obligations/ManagerObligationsSidebarItem";
 import { hasPermission } from "@/lib/crm/permissions/check";
 import {
   BarChart3,
@@ -29,7 +30,6 @@ import {
   ChevronDown,
   GitBranch,
   Layers,
-  Mic,
   Languages,
   Wrench,
 } from "lucide-react";
@@ -66,13 +66,11 @@ const settingsChildren: NavChild[] = [
   { href: "/nustatymai/paskyros", label: "Paskyros", permission: "settings.accounts" },
   { href: "/nustatymai/roles", label: "Rolės", permission: "settings.roles" },
   { href: "/nustatymai/lost-qa", label: "Lost QA", permission: "settings.lost_qa", aiBadge: true },
-  { href: "/nustatymai/podcastai-ai", label: "Podcastai (AI)", permission: "settings.podcasts_ai" },
 ];
 
 const irankiaiChildren: NavChild[] = [
   { href: "/scenarijai", label: "Scenarijai", permission: "nav.tools.playbooks" },
   { href: "/irankiai/verteju-paieska", label: "Vertėjų paieška", permission: "nav.tools.translator_search" },
-  { href: "/irankiai/podcastai", label: "Podcastai", permission: "nav.tools.podcasts", aiBadge: true },
   { href: "/irankiai/komerciniai-pasiulymai", label: "Komerciniai pasiūlymai", permission: "nav.tools.commercial_proposals" },
 ];
 
@@ -82,7 +80,6 @@ function settingsIconForHref(href: string): LucideIcon {
   if (href === "/nustatymai/bendri") return Sliders;
   if (href === "/nustatymai/kpi") return Target;
   if (href === "/nustatymai/lost-qa") return FileSearch;
-  if (href === "/nustatymai/podcastai-ai") return Mic;
   return Settings;
 }
 
@@ -132,7 +129,6 @@ function iconForHref(href: string): LucideIcon {
   if (href === "/projektai") return Folder;
   if (href === "/scenarijai") return GitBranch;
   if (href === "/irankiai/verteju-paieska") return Languages;
-  if (href === "/irankiai/podcastai") return Mic;
   if (href === "/irankiai/komerciniai-pasiulymai") return FileText;
   if (href === "/klientai/saskaitos") return FileText;
   return Settings;
@@ -255,8 +251,10 @@ const SUBMENU_MS = "duration-[180ms]";
 
 export function CrmSidebar({
   user,
+  obligationsUserId,
 }: {
   user?: { role: string; role_is_system?: boolean | null; permissionKeys?: string[] } | null;
+  obligationsUserId?: string | null;
 }) {
   const pathname = usePathname();
   const routeSection = useMemo(() => activeSectionForPath(pathname), [pathname]);
@@ -493,6 +491,14 @@ export function CrmSidebar({
             <span className="truncate">Apžvalga</span>
           </Link>
         </div>
+
+        {obligationsUserId ? (
+          <ManagerObligationsSidebarItem
+            userId={obligationsUserId}
+            itemBase={itemBase}
+            itemInactive={itemInactive}
+          />
+        ) : null}
 
         {sections.map(({ id, label, icon: SectionIcon, children }) => {
           const expanded = openSectionId === id;
