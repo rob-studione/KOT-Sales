@@ -7,7 +7,7 @@ import { useManagerObligations } from "@/components/crm/manager-obligations/useM
 import {
   formatManagerObligationProjectSummary,
   groupManagerObligationsByProject,
-} from "@/lib/crm/managerObligations";
+} from "@/lib/crm/managerObligationsShared";
 
 const SIDEBAR_ICON_PX = 14;
 const SUBMENU_MS = "duration-[180ms]";

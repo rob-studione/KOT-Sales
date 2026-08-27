@@ -5,7 +5,7 @@ import { CRM_OBLIGATIONS_REFRESH_EVENT } from "@/lib/crm/crmObligationsRefresh";
 import type {
   ManagerObligationCounts,
   ManagerObligationItem,
-} from "@/lib/crm/managerObligations";
+} from "@/lib/crm/managerObligationsShared";
 
 type ApiOk = {
   ok: true;
