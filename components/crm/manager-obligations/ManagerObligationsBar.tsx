@@ -1,14 +1,15 @@
 "use client";
 
+import { AlertCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CrmContentContainer } from "@/components/crm/CrmContentContainer";
+import { ManagerObligationsDrawer } from "@/components/crm/manager-obligations/ManagerObligationsDrawer";
 import { CRM_OBLIGATIONS_REFRESH_EVENT } from "@/lib/crm/crmObligationsRefresh";
-import { formatDate } from "@/lib/crm/format";
 import type {
   ManagerObligationCounts,
   ManagerObligationItem,
   ManagerObligationKind,
 } from "@/lib/crm/managerObligations";
-import { ManagerObligationsDrawer } from "@/components/crm/manager-obligations/ManagerObligationsDrawer";
 
 type ApiOk = {
   ok: true;
@@ -21,9 +22,9 @@ const POLL_MS = 5 * 60_000;
 const FOCUS_REFRESH_MIN_MS = 60_000;
 
 function chipClass(tone: "neutral" | "warn" | "bad"): string {
-  if (tone === "bad") return "border-red-200 bg-red-50 text-red-900 hover:bg-red-100/80";
-  if (tone === "warn") return "border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100/80";
-  return "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50";
+  if (tone === "bad") return "border-red-200/80 bg-red-50 text-red-800 hover:bg-red-100/70";
+  if (tone === "warn") return "border-amber-200/80 bg-amber-50 text-amber-900 hover:bg-amber-100/70";
+  return "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100";
 }
 
 function summarizeCounts(
@@ -69,7 +70,6 @@ export function ManagerObligationsBar({ userId }: { userId: string }) {
     commercial: 0,
     total: 0,
   });
-  const [today, setToday] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [filterKind, setFilterKind] = useState<ManagerObligationKind | null>(null);
   const inFlightRef = useRef(false);
@@ -84,7 +84,6 @@ export function ManagerObligationsBar({ userId }: { userId: string }) {
       if (!res.ok || !json.ok) return;
       setItems(json.items);
       setCounts(json.counts);
-      setToday(json.today);
       lastFetchRef.current = Date.now();
     } catch {
       /* ignore */
@@ -120,6 +119,7 @@ export function ManagerObligationsBar({ userId }: { userId: string }) {
   if (counts.total === 0) return null;
 
   const chips = summarizeCounts(counts, items);
+  const hasOverdue = items.some((i) => i.tone === "overdue");
 
   function openDrawer(kind: ManagerObligationKind | null) {
     setFilterKind(kind);
@@ -129,37 +129,49 @@ export function ManagerObligationsBar({ userId }: { userId: string }) {
   return (
     <>
       <div
-        className="border-b border-amber-200/80 bg-amber-50/90 px-4 py-2 sm:px-6"
+        className={`shrink-0 border-b bg-white ${hasOverdue ? "border-red-200/70" : "border-zinc-200"}`}
         role="status"
         aria-live="polite"
       >
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">Neatlikta</span>
-          <div className="flex flex-wrap items-center gap-2">
+        <CrmContentContainer className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                hasOverdue ? "bg-red-50 text-red-700" : "bg-[#7C4A57]/10 text-[#7C4A57]"
+              }`}
+            >
+              <AlertCircle className="h-4 w-4" aria-hidden />
+            </span>
+            <button
+              type="button"
+              onClick={() => openDrawer(null)}
+              className="cursor-pointer text-sm font-medium text-zinc-900 hover:text-[#7C4A57]"
+            >
+              {counts.total} neatlikta
+            </button>
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {chips.map((c) => (
               <button
                 key={c.key}
                 type="button"
                 onClick={() => openDrawer(c.key)}
-                className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums transition-colors ${chipClass(c.tone)}`}
+                className={`cursor-pointer rounded-md border px-2 py-0.5 text-xs font-medium tabular-nums transition-colors ${chipClass(c.tone)}`}
               >
                 {c.label}
               </button>
             ))}
           </div>
+
           <button
             type="button"
             onClick={() => openDrawer(null)}
-            className="ml-auto text-xs font-medium text-amber-900 underline-offset-2 hover:underline"
+            className="ml-auto shrink-0 text-xs font-medium text-[#7C4A57] underline-offset-2 hover:underline"
           >
-            Visas sąrašas ({counts.total})
+            Visas sąrašas
           </button>
-        </div>
-        {today ? (
-          <p className="mt-1 text-[11px] text-amber-900/70">
-            Patvirtinkite Kanban lentoje tą pačią dieną (laiškai/komerciniai iki 18:00). Šiandien: {formatDate(today)}.
-          </p>
-        ) : null}
+        </CrmContentContainer>
       </div>
 
       <ManagerObligationsDrawer

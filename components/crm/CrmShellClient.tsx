@@ -62,13 +62,14 @@ export function CrmShellClient({
         }}
       />
 
-      {user?.id ? <ManagerObligationsBar userId={user.id} /> : null}
-
       <div className="flex min-h-0 flex-1">
         <CrmSidebar user={user} />
-        <main className="min-w-0 flex-1 overflow-auto py-4">
-          <CrmContentContainer className="min-w-0">{children}</CrmContentContainer>
-        </main>
+        <div className="flex min-w-0 flex-1 flex-col">
+          {user?.id ? <ManagerObligationsBar userId={user.id} /> : null}
+          <main className="min-h-0 flex-1 overflow-auto py-4">
+            <CrmContentContainer className="min-w-0">{children}</CrmContentContainer>
+          </main>
+        </div>
       </div>
 
       <AccountEditDrawer
