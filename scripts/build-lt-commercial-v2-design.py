@@ -5,8 +5,8 @@ Never writes to LT_COMMERCIAL_V1.pdf. Text is removed at the content-stream
 operator level (BT…ET). Images, paths, form XObjects, and patterns stay.
 
 The intro manager portrait shares one image XObject with the teal crescent
-and KOT badge. After text stripping, the portrait disk and its anti-aliased
-fringe are removed from both RGB and SMask. Crescent and badge stay.
+and KOT badge. After text stripping, that entire composite is cleared (face,
+crescent, and badge). Runtime paints only the CRM account avatar.
 """
 
 from __future__ import annotations
@@ -467,19 +467,9 @@ def find_intro_portrait_xrefs(doc: pymupdf.Document) -> tuple[int, int]:
 
 
 def clear_intro_portrait_slot(doc: pymupdf.Document) -> dict:
-    """Make the intro portrait circle an empty slot.
+    """Clear the whole intro portrait composite (face + teal arc + KOT badge).
 
-    The 600×585 image is the portrait plus the teal crescent and badge.
-    Clearing the whole XObject would delete those graphics. The previous
-    punch only zeroed opaque (>=128) face-component pixels and kept a
-    whole circle around the badge, so the circular AA fringe and
-    shirt/hair next to the badge stayed visible under the runtime avatar.
-
-    This pass:
-    - keeps the crescent component (plus a small dilation for its own AA)
-    - keeps only badge-plate white and teal-icon pixels near the badge
-    - zeros RGB + SMask for the face disk, its AA halo, and any leftover
-      original person/photo-background pixels in that neighborhood
+    Runtime paints only the CRM account avatar into this empty area.
     """
     image_xref, smask_xref = find_intro_portrait_xrefs(doc)
     sm = pymupdf.Pixmap(doc, smask_xref)
@@ -496,9 +486,6 @@ def clear_intro_portrait_slot(doc: pymupdf.Document) -> dict:
     face_cx, face_cy, face_r = _fit_circle_rays(face_pts, width, height, orig_mask)
     if not (210 <= face_r <= 240):
         raise RuntimeError(f"Intro portrait radius out of range: {face_r}")
-    badge_cx, badge_cy, badge_r = _fit_badge_circle(
-        face_pts, face_cx, face_cy, face_r, width, height, orig_mask
-    )
 
     rgb = pymupdf.Pixmap(doc, image_xref)
     if rgb.n < 3 or (rgb.width, rgb.height) != INTRO_PORTRAIT_SIZE:
@@ -507,94 +494,24 @@ def clear_intro_portrait_slot(doc: pymupdf.Document) -> dict:
     n = rgb.n
     mask = bytearray(orig_mask)
 
-    crescent = bytearray(width * height)
-    for x, y in comps[1]:
-        crescent[y * width + x] = 255
-    crescent_keep = _dilate_mask(bytes(crescent), width, height, 3)
-    for y in range(height):
-        for x in range(width):
-            idx = y * width + x
-            if not crescent_keep[idx] or crescent[idx]:
-                continue
-            i = idx * n
-            r, g, b = pixels[i], pixels[i + 1], pixels[i + 2]
-            if _is_original_person_or_photo(r, g, b):
-                crescent_keep[idx] = 0
-
-    badge_seed = bytearray(width * height)
-    badge_r2 = (badge_r + 4) ** 2
-    for y in range(height):
-        for x in range(width):
-            if (x - badge_cx) ** 2 + (y - badge_cy) ** 2 > badge_r2:
-                continue
-            if orig_mask[y * width + x] == 0:
-                continue
-            i = (y * width + x) * n
-            r, g, b = pixels[i], pixels[i + 1], pixels[i + 2]
-            if _is_badge_disk(r, g, b) or _is_teal_design(r, g, b):
-                badge_seed[y * width + x] = 255
-    badge_keep = _dilate_mask(bytes(badge_seed), width, height, 2)
-    for y in range(height):
-        for x in range(width):
-            idx = y * width + x
-            if not badge_keep[idx] or badge_seed[idx]:
-                continue
-            i = idx * n
-            r, g, b = pixels[i], pixels[i + 1], pixels[i + 2]
-            # Dilation is only for badge AA; do not keep shirt/hair/gray photo.
-            if _is_original_person_or_photo(r, g, b):
-                badge_keep[idx] = 0
-    keep_count = sum(1 for a, b in zip(crescent_keep, badge_keep) if a or b)
-    if keep_count < 50_000:
-        raise RuntimeError(f"Intro keep mask too small: {keep_count}")
-
-    punch_r2 = (face_r + PORTRAIT_AA_MARGIN_PX) ** 2
     punched = 0
-    kept = 0
     for y in range(height):
         for x in range(width):
             idx = y * width + x
-            if crescent_keep[idx] or badge_keep[idx]:
-                kept += 1
+            if orig_mask[idx] == 0:
                 continue
             i = idx * n
-            r, g, b = pixels[i], pixels[i + 1], pixels[i + 2]
-            a = orig_mask[idx]
-            d2 = (x - face_cx) ** 2 + (y - face_cy) ** 2
-            in_slot_neighborhood = d2 <= punch_r2
-            leftover_person = a > 0 and _is_original_person_or_photo(r, g, b) and d2 <= (face_r + 14) ** 2
-            if not in_slot_neighborhood and not leftover_person:
-                continue
-            if a == 0 and not leftover_person:
-                continue
             mask[idx] = 0
             pixels[i] = 255
             pixels[i + 1] = 255
             pixels[i + 2] = 255
             punched += 1
 
-    leftover_person = 0
-    leftover_alpha_in_disk = 0
-    face_r2 = face_r ** 2
-    for y in range(height):
-        for x in range(width):
-            idx = y * width + x
-            a = mask[idx]
-            if a == 0:
-                continue
-            i = idx * n
-            r, g, b = pixels[i], pixels[i + 1], pixels[i + 2]
-            d2 = (x - face_cx) ** 2 + (y - face_cy) ** 2
-            if d2 <= face_r2 and not (crescent_keep[idx] or badge_keep[idx]):
-                leftover_alpha_in_disk += 1
-            if d2 <= (face_r + PORTRAIT_AA_MARGIN_PX) ** 2 and _is_original_person_or_photo(r, g, b):
-                leftover_person += 1
     if punched < 100_000:
-        raise RuntimeError(f"Intro portrait punch looks wrong: punched={punched} kept={kept}")
-    if leftover_person:
-        raise RuntimeError(f"Original person/photo pixels still visible after punch: {leftover_person}")
-    if leftover_alpha_in_disk:
-        raise RuntimeError(f"Non-keep SMask still non-zero inside face disk: {leftover_alpha_in_disk}")
+        raise RuntimeError(f"Intro portrait clear looks wrong: punched={punched}")
+    leftover = sum(1 for a in mask if a)
+    if leftover:
+        raise RuntimeError(f"Intro portrait SMask still non-zero: {leftover}")
 
     doc.update_stream(smask_xref, bytes(mask), compress=1)
     doc.update_stream(image_xref, bytes(pixels), compress=1)
@@ -610,9 +527,8 @@ def clear_intro_portrait_slot(doc: pymupdf.Document) -> dict:
         "image_xref": image_xref,
         "smask_xref": smask_xref,
         "face_px": {"cx": face_cx, "cy": face_cy, "r": face_r},
-        "badge_px": {"cx": badge_cx, "cy": badge_cy, "r": badge_r},
         "punched_pixels": punched,
-        "kept_arc_and_badge_pixels": kept,
+        "kept_arc_and_badge_pixels": 0,
         "slot_page": {
             "cx": round(page_cx, 3),
             "cy_top": round(page_cy_top, 3),
@@ -752,8 +668,9 @@ def main() -> int:
         slot = report.get("intro_portrait_slot", {}).get("slot_page", {})
         extra_by_page: dict[int, list[pymupdf.Rect]] = {}
         if slot:
+            # Ignore the whole design portrait composite area (face + former arc/badge).
             cx, cy, r = slot["cx"], slot["cy_top"], slot["r"]
-            extra_by_page[2] = [pymupdf.Rect(cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2)]
+            extra_by_page[2] = [pymupdf.Rect(cx - r - 28, cy - r - 28, cx + r + 28, cy + r + 28)]
         diffs = []
         for i in range(v1.page_count):
             d = pixmap_diff_outside_text(

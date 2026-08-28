@@ -44,7 +44,6 @@ import {
 } from "@/lib/commercialProposal/layoutV2";
 import { formatProposalPriceCell } from "@/lib/commercialProposal/money";
 import { resolveTemplatePdfPath } from "@/lib/commercialProposal/paths";
-import { prepareManagerPortrait } from "@/lib/commercialProposal/prepareManagerPortrait";
 import type { CommercialProposalLine, CommercialProposalSnapshot, CpPriceCategory } from "@/lib/commercialProposal/types";
 
 type Line = Omit<CommercialProposalLine, "id" | "proposal_id">;
@@ -524,15 +523,28 @@ async function tryPaintManagerAvatar(
 ): Promise<boolean> {
   if (!avatarBytes || avatarBytes.byteLength <= 0) return false;
   try {
-    const photo = prepareManagerPortrait(avatarBytes);
-    const head = photo.slice(0, 4);
+    const head = avatarBytes.slice(0, 4);
     const isPng = head[0] === 0x89 && head[1] === 0x50;
-    const img = isPng ? await page.doc.embedPng(photo) : await page.doc.embedJpg(photo);
+    const img = isPng ? await page.doc.embedPng(avatarBytes) : await page.doc.embedJpg(avatarBytes);
     drawCoverImage(page, img, cx, cy, r);
     return true;
   } catch {
     return false;
   }
+}
+
+/** Hide design-PDF portrait artwork (old photo + teal arc + KOT badge). */
+function coverDesignPortraitArtwork(page: PDFPage) {
+  const pad = 4;
+  const { x, yTop, w, h } = INTRO.photo;
+  page.drawRectangle({
+    x: x - pad,
+    y: yBottom(yTop + h) - pad,
+    width: w + pad * 2,
+    height: h + pad * 2,
+    color: c(COLOR.white),
+    borderWidth: 0,
+  });
 }
 
 function paintPlaceholder(page: PDFPage, fonts: CpFonts, name: string, cx: number, cy: number, r: number) {
@@ -678,7 +690,8 @@ export async function generateCommercialProposalPdfV2(input: {
     font: fonts.regular,
     color: c(COLOR.jobGray),
   });
-  // CRM avatar is the person photo only. Arc + KOT badge stay on the design page.
+  // Only the CRM account avatar (circular). No design arc / KOT badge.
+  coverDesignPortraitArtwork(intro);
   const slot = INTRO.photoSlot;
   const cx = slot.cx;
   const cy = yBottom(slot.yTop);
