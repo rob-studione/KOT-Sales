@@ -26,9 +26,83 @@ body {
   font-family: var(--font-sans);
 }
 
-[data-proposal-studio] :focus-visible {
+[data-proposal-studio] :focus-visible,
+[data-proposal-list] :focus-visible {
   outline: 2px solid #7C4A57;
   outline-offset: 2px;
+}
+
+[data-proposal-list] [data-proposal-table] {
+  width: 100%;
+  table-layout: fixed;
+}
+
+[data-proposal-list] [data-col="proposal"] { width: 176px; }
+[data-proposal-list] [data-col="recipient"] { width: auto; }
+[data-proposal-list] [data-col="manager"] { width: 0; }
+[data-proposal-list] [data-col="created"] { width: 0; }
+[data-proposal-list] [data-col="discounts"] { width: 0; }
+[data-proposal-list] [data-col="spacer"] { width: 0; }
+[data-proposal-list] [data-col="status"] { width: 128px; }
+[data-proposal-list] [data-col="actions"] { width: 128px; }
+
+@media (min-width: 1280px) {
+  [data-proposal-list] [data-col="manager"] { width: 220px; }
+}
+
+@media (min-width: 1600px) {
+  [data-proposal-list] [data-col="created"] { width: 120px; }
+  [data-proposal-list] [data-col="discounts"] { width: 240px; }
+}
+
+@media (min-width: 1920px) {
+  [data-proposal-list] [data-col="proposal"] { width: 176px; }
+  [data-proposal-list] [data-col="recipient"] { width: 460px; }
+  [data-proposal-list] [data-col="manager"] { width: 220px; }
+  [data-proposal-list] [data-col="created"] { width: 120px; }
+  [data-proposal-list] [data-col="discounts"] { width: 260px; }
+  [data-proposal-list] [data-col="spacer"] { width: auto; }
+  [data-proposal-list] [data-col="status"] { width: 132px; }
+  [data-proposal-list] [data-col="actions"] { width: 128px; }
+}
+
+[data-proposal-list] [data-recipient-cell] {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+[data-proposal-list] [data-recipient-avatar] {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+[data-proposal-list] [data-recipient-identity] {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+[data-proposal-list] [data-recipient-line] {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-proposal-list] [data-recipient-name] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-proposal-list] [data-recipient-badge] {
+  flex-shrink: 0;
 }
 
 @media (min-width: 1920px) {

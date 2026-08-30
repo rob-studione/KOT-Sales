@@ -19,7 +19,7 @@ export function ProposalToolNav({
   ];
 
   return (
-    <nav className="flex flex-wrap gap-1 border-b border-zinc-200 pb-3" aria-label="Komerciniai pasiūlymai">
+    <nav className="flex flex-wrap items-end gap-1 border-b border-[#E8E8EB]" aria-label="Komerciniai pasiūlymai">
       {items.map((item) => {
         const isActive = item.key === active;
         return (
@@ -27,8 +27,10 @@ export function ProposalToolNav({
             key={item.key}
             href={item.href}
             className={[
-              "rounded-md px-3 py-1.5 text-sm",
-              isActive ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900",
+              "inline-flex h-11 items-center px-3 text-sm",
+              isActive
+                ? "-mb-px border-b-2 border-[#7C4A57] font-medium text-[#7C4A57]"
+                : "text-[#6F7077] hover:text-[#17171B]",
             ].join(" ")}
           >
             {item.label}

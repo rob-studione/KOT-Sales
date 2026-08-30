@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { MoreVertical } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { duplicateCommercialProposalAction } from "@/lib/crm/commercialProposalActions";
 import { commercialProposalPath } from "@/lib/crm/commercialProposalPaths";
 import {
@@ -122,6 +122,20 @@ export function ProposalListActions({
       >
         <a
           role="menuitem"
+          href={
+            hasPdf
+              ? `/api/crm/commercial-proposals/${proposalId}/pdf`
+              : `/api/crm/commercial-proposals/${proposalId}/preview`
+          }
+          target="_blank"
+          rel="noreferrer"
+          className="block px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
+          onClick={() => onMenuOpenChange(false)}
+        >
+          PDF
+        </a>
+        <a
+          role="menuitem"
           href={`/api/crm/commercial-proposals/${proposalId}/preview`}
           target="_blank"
           rel="noreferrer"
@@ -162,40 +176,24 @@ export function ProposalListActions({
     ) : null;
 
   return (
-    <div className="flex items-center gap-x-3 text-sm whitespace-nowrap">
-      <Link href={commercialProposalPath(proposalId)} className="font-medium text-[#7C4A57] hover:underline">
+    <div className="flex items-center justify-end gap-x-1 whitespace-nowrap">
+      <Link
+        href={commercialProposalPath(proposalId)}
+        className="inline-flex h-10 items-center px-1.5 text-[13px] font-medium text-[#7C4A57] hover:underline"
+      >
         Atidaryti
       </Link>
-      {hasPdf ? (
-        <a
-          href={`/api/crm/commercial-proposals/${proposalId}/pdf`}
-          target="_blank"
-          rel="noreferrer"
-          className="text-[#7C4A57] hover:underline"
-        >
-          PDF
-        </a>
-      ) : (
-        <a
-          href={`/api/crm/commercial-proposals/${proposalId}/preview`}
-          target="_blank"
-          rel="noreferrer"
-          className="text-[#7C4A57] hover:underline"
-        >
-          PDF
-        </a>
-      )}
-
       <button
         ref={btnRef}
         type="button"
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-600 hover:bg-zinc-100"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] text-[#6F7077] hover:bg-[#F7F7F8]"
         aria-label="Daugiau veiksmų"
+        title="Daugiau veiksmų"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         onClick={() => onMenuOpenChange(!menuOpen)}
       >
-        <MoreVertical className="h-4 w-4" />
+        <MoreHorizontal className="h-4 w-4" />
       </button>
 
       {menu ? createPortal(menu, document.body) : null}

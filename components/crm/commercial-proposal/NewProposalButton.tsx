@@ -51,7 +51,7 @@ export function NewProposalButton() {
       <button
         ref={triggerRef}
         type="button"
-        className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948]"
+        className="inline-flex h-10 shrink-0 items-center rounded-[10px] bg-[#7C4A57] px-4 text-sm font-medium text-white hover:bg-[#693948]"
         onClick={() => setOpen(true)}
       >
         Naujas pasiūlymas

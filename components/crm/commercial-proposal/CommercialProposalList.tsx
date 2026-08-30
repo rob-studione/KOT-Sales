@@ -5,7 +5,9 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { ProposalListActions } from "@/components/crm/commercial-proposal/ProposalListActions";
-import { formatCategoryDiscountsLabel, templateVersionLabel } from "@/lib/commercialProposal/uiLabels";
+import { RecipientTypeBadge } from "@/components/crm/commercial-proposal/RecipientSelector";
+import { recipientInitials, statusChipClass, statusLabel } from "@/components/crm/commercial-proposal/studio/shared";
+import { formatCategoryDiscountsLabel } from "@/lib/commercialProposal/uiLabels";
 import { formatDate } from "@/lib/crm/format";
 import type { ProposalListRow } from "@/lib/crm/commercialProposalActions";
 import { CP_TOOL_PATH } from "@/lib/crm/commercialProposalPaths";
@@ -15,38 +17,61 @@ const ERROR_TOAST_MS = 5000;
 
 type ListToast = { kind: "ok" | "error"; text: string };
 
-function statusLabel(status: string): string {
-  if (status === "draft") return "Juodraštis";
-  if (status === "generated") return "Sugeneruotas";
-  if (status === "sent") return "Išsiųstas";
-  return status;
+function recipientDisplay(row: ProposalListRow): { name: string; company: string | null } {
+  const companyName = (row.recipient_name || row.client_name || "").trim();
+  const contact = (row.contact_name || "").trim();
+  if (contact && contact !== companyName) {
+    return { name: contact, company: companyName || null };
+  }
+  return { name: companyName || "—", company: null };
 }
 
-function statusChipClass(status: string): string {
-  if (status === "draft") return "border-zinc-300 bg-zinc-50 text-zinc-700";
-  if (status === "generated") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (status === "sent") return "border-[#7C4A57]/40 bg-[#F7EEF0] text-[#7C4A57]";
-  return "border-zinc-300 bg-zinc-50 text-zinc-700";
+function RecipientCell({ row }: { row: ProposalListRow }) {
+  const { name, company } = recipientDisplay(row);
+  return (
+    <div data-recipient-cell="cell">
+      <span
+        aria-hidden
+        data-recipient-avatar="avatar"
+        className="rounded-full bg-[#F7EEF0] text-[11px] font-semibold text-[#7C4A57]"
+      >
+        {recipientInitials(name)}
+      </span>
+      <div data-recipient-identity="identity">
+        <div data-recipient-line="line">
+          <span data-recipient-name="name" className="text-[13px] font-semibold text-[#17171B]" title={name}>
+            {name}
+          </span>
+          <span data-recipient-badge="badge">
+            <RecipientTypeBadge type={row.recipient_type === "lead" ? "lead" : "client"} />
+          </span>
+        </div>
+        {company ? (
+          <span className="mt-0.5 block truncate text-[12px] text-[#6F7077]" title={company}>
+            {company}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 export function CommercialProposalList({
   rows,
   canAdmin,
   showDeletedToast = false,
+  searchQuery = "",
 }: {
   rows: ProposalListRow[];
   canAdmin: boolean;
   showDeletedToast?: boolean;
+  searchQuery?: string;
 }) {
   const router = useRouter();
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [toast, setToast] = useState<ListToast | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const visible = useMemo(() => rows.filter((r) => !hiddenIds.includes(r.id)), [rows, hiddenIds]);
-  const showTemplate = useMemo(() => {
-    const versions = new Set(visible.map((r) => r.template_version || "LT_COMMERCIAL_V2"));
-    return versions.size > 1;
-  }, [visible]);
 
   useEffect(() => {
     if (!showDeletedToast) return;
@@ -63,6 +88,10 @@ export function CommercialProposalList({
     const t = window.setTimeout(() => setToast(null), ms);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  const emptyMessage = searchQuery.trim()
+    ? "Pagal paiešką pasiūlymų nerasta."
+    : "Komercinių pasiūlymų dar nėra.";
 
   return (
     <>
@@ -90,66 +119,99 @@ export function CommercialProposalList({
             document.body
           )
         : null}
-      <div className="mt-4 overflow-visible rounded-[14px] border border-[#E8E8EB] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-        <table className="w-full min-w-[760px] text-sm">
-          <thead className="border-b border-[#EEEEF0] bg-[#F7F7F8] text-left text-xs font-medium uppercase tracking-wide text-[#6F7077]">
+      <div className="overflow-x-auto">
+        <table data-proposal-table="table" className="w-full text-sm">
+          <colgroup>
+            <col data-col="proposal" />
+            <col data-col="recipient" />
+            <col data-col="manager" />
+            <col data-col="created" />
+            <col data-col="discounts" />
+            <col data-col="spacer" />
+            <col data-col="status" />
+            <col data-col="actions" />
+          </colgroup>
+          <thead className="border-b border-[#E8E8EB] bg-[#FBFBFB] text-left text-[11px] font-medium uppercase tracking-wide text-[#6F7077]">
             <tr>
-              <th className="px-4 py-3 font-medium text-[#6F7077]">Numeris</th>
-              <th className="px-4 py-3 font-medium text-[#6F7077]">Gavėjas</th>
-              <th className="px-4 py-3 font-medium text-[#6F7077]">Tipas</th>
-              <th className="px-4 py-3 font-medium text-[#6F7077]">Vadybininkas</th>
-              <th className="px-4 py-3 font-medium text-[#6F7077]">Sukurta</th>
-              <th className="px-4 py-3 font-medium text-[#6F7077]">Nuolaida</th>
-              <th className="px-4 py-3 font-medium text-[#6F7077]">Būsena</th>
-              {showTemplate ? <th className="px-4 py-3 font-medium text-[#6F7077]">Šablonas</th> : null}
-              <th className="px-4 py-3 font-medium text-[#6F7077]">Veiksmai</th>
+              <th className="px-4 py-2.5 font-medium">Pasiūlymas</th>
+              <th className="px-4 py-2.5 font-medium">Gavėjas</th>
+              <th className="hidden px-4 py-2.5 font-medium xl:table-cell">Rengėjas</th>
+              <th className="hidden px-4 py-2.5 font-medium min-[1600px]:table-cell">Sukurta</th>
+              <th className="hidden px-4 py-2.5 font-medium min-[1600px]:table-cell">Nuolaidos</th>
+              <th aria-hidden className="hidden p-0 min-[1920px]:table-cell" />
+              <th className="px-4 py-2.5 font-medium">Būsena</th>
+              <th className="px-4 py-2.5 font-medium">
+                <span className="sr-only">Veiksmai</span>
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {visible.map((r) => (
-              <tr key={r.id}>
-                <td className="px-4 py-3 font-medium text-zinc-900">{r.proposal_number ?? "Juodraštis"}</td>
-                <td className="px-4 py-3 text-zinc-800">{r.recipient_name || r.client_name || "—"}</td>
-                <td className="px-4 py-3 text-zinc-700">{r.recipient_type === "lead" ? "Lead" : "Klientas"}</td>
-                <td className="px-4 py-3 text-zinc-700">{r.manager_name ?? "—"}</td>
-                <td className="px-4 py-3 text-zinc-700">{formatDate(r.created_at)}</td>
-                <td className="px-4 py-3 text-zinc-700">{formatCategoryDiscountsLabel(r.discounts)}</td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${statusChipClass(r.status)}`}
-                  >
-                    {statusLabel(r.status)}
-                  </span>
-                </td>
-                {showTemplate ? (
-                  <td className="px-4 py-3 text-zinc-700">{templateVersionLabel(r.template_version)}</td>
-                ) : null}
-                <td className="px-4 py-3">
-                  <ProposalListActions
-                    proposalId={r.id}
-                    proposalNumber={r.proposal_number}
-                    status={r.status}
-                    hasPdf={Boolean(r.pdf_storage_path)}
-                    canDelete={r.status === "draft" || canAdmin}
-                    menuOpen={openMenuId === r.id}
-                    onMenuOpenChange={(open) => setOpenMenuId(open ? r.id : null)}
-                    onDeleted={() => {
-                      setOpenMenuId(null);
-                      setHiddenIds((prev) => (prev.includes(r.id) ? prev : [...prev, r.id]));
-                      setToast({ kind: "ok", text: "✓ Pasiūlymas ištrintas." });
-                      router.refresh();
-                    }}
-                    onDeleteError={() => {
-                      setToast({ kind: "error", text: "Nepavyko ištrinti pasiūlymo." });
-                    }}
-                  />
-                </td>
-              </tr>
-            ))}
+          <tbody className="divide-y divide-[#EEEEF0]">
+            {visible.map((r) => {
+              const discountLabel = formatCategoryDiscountsLabel(r.discounts);
+              const hasDiscount = discountLabel !== "Be nuolaidų";
+              return (
+                <tr key={r.id} className="h-[70px] hover:bg-[#FBF7F8]">
+                  <td className="px-4 align-middle">
+                    {r.proposal_number ? (
+                      <span className="font-semibold text-[#17171B]">{r.proposal_number}</span>
+                    ) : (
+                      <span className="text-[13px] text-[#6F7077]">Dar nesugeneruotas</span>
+                    )}
+                  </td>
+                  <td className="min-w-0 px-4 align-middle">
+                    <RecipientCell row={r} />
+                  </td>
+                  <td className="hidden px-4 align-middle xl:table-cell">
+                    <span className="block truncate text-[13px] text-[#5C5D64]" title={r.manager_name ?? undefined}>
+                      {r.manager_name ?? "—"}
+                    </span>
+                  </td>
+                  <td className="hidden whitespace-nowrap px-4 align-middle text-[13px] text-[#6F7077] min-[1600px]:table-cell">
+                    {formatDate(r.created_at)}
+                  </td>
+                  <td className="hidden px-4 align-middle min-[1600px]:table-cell">
+                    <span
+                      className={["block truncate text-[13px]", hasDiscount ? "text-[#7C4A57]" : "text-[#6F7077]"].join(" ")}
+                      title={discountLabel}
+                    >
+                      {discountLabel}
+                    </span>
+                  </td>
+                  <td aria-hidden className="hidden p-0 min-[1920px]:table-cell" />
+                  <td className="whitespace-nowrap px-4 align-middle">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusChipClass(r.status)}`}
+                    >
+                      {statusLabel(r.status)}
+                    </span>
+                  </td>
+                  <td className="px-4 align-middle">
+                    <ProposalListActions
+                      proposalId={r.id}
+                      proposalNumber={r.proposal_number}
+                      status={r.status}
+                      hasPdf={Boolean(r.pdf_storage_path)}
+                      canDelete={r.status === "draft" || canAdmin}
+                      menuOpen={openMenuId === r.id}
+                      onMenuOpenChange={(open) => setOpenMenuId(open ? r.id : null)}
+                      onDeleted={() => {
+                        setOpenMenuId(null);
+                        setHiddenIds((prev) => (prev.includes(r.id) ? prev : [...prev, r.id]));
+                        setToast({ kind: "ok", text: "✓ Pasiūlymas ištrintas." });
+                        router.refresh();
+                      }}
+                      onDeleteError={() => {
+                        setToast({ kind: "error", text: "Nepavyko ištrinti pasiūlymo." });
+                      }}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={showTemplate ? 9 : 8} className="px-4 py-8 text-center text-sm text-zinc-500">
-                  Komercinių pasiūlymų dar nėra.
+                <td colSpan={8} className="px-4 py-10 text-center text-[13px] text-[#6F7077]">
+                  {emptyMessage}
                 </td>
               </tr>
             ) : null}
