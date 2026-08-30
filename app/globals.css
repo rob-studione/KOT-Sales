@@ -25,3 +25,153 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+
+[data-proposal-studio] :focus-visible {
+  outline: 2px solid #7C4A57;
+  outline-offset: 2px;
+}
+
+@media (min-width: 1920px) {
+  [data-proposal-studio] [data-studio-workspace] {
+    grid-template-columns: 176px minmax(720px, 840px) minmax(500px, 560px);
+    grid-template-rows: minmax(0, 1fr);
+    column-gap: 1.5rem;
+    justify-content: start;
+  }
+}
+
+[data-proposal-studio] [data-studio-editor-scroll] {
+  container-type: inline-size;
+  container-name: studio-editor;
+}
+
+[data-proposal-studio] [data-price-row],
+[data-proposal-studio] [data-price-head] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem 3.5rem minmax(7.5rem, auto);
+  column-gap: 0.5rem;
+  align-items: center;
+}
+
+[data-proposal-studio] [data-price-col="name"] {
+  min-width: 0;
+}
+
+[data-proposal-studio] [data-price-col="base"] {
+  justify-self: end;
+  text-align: right;
+}
+
+[data-proposal-studio] [data-price-col="discount"] {
+  justify-self: end;
+  text-align: right;
+}
+
+[data-proposal-studio] [data-price-col="final"] {
+  justify-self: end;
+  text-align: right;
+}
+
+[data-proposal-studio] [data-price-col="action"] {
+  display: none;
+}
+
+[data-proposal-studio] [data-price-keisti-inline] {
+  display: inline-flex;
+}
+
+@container studio-editor (min-width: 760px) {
+  [data-proposal-studio] [data-price-row],
+  [data-proposal-studio] [data-price-head] {
+    grid-template-columns: minmax(280px, 1fr) 96px 88px 112px 72px;
+    column-gap: 20px;
+  }
+
+  [data-proposal-studio] [data-price-col="discount"] {
+    justify-self: center;
+    text-align: center;
+  }
+
+  [data-proposal-studio] [data-price-col="action"] {
+    display: flex;
+    justify-self: end;
+    justify-content: flex-end;
+  }
+
+  [data-proposal-studio] [data-price-keisti-inline] {
+    display: none;
+  }
+}
+
+[data-proposal-studio] [data-gavejas-row] {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  appearance: none;
+  grid-template-columns: 40px minmax(0, 1fr) 72px;
+  column-gap: 10px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+[data-proposal-studio] [data-gavejas-avatar] {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+[data-proposal-studio] [data-gavejas-identity] {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+[data-proposal-studio] [data-gavejas-name] {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-proposal-studio] [data-gavejas-badge] {
+  flex: none;
+}
+
+[data-proposal-studio] [data-gavejas-action] {
+  display: flex;
+  width: 72px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+}
+
+[data-proposal-studio] [data-pdf-thumbs] {
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4d8 transparent;
+}
+
+[data-proposal-studio] [data-pdf-thumbs]::-webkit-scrollbar {
+  height: 6px;
+}
+
+[data-proposal-studio] [data-pdf-thumbs]::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 999px;
+}
+
+[data-proposal-studio] [data-pdf-thumbs]::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -536,7 +536,7 @@ export async function updateAutomaticProjectRulesAction(
 }
 
 export type CreateManualProjectLeadActionResult =
-  | { ok: true }
+  | { ok: true; id?: string }
   | { ok: false; error: string }
   | { ok: false; duplicate: true; match: ExistingClientMatch }
   | { ok: false; nameSuggestions: true; suggestions: ExistingClientMatch[] }
@@ -620,26 +620,30 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
     }
   }
 
-  const { error } = await supabase.from("project_manual_leads").insert({
-    project_id: projectId,
-    company_name: companyName,
-    company_code: companyCode,
-    email,
-    phone,
-    contact_name: contactName,
-    notes,
-    crm_status: "new_lead",
-    last_order_at: null,
-  });
+  const { data: inserted, error } = await supabase
+    .from("project_manual_leads")
+    .insert({
+      project_id: projectId,
+      company_name: companyName,
+      company_code: companyCode,
+      email,
+      phone,
+      contact_name: contactName,
+      notes,
+      crm_status: "new_lead",
+      last_order_at: null,
+    })
+    .select("id")
+    .single();
 
-  if (error) {
+  if (error || !inserted) {
     console.error("[projectActions] createManualProjectLead failed", error);
-    return { ok: false, error: error.message ?? "Nepavyko išsaugoti kandidato." };
+    return { ok: false, error: error?.message ?? "Nepavyko išsaugoti kandidato." };
   }
 
   revalidatePath(`/projektai/${projectId}`, "layout");
   revalidatePath("/projektai");
-  return { ok: true };
+  return { ok: true, id: String(inserted.id) };
 }
 
 export async function markAutoCandidateAsInvalidAction(

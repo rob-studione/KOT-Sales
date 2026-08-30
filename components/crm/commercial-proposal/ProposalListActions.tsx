@@ -1,11 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import { MoreVertical } from "lucide-react";
 import { duplicateCommercialProposalAction } from "@/lib/crm/commercialProposalActions";
 import { commercialProposalPath } from "@/lib/crm/commercialProposalPaths";
-import { ProposalDeleteControl } from "@/components/crm/commercial-proposal/ProposalDeleteControl";
+import {
+  ProposalDeleteControl,
+  type ProposalDeleteControlHandle,
+} from "@/components/crm/commercial-proposal/ProposalDeleteControl";
+
+const MENU_GAP = 4;
+const MENU_PAD = 8;
 
 export function ProposalListActions({
   proposalId,
@@ -13,31 +21,151 @@ export function ProposalListActions({
   status,
   hasPdf,
   canDelete,
+  menuOpen,
+  onMenuOpenChange,
   onDeleted,
+  onDeleteError,
 }: {
   proposalId: string;
   proposalNumber: string | null;
   status: string;
   hasPdf: boolean;
   canDelete: boolean;
+  menuOpen: boolean;
+  onMenuOpenChange: (open: boolean) => void;
   onDeleted: () => void;
+  onDeleteError?: (message: string) => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [mounted, setMounted] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const deleteRef = useRef<ProposalDeleteControlHandle>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setCoords(null);
+      return;
+    }
+    const btn = btnRef.current;
+    const menu = menuRef.current;
+    if (!btn || !menu) return;
+
+    function place() {
+      const b = btn.getBoundingClientRect();
+      const mh = menu.offsetHeight;
+      const mw = menu.offsetWidth;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const spaceBelow = vh - b.bottom - MENU_PAD;
+      const spaceAbove = b.top - MENU_PAD;
+      const openUp = spaceBelow < mh && spaceAbove > spaceBelow;
+
+      let top = openUp ? b.top - mh - MENU_GAP : b.bottom + MENU_GAP;
+      top = Math.max(MENU_PAD, Math.min(top, vh - mh - MENU_PAD));
+
+      let left = b.right - mw;
+      left = Math.max(MENU_PAD, Math.min(left, vw - mw - MENU_PAD));
+
+      setCoords({ top, left });
+    }
+
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [menuOpen, mounted]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function onPointerDown(e: PointerEvent) {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (btnRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      onMenuOpenChange(false);
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onMenuOpenChange(false);
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen, onMenuOpenChange]);
+
+  const menu =
+    menuOpen && mounted ? (
+      <div
+        ref={menuRef}
+        role="menu"
+        className="fixed z-[60] min-w-[150px] rounded-lg border border-zinc-200 bg-white py-1 shadow-lg"
+        style={{
+          top: coords?.top ?? 0,
+          left: coords?.left ?? 0,
+          visibility: coords ? "visible" : "hidden",
+        }}
+      >
+        <a
+          role="menuitem"
+          href={`/api/crm/commercial-proposals/${proposalId}/preview`}
+          target="_blank"
+          rel="noreferrer"
+          className="block px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
+          onClick={() => onMenuOpenChange(false)}
+        >
+          Peržiūrėti
+        </a>
+        <button
+          type="button"
+          role="menuitem"
+          disabled={pending}
+          className="block w-full px-3 py-2 text-left text-sm text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+          onClick={() => {
+            onMenuOpenChange(false);
+            start(async () => {
+              const res = await duplicateCommercialProposalAction(proposalId);
+              if (res.ok) router.push(commercialProposalPath(res.id));
+            });
+          }}
+        >
+          Dubliuoti
+        </button>
+        {canDelete ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full border-t border-zinc-100 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+            onClick={() => {
+              onMenuOpenChange(false);
+              deleteRef.current?.open();
+            }}
+          >
+            Ištrinti
+          </button>
+        ) : null}
+      </div>
+    ) : null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm whitespace-nowrap">
-      <Link href={commercialProposalPath(proposalId)} className="text-[#7C4A57] hover:underline">
+    <div className="flex items-center gap-x-3 text-sm whitespace-nowrap">
+      <Link href={commercialProposalPath(proposalId)} className="font-medium text-[#7C4A57] hover:underline">
         Atidaryti
       </Link>
-      <a
-        href={`/api/crm/commercial-proposals/${proposalId}/preview`}
-        target="_blank"
-        rel="noreferrer"
-        className="text-[#7C4A57] hover:underline"
-      >
-        Peržiūrėti
-      </a>
       {hasPdf ? (
         <a
           href={`/api/crm/commercial-proposals/${proposalId}/pdf`}
@@ -45,29 +173,43 @@ export function ProposalListActions({
           rel="noreferrer"
           className="text-[#7C4A57] hover:underline"
         >
-          Atsisiųsti PDF
+          PDF
         </a>
-      ) : null}
+      ) : (
+        <a
+          href={`/api/crm/commercial-proposals/${proposalId}/preview`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[#7C4A57] hover:underline"
+        >
+          PDF
+        </a>
+      )}
+
       <button
+        ref={btnRef}
         type="button"
-        disabled={pending}
-        className="text-[#7C4A57] hover:underline disabled:opacity-50"
-        onClick={() => {
-          start(async () => {
-            const res = await duplicateCommercialProposalAction(proposalId);
-            if (res.ok) router.push(commercialProposalPath(res.id));
-          });
-        }}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-600 hover:bg-zinc-100"
+        aria-label="Daugiau veiksmų"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => onMenuOpenChange(!menuOpen)}
       >
-        Dubliuoti
+        <MoreVertical className="h-4 w-4" />
       </button>
+
+      {menu ? createPortal(menu, document.body) : null}
+
       {canDelete ? (
         <ProposalDeleteControl
+          ref={deleteRef}
           proposalId={proposalId}
           proposalNumber={proposalNumber}
           status={status}
           variant="link"
+          hideTrigger
           onDeleted={onDeleted}
+          onDeleteError={onDeleteError}
         />
       ) : null}
     </div>

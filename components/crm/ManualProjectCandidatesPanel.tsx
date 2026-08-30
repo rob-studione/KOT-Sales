@@ -19,6 +19,7 @@ import {
 import { ClientProjectHistoryList } from "@/components/crm/ClientProjectHistoryList";
 import { ProjectCandidatePickForm } from "@/components/crm/ProjectCandidatePickForm";
 import { formatDate, formatDateTimeLt, formatMoney } from "@/lib/crm/format";
+import { CP_TOOL_PATH } from "@/lib/crm/commercialProposalPaths";
 import type { ExistingClientMatch, ExistingProjectLeadMatch } from "@/lib/crm/findMatchingExistingClient";
 import type {
   ManualCandidatePageRow,
@@ -592,6 +593,12 @@ export function ManualProjectCandidatesPanel({
                           }
                         }}
                       />
+                      <Link
+                        href={`${CP_TOOL_PATH}/naujas?recipientType=lead&recipientId=${encodeURIComponent(row.lead.id)}`}
+                        className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      >
+                        Naujas pasiūlymas
+                      </Link>
                       <button
                         type="button"
                         disabled={rowActionPending}

@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { CrmListPageControls, CrmListPageIntro, CrmListPageMain } from "@/components/crm/CrmListPageLayout";
 import { ListPageSearchForm } from "@/components/crm/ListPageSearchForm";
 import { CommercialProposalList } from "@/components/crm/commercial-proposal/CommercialProposalList";
+import { NewProposalButton } from "@/components/crm/commercial-proposal/NewProposalButton";
 import { ProposalToolNav } from "@/components/crm/commercial-proposal/ProposalToolNav";
 import { listAllProposalsAction } from "@/lib/crm/commercialProposalActions";
 import { CP_TOOL_PATH } from "@/lib/crm/commercialProposalPaths";
@@ -44,20 +44,10 @@ export default async function CommercialProposalsToolPage({
               inputId="cp-search"
               hiddenFields={{}}
             />
-            <Link
-              href={`${CP_TOOL_PATH}/naujas`}
-              className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948]"
-            >
-              Naujas pasiūlymas
-            </Link>
+            <NewProposalButton />
           </div>
         </CrmListPageControls>
-        {deleted ? (
-          <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-            Pasiūlymas ištrintas.
-          </p>
-        ) : null}
-        <CommercialProposalList rows={rows} canAdmin={canAdmin} />
+        <CommercialProposalList rows={rows} canAdmin={canAdmin} showDeletedToast={deleted} />
       </CrmListPageMain>
     </CrmTableContainer>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState, useTransition } from "react";
 import { deleteCommercialProposalAction } from "@/lib/crm/commercialProposalActions";
 import type { CommercialProposalStatus } from "@/lib/commercialProposal/types";
 
@@ -20,19 +20,25 @@ function deleteCopy(status: string, proposalNumber: string | null): { title: str
   };
 }
 
-export function ProposalDeleteControl({
-  proposalId,
-  proposalNumber,
-  status,
-  variant,
-  onDeleted,
-}: {
-  proposalId: string;
-  proposalNumber: string | null;
-  status: CommercialProposalStatus | string;
-  variant: "link" | "button";
-  onDeleted: () => void;
-}) {
+export type ProposalDeleteControlHandle = {
+  open: () => void;
+};
+
+export const ProposalDeleteControl = forwardRef<
+  ProposalDeleteControlHandle,
+  {
+    proposalId: string;
+    proposalNumber: string | null;
+    status: CommercialProposalStatus | string;
+    variant: "link" | "button";
+    hideTrigger?: boolean;
+    onDeleted: () => void;
+    onDeleteError?: (message: string) => void;
+  }
+>(function ProposalDeleteControl(
+  { proposalId, proposalNumber, status, variant, hideTrigger = false, onDeleted, onDeleteError },
+  ref
+) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +56,11 @@ export function ProposalDeleteControl({
     dialogRef.current?.close();
   }
 
+  useImperativeHandle(ref, () => ({ open }));
+
   return (
     <>
-      {variant === "link" ? (
+      {!hideTrigger && variant === "link" ? (
         <button
           type="button"
           className="text-red-700 hover:underline disabled:opacity-50"
@@ -61,7 +69,8 @@ export function ProposalDeleteControl({
         >
           Ištrinti
         </button>
-      ) : (
+      ) : null}
+      {!hideTrigger && variant === "button" ? (
         <button
           type="button"
           className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
@@ -70,7 +79,7 @@ export function ProposalDeleteControl({
         >
           Ištrinti
         </button>
-      )}
+      ) : null}
 
       <dialog ref={dialogRef} className="fixed inset-0 m-auto w-[min(92vw,32rem)] rounded-xl p-0 backdrop:bg-black/30">
         <div className="rounded-xl border border-red-200 bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.35)]">
@@ -110,7 +119,12 @@ export function ProposalDeleteControl({
                 start(async () => {
                   const res = await deleteCommercialProposalAction(proposalId);
                   if (!res.ok) {
-                    setError(res.error);
+                    if (onDeleteError) {
+                      dialogRef.current?.close();
+                      onDeleteError(res.error);
+                    } else {
+                      setError(res.error);
+                    }
                     return;
                   }
                   dialogRef.current?.close();
@@ -125,4 +139,4 @@ export function ProposalDeleteControl({
       </dialog>
     </>
   );
-}
+});

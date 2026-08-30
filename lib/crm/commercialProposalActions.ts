@@ -166,6 +166,7 @@ export type ProposalRecipientOption = {
   clientKey: string;
   clientId: string | null;
   projectName?: string | null;
+  projectId?: string | null;
 };
 
 async function loadLeadSummary(
@@ -191,6 +192,7 @@ async function loadLeadSummary(
     companyCode: data.company_code == null ? null : String(data.company_code),
     clientKey: manualLeadClientKey(String(data.id)),
     clientId: null,
+    projectId: data.project_id == null ? null : String(data.project_id),
   };
 }
 
@@ -567,8 +569,149 @@ export async function searchProposalRecipientsAction(input: {
       clientKey: manualLeadClientKey(String(row.id)),
       clientId: null,
       projectName: row.project_id ? projectNames.get(String(row.project_id)) ?? null : null,
+      projectId: row.project_id == null ? null : String(row.project_id),
     };
   });
+}
+
+export async function searchAllProposalRecipientsAction(query: string): Promise<ProposalRecipientOption[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const [clients, leads] = await Promise.all([
+    searchProposalRecipientsAction({ recipientType: "client", query: q }),
+    searchProposalRecipientsAction({ recipientType: "lead", query: q }),
+  ]);
+  return [...clients, ...leads];
+}
+
+export async function getProposalRecipientOptionAction(input: {
+  recipientType: CpRecipientType;
+  recipientId: string;
+}): Promise<ProposalRecipientOption | null> {
+  const actor = await getCurrentCrmUser();
+  if (!canUseProposals(actor) || !actor) throw new Error("Not authorized");
+  const admin = createSupabaseAdminClient();
+  const recipientType = input.recipientType === "lead" ? "lead" : "client";
+  const recipientId = String(input.recipientId ?? "").trim();
+  if (!recipientId) return null;
+  if (recipientType === "client") {
+    const client = await loadClientSummary(admin, recipientId);
+    if (!client) return null;
+    return {
+      recipientType: "client",
+      recipientId: client.client_id || client.client_key,
+      recipientName: client.name,
+      contactName: null,
+      email: client.email,
+      phone: client.phone,
+      companyCode: client.company_code,
+      clientKey: client.client_key,
+      clientId: client.client_id,
+    };
+  }
+  return loadLeadSummary(admin, recipientId);
+}
+
+export async function listManualProjectsForProposalAction(): Promise<Array<{ id: string; name: string }>> {
+  const actor = await getCurrentCrmUser();
+  if (!canUseProposals(actor) || !actor) throw new Error("Not authorized");
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("projects")
+    .select("id,name")
+    .eq("project_type", "manual")
+    .order("created_at", { ascending: false })
+    .limit(40);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({ id: String(row.id), name: String(row.name ?? "Projektas") }));
+}
+
+export type ProposalRecipientFields = {
+  recipientType: CpRecipientType;
+  recipientId: string;
+  recipientName: string;
+  contactName: string | null;
+  recipientEmail: string | null;
+  recipientPhone: string | null;
+  clientKey: string;
+  clientId: string | null;
+  companyCode: string | null;
+  projectId: string | null;
+};
+
+export async function updateProposalRecipientAction(input: {
+  proposalId: string;
+  recipientType: CpRecipientType;
+  recipientId: string;
+}): Promise<{ ok: true; recipient: ProposalRecipientFields } | { ok: false; error: string }> {
+  const actor = await getCurrentCrmUser();
+  if (!canUseProposals(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const recipientType = input.recipientType === "lead" ? "lead" : "client";
+  const recipientId = String(input.recipientId ?? "").trim();
+  if (!recipientId) return { ok: false, error: "Pasirinkite gavėją." };
+
+  const admin = createSupabaseAdminClient();
+  const { data: row, error } = await admin
+    .from("commercial_proposals")
+    .select("id,status")
+    .eq("id", input.proposalId)
+    .maybeSingle();
+  if (error || !row) return { ok: false, error: error?.message ?? "Pasiūlymas nerastas." };
+  if (String(row.status) !== "draft") return { ok: false, error: "Keisti galima tik juodraštį." };
+
+  let recipient: ProposalRecipientOption | null = null;
+  if (recipientType === "client") {
+    const client = await loadClientSummary(admin, recipientId);
+    if (!client) return { ok: false, error: "Klientas nerastas." };
+    recipient = {
+      recipientType: "client",
+      recipientId: client.client_id || client.client_key,
+      recipientName: client.name,
+      contactName: null,
+      email: client.email,
+      phone: client.phone,
+      companyCode: client.company_code,
+      clientKey: client.client_key,
+      clientId: client.client_id,
+    };
+  } else {
+    recipient = await loadLeadSummary(admin, recipientId);
+    if (!recipient) return { ok: false, error: "Lead nerastas." };
+  }
+
+  const { error: uErr } = await admin
+    .from("commercial_proposals")
+    .update({
+      client_key: recipient.clientKey,
+      client_id: recipient.clientId,
+      company_code: recipient.companyCode,
+      client_name: recipient.recipientName,
+      recipient_type: recipient.recipientType,
+      recipient_id: recipient.recipientId,
+      recipient_name: recipient.recipientName,
+      contact_name: recipient.contactName,
+      recipient_email: recipient.email,
+      recipient_phone: recipient.phone,
+    })
+    .eq("id", input.proposalId);
+  if (uErr) return { ok: false, error: uErr.message };
+
+  revalidateProposalTool(input.proposalId);
+  return {
+    ok: true,
+    recipient: {
+      recipientType: recipient.recipientType,
+      recipientId: recipient.recipientId,
+      recipientName: recipient.recipientName,
+      contactName: recipient.contactName,
+      recipientEmail: recipient.email,
+      recipientPhone: recipient.phone,
+      clientKey: recipient.clientKey,
+      clientId: recipient.clientId,
+      companyCode: recipient.companyCode,
+      projectId: recipient.projectId ?? null,
+    },
+  };
 }
 
 export type ProposalListRow = CommercialProposalRow & { manager_name: string | null };

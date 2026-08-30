@@ -1,9 +1,6 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { ProposalEditorClient } from "@/components/crm/commercial-proposal/ProposalEditorClient";
 import { loadProposalEditorData } from "@/lib/crm/commercialProposalActions";
-import { CP_TOOL_PATH } from "@/lib/crm/commercialProposalPaths";
 import { requireAnyPermission } from "@/lib/crm/requirePermission";
 
 export const dynamic = "force-dynamic";
@@ -29,13 +26,8 @@ export default async function CommercialProposalEditorPage({
   }
 
   return (
-    <CrmTableContainer className="pb-10 pt-5">
-      <Link href={CP_TOOL_PATH} className="text-sm text-zinc-600 hover:underline">
-        ← Atgal į pasiūlymus
-      </Link>
-      <div className="mt-4">
-        <ProposalEditorClient initial={data} />
-      </div>
-    </CrmTableContainer>
+    <div className="-mx-4 -my-4 h-[calc(100vh-3.5rem)] overflow-hidden bg-[#F7F7F8] px-6 min-[1920px]:px-8">
+      <ProposalEditorClient initial={data} />
+    </div>
   );
 }

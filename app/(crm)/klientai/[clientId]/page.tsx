@@ -6,6 +6,7 @@ import { displayInvoiceNumberFromRow } from "@/lib/crm/invoiceDisplayNumber";
 import { clampPageIndex0, parsePageIndex0, parsePageSize, showingRange1Based, totalPagesFromCount } from "@/lib/crm/pagination";
 import { displayClientName, formatCompanyCodeDetail, formatDate, formatInvoiceMoney } from "@/lib/crm/format";
 import { ORPHAN_CLIENT_PATH_SEGMENT } from "@/lib/crm/clientRouting";
+import { CP_TOOL_PATH } from "@/lib/crm/commercialProposalPaths";
 
 export const dynamic = "force-dynamic";
 
@@ -143,6 +144,14 @@ export default async function ClientDetailPage({
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-zinc-900">{clientName}</h1>
           <div className="mt-1 text-sm text-zinc-600">{formatCompanyCodeDetail(filterSummary.company_code)}</div>
         </div>
+        {filterSummary.client_id ? (
+          <Link
+            href={`${CP_TOOL_PATH}/naujas?recipientType=client&recipientId=${encodeURIComponent(filterSummary.client_id)}`}
+            className="rounded-lg bg-[#7C4A57] px-4 py-2 text-sm font-medium text-white hover:bg-[#693948]"
+          >
+            Naujas pasiūlymas
+          </Link>
+        ) : null}
       </div>
 
       <div className="mt-8 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
