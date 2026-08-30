@@ -53,11 +53,11 @@ export function ProposalListActions({
       setCoords(null);
       return;
     }
-    const btn = btnRef.current;
-    const menu = menuRef.current;
-    if (!btn || !menu) return;
-
     function place() {
+      const btn = btnRef.current;
+      const menu = menuRef.current;
+      if (!btn || !menu) return;
+
       const b = btn.getBoundingClientRect();
       const mh = menu.offsetHeight;
       const mw = menu.offsetWidth;
