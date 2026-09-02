@@ -27,9 +27,14 @@ body {
 }
 
 [data-proposal-studio] :focus-visible,
-[data-proposal-list] :focus-visible {
+[data-proposal-list] :focus-visible,
+[data-template-studio] :focus-visible {
   outline: 2px solid #7C4A57;
   outline-offset: 2px;
+}
+
+main:has([data-template-studio]) {
+  overflow: hidden;
 }
 
 [data-proposal-list] [data-proposal-table] {
