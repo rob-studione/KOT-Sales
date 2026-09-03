@@ -703,7 +703,7 @@ export function ExpressProposalModal({
                   className={BTN_SECONDARY}
                   onClick={() => prepare((p) => openStudio(p.id))}
                 >
-                  Atidaryti Studio
+                  Atidaryti pasiūlymą
                 </button>
                 <button
                   type="button"
@@ -727,7 +727,7 @@ export function ExpressProposalModal({
                   className={BTN_SECONDARY}
                   onClick={() => openStudio(proposal.id)}
                 >
-                  Atidaryti Studio
+                  Atidaryti pasiūlymą
                 </button>
                 <button type="button" disabled={busy} className={BTN_PRIMARY} onClick={generatePdf}>
                   {pending ? "Generuojama…" : "Generuoti ir atsisiųsti PDF"}
