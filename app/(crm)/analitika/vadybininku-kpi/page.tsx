@@ -13,5 +13,5 @@ export default async function LegacyVadybininkuKpiPage({
     if (typeof v === "string" && v) qp.set(k, v);
     else if (Array.isArray(v)) for (const it of v) if (it) qp.append(k, it);
   }
-  redirect(qp.toString() ? `/analitika/kpi?${qp.toString()}` : "/analitika/kpi?period=month");
+  redirect(qp.toString() ? `/analitika/kpi?${qp.toString()}` : "/analitika/kpi?period=today");
 }
