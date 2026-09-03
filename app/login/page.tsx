@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { LoginForm } from "@/components/login/LoginForm";
+import { SupabaseSessionRecoveryClient } from "@/components/crm/SupabaseSessionRecoveryClient";
 import styles from "./login-page.module.css";
 
 export const metadata: Metadata = {
@@ -18,6 +19,7 @@ export default function LoginPage() {
         <div className={styles.wave} />
       </div>
       <div className={styles.content}>
+        <SupabaseSessionRecoveryClient />
         <Suspense fallback={<div className="h-[520px] w-full max-w-[440px]" />}>
           <LoginForm />
         </Suspense>

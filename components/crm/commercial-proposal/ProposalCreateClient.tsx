@@ -115,6 +115,7 @@ export function ProposalCreateClient({
       {selected ? (
         <div className="mt-4 space-y-3">
           <PricingGroupPicker
+            compact
             groups={groups}
             selectedId={groupId}
             disabled={pending}

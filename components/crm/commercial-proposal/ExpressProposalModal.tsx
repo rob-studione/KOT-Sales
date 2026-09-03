@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   generateCommercialProposalAction,
@@ -18,34 +18,23 @@ import {
   type CpCategoryDiscounts,
 } from "@/lib/commercialProposal/discounts";
 import { CP_CATEGORIES, type CpPriceCategory } from "@/lib/commercialProposal/types";
-import { formatCategoryDiscountsLabel } from "@/lib/commercialProposal/uiLabels";
-import { CATEGORY_LABEL, recipientInitials, statusChipClass, statusLabel } from "@/components/crm/commercial-proposal/studio/shared";
-import { CategoryPricePreviewList } from "@/components/crm/commercial-proposal/CategoryPricePreviewList";
+import { recipientInitials } from "@/components/crm/commercial-proposal/studio/shared";
+import { ExpressCategoryAccordion } from "@/components/crm/commercial-proposal/ExpressCategoryAccordion";
 import { PricingGroupPicker } from "@/components/crm/commercial-proposal/PricingGroupPicker";
 import { defaultPricingGroup, type CpPricingGroup } from "@/lib/crm/pricingGroups";
 import { getFocusable, lockStudioScroll } from "@/components/crm/commercial-proposal/studio/lockStudioScroll";
-import {
-  commercialProposalPdfHref,
-  triggerProposalPdfDownload,
-} from "@/lib/crm/expressProposal";
+import { triggerProposalPdfDownload } from "@/lib/crm/expressProposal";
 
-type View = "form" | "summary" | "success" | "generated";
+type View = "form" | "success" | "generated";
 
 const SESSION_PREFIX = "cp-express-kanban-return:";
 
 const FOCUS_RING =
   "outline-none focus-visible:ring-2 focus-visible:ring-[#7C4A57] focus-visible:ring-offset-2";
 
-const DISCOUNT_FIELD_LABEL: Record<CpPriceCategory, string> = {
-  translation: "Vertimas raštu – nuolaida procentais",
-  ai_translation: "AI vertimas ir redagavimas – nuolaida procentais",
-  additional_service: "Papildomos paslaugos – nuolaida procentais",
-};
-
 const BTN_GHOST = `h-10 rounded-[10px] px-3 text-sm font-medium text-[#5C5D64] hover:bg-[#F7F7F8] disabled:opacity-50 ${FOCUS_RING}`;
 const BTN_SECONDARY = `h-10 rounded-[10px] border border-[#E8E8EB] bg-white px-4 text-sm font-medium text-[#17171B] hover:bg-[#F7F7F8] disabled:opacity-50 ${FOCUS_RING}`;
 const BTN_PRIMARY = `h-10 rounded-[10px] bg-[#7C4A57] px-4 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50 ${FOCUS_RING}`;
-const BTN_TERTIARY = `h-10 rounded-[10px] px-3 text-sm font-medium text-[#7C4A57] hover:underline disabled:opacity-50 ${FOCUS_RING}`;
 
 export function rememberKanbanExpressReturn(projectId: string, workItemId: string, reopenDrawer: boolean) {
   try {
@@ -314,77 +303,28 @@ function ExpressRecipientRow({
   );
 }
 
-function SummaryRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4 px-3 py-2.5">
-      <dt className="shrink-0 text-[12px] font-medium text-[#6F7077]">{label}</dt>
-      <dd className="min-w-0 text-right text-[13px] text-[#17171B]">{children}</dd>
-    </div>
-  );
-}
-
-function ResultBody({
-  proposal,
-  recipient,
-  catalog,
-  emphasizeNumber,
+function CompactGeneratedBody({
+  proposalNumber,
+  justDownloaded,
 }: {
-  proposal: ExpressProposalSummary;
-  recipient: ProposalRecipientOption | null;
-  catalog: ExpressProposalContext["catalog"];
-  emphasizeNumber?: boolean;
+  proposalNumber: string | null;
+  justDownloaded: boolean;
 }) {
   return (
     <div className="space-y-3">
-      {emphasizeNumber && proposal.proposalNumber ? (
-        <p className="text-[18px] font-semibold tabular-nums tracking-tight text-[#17171B]">
-          {proposal.proposalNumber}
+      <div className="flex items-start gap-2 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">
+        <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true">
+          <circle cx="8" cy="8" r="7" fill="currentColor" className="text-emerald-600" />
+          <path d="M5 8.2 7 10.2 11.2 6" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <p>
+          PDF sugeneruotas.
+          {justDownloaded ? " Atsisiuntimas pradėtas." : null}
         </p>
+      </div>
+      {proposalNumber ? (
+        <p className="text-[22px] font-semibold tabular-nums tracking-tight text-[#17171B]">{proposalNumber}</p>
       ) : null}
-      <dl className="divide-y divide-[#E8E8EB] overflow-hidden rounded-[12px] border border-[#E8E8EB]">
-        <SummaryRow label="Gavėjas">
-          <span className="font-medium">{recipient?.recipientName ?? proposal.recipientName}</span>
-          {(recipient?.contactName ?? proposal.contactName) ? (
-            <span className="mt-0.5 block text-[12px] text-[#6F7077]">
-              {recipient?.contactName ?? proposal.contactName}
-            </span>
-          ) : null}
-        </SummaryRow>
-        <SummaryRow label="Nuolaidos">{formatCategoryDiscountsLabel(proposal.discounts)}</SummaryRow>
-        {!emphasizeNumber && proposal.proposalNumber ? (
-          <SummaryRow label="Numeris">
-            <span className="font-medium tabular-nums">{proposal.proposalNumber}</span>
-          </SummaryRow>
-        ) : null}
-        <SummaryRow label="Būsena">
-          <span
-            className={`inline-flex rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${statusChipClass(proposal.status)}`}
-          >
-            {statusLabel(proposal.status)}
-          </span>
-        </SummaryRow>
-      </dl>
-      {catalog.length ? (
-        <div>
-          <h3 className="mb-1.5 text-[12px] font-medium uppercase tracking-wide text-[#6F7077]">Kainos</h3>
-          <CategoryPricePreviewList items={catalog} discounts={proposal.discounts} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function GeneratedBanner({ justDownloaded }: { justDownloaded: boolean }) {
-  return (
-    <div className="mb-3 flex items-start gap-2 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">
-      <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true">
-        <circle cx="8" cy="8" r="7" fill="currentColor" className="text-emerald-600" />
-        <path d="M5 8.2 7 10.2 11.2 6" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <p>
-        PDF sugeneruotas.
-        {justDownloaded ? " Atsisiuntimas pradėtas." : null}
-      </p>
     </div>
   );
 }
@@ -418,8 +358,8 @@ export function ExpressProposalModal({
 }) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDivElement>(null);
-  const inputRefs = useRef<Partial<Record<CpPriceCategory, HTMLInputElement | null>>>({});
   const [pending, start] = useTransition();
+  const [busyKind, setBusyKind] = useState<"studio" | "pdf" | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [context, setContext] = useState<ExpressProposalContext | null>(null);
@@ -439,7 +379,7 @@ export function ExpressProposalModal({
   const [error, setError] = useState<string | null>(null);
   const [proposal, setProposal] = useState<ExpressProposalSummary | null>(null);
   const [groupId, setGroupId] = useState<string | null>(null);
-  const busy = pending || loading;
+  const busy = pending || loading || busyKind !== null;
   const liveDiscounts = useMemo(() => liveDiscountsFromForm(enabled, inputs), [enabled, inputs]);
 
   useEffect(() => {
@@ -542,29 +482,38 @@ export function ExpressProposalModal({
     const discounts = collectDiscounts();
     if (!discounts) return;
     setError(null);
+    setBusyKind("studio");
     start(async () => {
       try {
-        const res = await prepareExpressProposalAction({
-          workItemId,
-          recipientType: recipient?.recipientType,
-          recipientId: recipient?.recipientId,
-          categoryDiscounts: discounts,
-        });
-        if (!res.ok) {
-          setError(res.error);
-          return;
-        }
-        const refreshed = await getExpressProposalContextAction(workItemId);
-        if (refreshed.ok) {
-          setContext(refreshed.context);
-          setRecipient(refreshed.context.selectedRecipient);
-        }
-        setProposal(res.proposal);
-        then(res.proposal);
+        const prepared = await prepareDraft(discounts);
+        if (!prepared) return;
+        then(prepared);
       } catch {
         setError("Nepavyko paruošti pasiūlymo.");
+      } finally {
+        setBusyKind(null);
       }
     });
+  }
+
+  async function prepareDraft(discounts: CpCategoryDiscounts): Promise<ExpressProposalSummary | null> {
+    const res = await prepareExpressProposalAction({
+      workItemId,
+      recipientType: recipient?.recipientType,
+      recipientId: recipient?.recipientId,
+      categoryDiscounts: discounts,
+    });
+    if (!res.ok) {
+      setError(res.error);
+      return null;
+    }
+    const refreshed = await getExpressProposalContextAction(workItemId);
+    if (refreshed.ok) {
+      setContext(refreshed.context);
+      setRecipient(refreshed.context.selectedRecipient);
+    }
+    setProposal(res.proposal);
+    return res.proposal;
   }
 
   function openStudio(id: string) {
@@ -575,12 +524,20 @@ export function ExpressProposalModal({
     router.push(commercialProposalPath(id));
   }
 
-  function generatePdf() {
-    if (!proposal) return;
+  function generateAndDownload() {
+    if (!recipient && !context?.pendingLead) {
+      setError(context?.recipients.length ? "Pasirinkite gavėją." : "Gavėjas nerastas.");
+      return;
+    }
+    const discounts = collectDiscounts();
+    if (!discounts) return;
     setError(null);
+    setBusyKind("pdf");
     start(async () => {
       try {
-        const res = await generateCommercialProposalAction(proposal.id);
+        const prepared = await prepareDraft(discounts);
+        if (!prepared) return;
+        const res = await generateCommercialProposalAction(prepared.id);
         if (!res.ok) {
           setError(res.error);
           return;
@@ -590,30 +547,27 @@ export function ExpressProposalModal({
           setProposal(refreshed.context.proposal);
           setContext(refreshed.context);
         } else {
-          setProposal({ ...proposal, status: "generated" });
+          setProposal({ ...prepared, status: "generated" });
         }
         try {
-          triggerProposalPdfDownload(proposal.id);
+          triggerProposalPdfDownload(prepared.id);
         } catch {
           setError("Pasiūlymas sugeneruotas, bet atsisiųsti nepavyko.");
         }
         setView("success");
       } catch {
         setError("Nepavyko sugeneruoti pasiūlymo.");
+      } finally {
+        setBusyKind(null);
       }
     });
   }
 
   const title =
-    view === "success" || view === "generated"
-      ? "Pasiūlymas sugeneruotas"
-      : view === "summary"
-        ? "Pasiūlymo suvestinė"
-        : "Greitas komercinis pasiūlymas";
+    view === "success" || view === "generated" ? "Pasiūlymas sugeneruotas" : "Greitas komercinis pasiūlymas";
 
   const showFooter = !loading && !loadError && (
     view === "form" ||
-    (view === "summary" && proposal) ||
     ((view === "success" || view === "generated") && proposal)
   );
 
@@ -630,7 +584,11 @@ export function ExpressProposalModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="express-proposal-title"
-        className="flex max-h-[85vh] w-[min(680px,calc(100vw-32px))] flex-col overflow-hidden rounded-[16px] border border-[#E8E8EB] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.08)]"
+        className={`flex max-h-[85vh] flex-col overflow-hidden rounded-[16px] border border-[#E8E8EB] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.08)] ${
+          view === "success" || view === "generated"
+            ? "w-[min(520px,calc(100vw-32px))]"
+            : "w-[min(720px,calc(100vw-32px))]"
+        }`}
       >
         <header className="sticky top-0 z-10 flex shrink-0 items-start justify-between gap-3 border-b border-[#E8E8EB] bg-white px-5 py-3">
           <h2 id="express-proposal-title" className="min-w-0 pt-0.5 text-[18px] font-semibold text-[#17171B]">
@@ -674,6 +632,7 @@ export function ExpressProposalModal({
               </section>
               <section>
                 <PricingGroupPicker
+                  compact
                   groups={context?.pricingGroups ?? []}
                   selectedId={groupId}
                   disabled={busy}
@@ -687,77 +646,16 @@ export function ExpressProposalModal({
                 />
               </section>
               <section>
-                <h3 className="text-[12px] font-medium uppercase tracking-wide text-[#6F7077]">Kainos</h3>
-                <p className="mt-1 text-[12px] text-[#6F7077]">Kategorijų mažiausia kaina pagal kainyną.</p>
-                <div className="mt-1.5">
-                  <CategoryPricePreviewList items={context?.catalog ?? []} discounts={liveDiscounts} />
-                </div>
-              </section>
-              <section>
-                <h3 className="text-[12px] font-medium uppercase tracking-wide text-[#6F7077]">Nuolaidos</h3>
-                <div className="mt-2 divide-y divide-[#E8E8EB] overflow-hidden rounded-[12px] border border-[#E8E8EB]">
-                  {CP_CATEGORIES.map((c) => (
-                    <div key={c} className="flex items-center gap-4 px-3 py-2">
-                      <label className="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-[#17171B]">
-                        <input
-                          type="checkbox"
-                          checked={enabled[c]}
-                          disabled={busy}
-                          onChange={(e) => {
-                            const on = e.target.checked;
-                            setEnabled((prev) => ({ ...prev, [c]: on }));
-                            setFieldErrors((prev) => ({ ...prev, [c]: undefined }));
-                            if (!on) setInputs((prev) => ({ ...prev, [c]: "" }));
-                            if (on) {
-                              window.setTimeout(() => inputRefs.current[c]?.focus(), 0);
-                            }
-                          }}
-                          className={`h-4 w-4 rounded border-[#E8E8EB] text-[#7C4A57] ${FOCUS_RING}`}
-                        />
-                        <span>{CATEGORY_LABEL[c]}</span>
-                      </label>
-                      <div className="w-[88px] shrink-0">
-                        <div className="relative">
-                          <input
-                            ref={(el) => {
-                              inputRefs.current[c] = el;
-                            }}
-                            value={enabled[c] ? inputs[c] : ""}
-                            placeholder={enabled[c] ? "0" : "—"}
-                            disabled={busy || !enabled[c]}
-                            inputMode="decimal"
-                            aria-label={DISCOUNT_FIELD_LABEL[c]}
-                            onChange={(e) => {
-                              setInputs((prev) => ({ ...prev, [c]: e.target.value }));
-                              setFieldErrors((prev) => ({ ...prev, [c]: undefined }));
-                            }}
-                            className={`h-9 w-full rounded-[8px] border border-[#E8E8EB] px-2 pr-6 text-right text-[13px] tabular-nums text-[#17171B] disabled:bg-[#F7F7F8] disabled:text-[#A1A1A6] ${FOCUS_RING}`}
-                          />
-                          <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] text-[#6F7077]">
-                            %
-                          </span>
-                        </div>
-                        {fieldErrors[c] ? <p className="mt-1 text-[11px] text-red-700">{fieldErrors[c]}</p> : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <ExpressCategoryAccordion items={context?.catalog ?? []} discounts={liveDiscounts} />
               </section>
             </div>
           ) : null}
 
-          {!loading && !loadError && (view === "summary" || view === "success" || view === "generated") && proposal ? (
-            <div>
-              {view === "success" || view === "generated" ? (
-                <GeneratedBanner justDownloaded={view === "success"} />
-              ) : null}
-              <ResultBody
-                proposal={proposal}
-                recipient={recipient}
-                catalog={context?.catalog ?? []}
-                emphasizeNumber={view === "success" || view === "generated"}
-              />
-            </div>
+          {!loading && !loadError && (view === "success" || view === "generated") && proposal ? (
+            <CompactGeneratedBody
+              proposalNumber={proposal.proposalNumber}
+              justDownloaded={view === "success"}
+            />
           ) : null}
 
           {error ? <p className="mt-3 text-[13px] text-red-700">{error}</p> : null}
@@ -776,43 +674,21 @@ export function ExpressProposalModal({
                   className={BTN_SECONDARY}
                   onClick={() => prepare((p) => openStudio(p.id))}
                 >
-                  Pilnas redagavimas
+                  {busyKind === "studio" ? "Ruošiama…" : "Pilnas redagavimas"}
                 </button>
                 <button
                   type="button"
                   disabled={busy || (!recipient && !context?.pendingLead)}
                   className={BTN_PRIMARY}
-                  onClick={() => prepare(() => setView("summary"))}
+                  onClick={generateAndDownload}
                 >
-                  {pending ? "Ruošiama…" : "Paruošti pasiūlymą"}
-                </button>
-              </>
-            ) : null}
-
-            {view === "summary" && proposal ? (
-              <>
-                <button type="button" disabled={busy} className={BTN_GHOST} onClick={() => setView("form")}>
-                  Grįžti
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  className={BTN_SECONDARY}
-                  onClick={() => openStudio(proposal.id)}
-                >
-                  Pilnas redagavimas
-                </button>
-                <button type="button" disabled={busy} className={BTN_PRIMARY} onClick={generatePdf}>
-                  {pending ? "Generuojama…" : "Generuoti ir atsisiųsti PDF"}
+                  {busyKind === "pdf" ? "Generuojama…" : "Generuoti ir atsisiųsti PDF"}
                 </button>
               </>
             ) : null}
 
             {(view === "success" || view === "generated") && proposal ? (
               <>
-                <button type="button" className={BTN_TERTIARY} onClick={() => openStudio(proposal.id)}>
-                  Atidaryti pasiūlymą
-                </button>
                 <button
                   type="button"
                   className={BTN_SECONDARY}
@@ -826,14 +702,9 @@ export function ExpressProposalModal({
                 >
                   Atsisiųsti dar kartą
                 </button>
-                <a
-                  href={commercialProposalPdfHref(proposal.id)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`inline-flex items-center ${BTN_PRIMARY}`}
-                >
-                  Atidaryti PDF
-                </a>
+                <button type="button" className={BTN_PRIMARY} onClick={() => openStudio(proposal.id)}>
+                  Atidaryti pasiūlymą
+                </button>
               </>
             ) : null}
           </footer>
