@@ -12,6 +12,10 @@ import {
   pendingLeadFromProcurement,
 } from "@/lib/crm/expressProcurementRecipient";
 import { ensureManualLeadByCompanyCode, manualLeadInsertPayload } from "@/lib/crm/manualLeadEnsure";
+import {
+  mergeProposalRecipientSearchResults,
+  type ProposalRecipientSearchRow,
+} from "@/lib/crm/proposalRecipientSearch";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -184,6 +188,49 @@ const otherProject = await ensureManualLeadByCompanyCode(supabase, {
 });
 assert(otherProject.created && otherProject.id !== first.id, "same company code in another project creates a separate lead");
 assert(leads.filter((l) => l.company_code === "259925770").length === 2, "leads are scoped to project_id, not global");
+
+const courtWork: ProposalRecipientSearchRow = {
+  recipientType: "lead",
+  recipientId: "wi-1",
+  recipientName: "Regionų apygardos administracinis teismas",
+  companyCode: "188734347",
+  workItemId: "wi-1",
+};
+const mergedFound = mergeProposalRecipientSearchResults({
+  clients: [],
+  leads: [],
+  workItems: [courtWork],
+});
+assert(mergedFound.length === 1 && mergedFound[0]?.workItemId === "wi-1", "Kanban company appears when no CRM/lead row");
+
+const mergedClientWins = mergeProposalRecipientSearchResults({
+  clients: [
+    {
+      recipientType: "client",
+      recipientId: "c1",
+      recipientName: "Teismas",
+      companyCode: "188734347",
+    } satisfies ProposalRecipientSearchRow,
+  ],
+  leads: [],
+  workItems: [courtWork],
+});
+assert(mergedClientWins.length === 1 && mergedClientWins[0]?.recipientType === "client", "CRM client hides same-code Kanban row");
+
+const mergedLeadWins = mergeProposalRecipientSearchResults({
+  clients: [],
+  leads: [
+    {
+      recipientType: "lead",
+      recipientId: "lead-x",
+      recipientName: "Teismas",
+      companyCode: "188734347",
+      projectId: "other",
+    } satisfies ProposalRecipientSearchRow,
+  ],
+  workItems: [courtWork],
+});
+assert(mergedLeadWins.length === 1 && mergedLeadWins[0]?.recipientId === "lead-x", "existing lead from any project hides Kanban duplicate");
 
 if (failed) {
   console.error(`\n${failed} assertion(s) failed`);

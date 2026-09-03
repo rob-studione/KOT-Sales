@@ -18,7 +18,12 @@ import {
   pendingLeadFromProcurement,
   type ExpressPendingLead,
 } from "@/lib/crm/expressProcurementRecipient";
-import { ensureManualLeadByCompanyCode, findManualLeadIdByCompanyCode } from "@/lib/crm/manualLeadEnsure";
+import {
+  ensureManualLeadByCompanyCode,
+  findManualLeadIdByCompanyCode,
+  findManualLeadIdByCompanyCodeAnyProject,
+} from "@/lib/crm/manualLeadEnsure";
+import { mergeProposalRecipientSearchResults } from "@/lib/crm/proposalRecipientSearch";
 import { CP_TOOL_PATH, commercialProposalPath, commercialProposalPricesPath, commercialProposalTemplatePath } from "@/lib/crm/commercialProposalPaths";
 import { buildClientListSearchOrClause, sanitizeForPostgrestOrClause } from "@/lib/crm/postgrestSearch";
 import {
@@ -183,6 +188,7 @@ export type ProposalRecipientOption = {
   clientId: string | null;
   projectName?: string | null;
   projectId?: string | null;
+  workItemId?: string | null;
 };
 
 async function loadLeadSummary(
@@ -409,9 +415,14 @@ export async function createCommercialProposalAction(input: {
   recipientType: CpRecipientType;
   recipientId: string;
   recipientName?: string;
+  workItemId?: string;
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const actor = await getCurrentCrmUser();
   if (!canUseProposals(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const workItemId = String(input.workItemId ?? "").trim();
+  if (workItemId) {
+    return createProposalFromWorkItem(actor.id, workItemId);
+  }
   const recipientType = input.recipientType === "lead" ? "lead" : "client";
   const recipientId = String(input.recipientId ?? "").trim();
   if (!recipientId) return { ok: false, error: "Pasirinkite gavėją." };
@@ -480,6 +491,41 @@ export async function createCommercialProposalAction(input: {
 
   revalidateProposalTool(inserted.id);
   return { ok: true, id: inserted.id };
+}
+
+async function createProposalFromWorkItem(
+  actorId: string,
+  workItemId: string
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  if (!isValidUuid(workItemId)) return { ok: false, error: "Kortelė nerasta." };
+  try {
+    const admin = createSupabaseAdminClient();
+    const item = await loadWorkItemRow(admin, workItemId);
+    if (!item) return { ok: false, error: "Kortelė nerasta." };
+
+    const frozen = await findLatestReadonlyProposal(admin, workItemId);
+    if (frozen) return { ok: false, error: "Pasiūlymas jau sugeneruotas." };
+    const existingDraft = await findDraftByWorkItem(admin, workItemId);
+    if (existingDraft) return { ok: true, id: existingDraft.id };
+
+    const resolved = await resolveRecipientsFromWorkItem(admin, item, { createMissingLead: true });
+    const recipient = resolved.recipients[0] ?? null;
+    if (!recipient) {
+      return { ok: false, error: resolved.error ?? "Gavėjas nerastas." };
+    }
+
+    const draft = await createDraftForWorkItem(admin, actorId, workItemId, recipient);
+    await ensureDraftLines(admin, draft.id);
+    try {
+      await upsertDiscounts(admin, draft.id, ZERO_CATEGORY_DISCOUNTS);
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Nepavyko įrašyti nuolaidų." };
+    }
+    revalidateProposalTool(draft.id);
+    return { ok: true, id: draft.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko sukurti pasiūlymo." };
+  }
 }
 
 export type ProposalEditorPayload = {
@@ -617,7 +663,84 @@ export async function searchAllProposalRecipientsAction(query: string): Promise<
     searchProposalRecipientsAction({ recipientType: "client", query: q }),
     searchProposalRecipientsAction({ recipientType: "lead", query: q }),
   ]);
-  return [...clients, ...leads];
+  const workItems = await searchWorkItemRecipients(createSupabaseAdminClient(), q);
+  return mergeProposalRecipientSearchResults({ clients, leads, workItems });
+}
+
+async function searchWorkItemRecipients(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  query: string
+): Promise<ProposalRecipientOption[]> {
+  const sanitized = sanitizeForPostgrestOrClause(query);
+  if (!sanitized) return [];
+  const like = `%${sanitized.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+  const { data, error } = await admin
+    .from("project_work_items")
+    .select("id,project_id,source_type,source_id,client_key,client_name_snapshot")
+    .or(`client_name_snapshot.ilike.${like},client_key.ilike.${like}`)
+    .order("work_updated_at", { ascending: false })
+    .limit(30);
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  if (rows.length === 0) return [];
+
+  const projectIds = [...new Set(rows.map((r) => String(r.project_id ?? "")).filter(Boolean))];
+  const projectNames = new Map<string, string>();
+  if (projectIds.length) {
+    const { data: projects } = await admin.from("projects").select("id,name").in("id", projectIds);
+    for (const p of projects ?? []) projectNames.set(String(p.id), String(p.name ?? ""));
+  }
+
+  const contractIds = [
+    ...new Set(
+      rows
+        .filter((r) => String(r.source_type ?? "") === "procurement_contract")
+        .map((r) => String(r.source_id ?? ""))
+        .filter(Boolean)
+    ),
+  ];
+  const contractOrgs = new Map<string, { organizationCode: string | null; organizationName: string | null }>();
+  if (contractIds.length) {
+    const { data: contracts } = await admin
+      .from("project_procurement_contracts")
+      .select("id,organization_code,organization_name")
+      .in("id", contractIds);
+    for (const c of contracts ?? []) {
+      contractOrgs.set(String(c.id), {
+        organizationCode: usableCompanyCode(c.organization_code == null ? null : String(c.organization_code)),
+        organizationName: String(c.organization_name ?? "").trim() || null,
+      });
+    }
+  }
+
+  return rows.map((row) => {
+    const id = String(row.id);
+    const clientKey = String(row.client_key ?? "");
+    const contract = row.source_id ? contractOrgs.get(String(row.source_id)) : undefined;
+    let companyCode = contract?.organizationCode ?? null;
+    if (!companyCode && clientKey.startsWith("po:") && !clientKey.startsWith("po:name:")) {
+      companyCode = usableCompanyCode(clientKey.slice(3));
+    }
+    if (!companyCode) companyCode = usableCompanyCode(clientKey);
+    const recipientName =
+      contract?.organizationName ||
+      String(row.client_name_snapshot ?? "").trim() ||
+      "Kanban kortelė";
+    return {
+      recipientType: "lead" as const,
+      recipientId: id,
+      recipientName,
+      contactName: null,
+      email: null,
+      phone: null,
+      companyCode,
+      clientKey,
+      clientId: null,
+      projectId: row.project_id == null ? null : String(row.project_id),
+      projectName: row.project_id ? projectNames.get(String(row.project_id)) ?? null : null,
+      workItemId: id,
+    };
+  });
 }
 
 export async function getProposalRecipientOptionAction(input: {
@@ -1626,13 +1749,11 @@ async function visibleWorkItemIdsForActor(workItemIds: string[]): Promise<Set<st
   return new Set((data ?? []).map((row) => String(row.id)));
 }
 
-async function loadWorkItemForExpress(
+async function loadWorkItemRow(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   workItemId: string
 ): Promise<ExpressWorkItemRow | null> {
   if (!isValidUuid(workItemId)) return null;
-  const visible = await visibleWorkItemIdsForActor([workItemId]);
-  if (!visible.has(workItemId)) return null;
   const { data, error } = await admin
     .from("project_work_items")
     .select("id,project_id,source_type,source_id,client_key,client_name_snapshot")
@@ -1648,6 +1769,15 @@ async function loadWorkItemForExpress(
     client_key: String(data.client_key ?? ""),
     client_name_snapshot: data.client_name_snapshot == null ? null : String(data.client_name_snapshot),
   };
+}
+
+async function loadWorkItemForExpress(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  workItemId: string
+): Promise<ExpressWorkItemRow | null> {
+  const visible = await visibleWorkItemIdsForActor([workItemId]);
+  if (!visible.has(workItemId)) return null;
+  return loadWorkItemRow(admin, workItemId);
 }
 
 async function loadClientsByKey(
@@ -1757,9 +1887,12 @@ async function resolveProcurementRecipients(
 ): Promise<ResolvedExpressRecipients> {
   const { organizationCode, organizationName } = await loadProcurementOrgFromWorkItem(admin, item);
   const clients = organizationCode ? await loadClientsByCompanyCode(admin, organizationCode) : [];
-  const existingLeadId = organizationCode
+  let existingLeadId = organizationCode
     ? await findManualLeadIdByCompanyCode(admin, { projectId: item.project_id, companyCode: organizationCode })
     : null;
+  if (!existingLeadId && organizationCode) {
+    existingLeadId = await findManualLeadIdByCompanyCodeAnyProject(admin, organizationCode);
+  }
   const existingLead = existingLeadId ? await loadLeadSummary(admin, existingLeadId) : null;
 
   const classified = classifyExpressProcurementRecipient({

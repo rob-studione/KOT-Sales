@@ -15,7 +15,8 @@ import { createManualProjectLeadAction } from "@/lib/crm/projectActions";
 const GAVEJAS_BADGE_CLASS =
   "inline-flex shrink-0 whitespace-nowrap rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide";
 
-function TypeBadge({ type }: { type: "client" | "lead" }) {
+function TypeBadge({ type, kanban }: { type: "client" | "lead"; kanban?: boolean }) {
+  const label = type === "client" ? "Klientas" : kanban ? "Kanban" : "Leadas";
   return (
     <span
       data-gavejas-badge="badge"
@@ -24,7 +25,7 @@ function TypeBadge({ type }: { type: "client" | "lead" }) {
         type === "client" ? "border-[#E8E8EB] bg-[#F7F7F8] text-[#6F7077]" : "border-[#7C4A57]/20 bg-[#F7EEF0] text-[#7C4A57]",
       ].join(" ")}
     >
-      {type === "client" ? "Klientas" : "Leadas"}
+      {label}
     </span>
   );
 }
@@ -49,7 +50,7 @@ function ResultRow({
           {[row.contactName, row.email, row.companyCode, row.projectName].filter(Boolean).join(" · ") || "—"}
         </span>
       </span>
-      <TypeBadge type={row.recipientType} />
+      <TypeBadge type={row.recipientType} kanban={Boolean(row.workItemId)} />
     </button>
   );
 }
@@ -386,7 +387,7 @@ export function RecipientSelector({
           <div id={listboxId} role="listbox" className="max-h-64 overflow-y-auto">
             {results.map((row) => (
               <ResultRow
-                key={`${row.recipientType}-${row.recipientId}`}
+                key={`${row.recipientType}-${row.workItemId || row.recipientId}`}
                 row={row}
                 onSelect={(next) => {
                   onSelect(next);
@@ -447,15 +448,18 @@ export function RecipientSelector({
   );
 }
 
-export function RecipientTypeBadge({ type }: { type: "client" | "lead" }) {
-  return <TypeBadge type={type} />;
+export function RecipientTypeBadge({ type, kanban }: { type: "client" | "lead"; kanban?: boolean }) {
+  return <TypeBadge type={type} kanban={kanban} />;
 }
 
 export function recipientCardHref(
-  row: Pick<ProposalRecipientOption, "recipientType" | "clientId" | "projectId">
+  row: Pick<ProposalRecipientOption, "recipientType" | "clientId" | "projectId" | "workItemId">
 ): string | null {
   if (row.recipientType === "client" && row.clientId) {
     return `/klientai/${encodeURIComponent(row.clientId)}`;
+  }
+  if (row.workItemId && row.projectId) {
+    return `/projektai/${row.projectId}/darbas`;
   }
   if (row.recipientType === "lead" && row.projectId) {
     return `/projektai/${row.projectId}/kandidatai`;
@@ -505,7 +509,7 @@ export function SelectedRecipientControl({
       <span data-gavejas-name="name" className="text-left text-sm font-semibold text-[#17171B]" title={name}>
         {name}
       </span>
-      <TypeBadge type={recipient.recipientType} />
+      <TypeBadge type={recipient.recipientType} kanban={Boolean(recipient.workItemId)} />
       {company ? (
         <span className="min-w-0 truncate text-left text-[12px] text-[#5C5D64]" title={company}>
           {company}
@@ -525,7 +529,7 @@ export function SelectedRecipientControl({
           </span>
         ) : null}
       </span>
-      <TypeBadge type={recipient.recipientType} />
+      <TypeBadge type={recipient.recipientType} kanban={Boolean(recipient.workItemId)} />
     </>
   );
   const keisti = !disabled && onClick ? (

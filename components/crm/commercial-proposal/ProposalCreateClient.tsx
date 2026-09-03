@@ -30,6 +30,7 @@ export function ProposalCreateClient({
       const res = await createCommercialProposalAction({
         recipientType: selected.recipientType,
         recipientId: selected.recipientId,
+        workItemId: selected.workItemId ?? undefined,
       });
       if (!res.ok) {
         setError(res.error);

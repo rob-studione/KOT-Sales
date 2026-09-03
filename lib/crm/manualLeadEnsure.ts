@@ -55,6 +55,28 @@ export async function findManualLeadIdByCompanyCode(
 }
 
 /**
+ * Komerciniam gavėjui: tas pats kodas bet kuriame projekte.
+ * Pirma kvieskite `findManualLeadIdByCompanyCode` savo projektui.
+ */
+export async function findManualLeadIdByCompanyCodeAnyProject(
+  supabase: SupabaseClient,
+  companyCode: string
+): Promise<string | null> {
+  const code = normalizeExpressCompanyCode(companyCode);
+  if (!code) return null;
+
+  const { data, error } = await supabase
+    .from("project_manual_leads")
+    .select("id")
+    .eq("company_code", code)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.id ? String(data.id) : null;
+}
+
+/**
  * Idempotentinis lead kūrimas pagal `(project_id, company_code)`.
  * Lygiagretūs insertai krenta į unique indeksą ir grąžina esamą eilutę.
  */
