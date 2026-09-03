@@ -1,0 +1,277 @@
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  createPricingGroupAction,
+  deletePricingGroupAction,
+  updatePricingGroupAction,
+} from "@/lib/crm/commercialProposalActions";
+import { parseDiscountInput, type CpCategoryDiscounts } from "@/lib/commercialProposal/discounts";
+import { CATEGORY_LABEL } from "@/components/crm/commercial-proposal/studio/shared";
+import type { CpPriceCategory } from "@/lib/commercialProposal/types";
+import type { CpPricingGroup } from "@/lib/crm/pricingGroups";
+
+const FIELD =
+  "h-9 w-full rounded-[8px] border border-[#E8E8EB] bg-white px-3 text-[13px] text-[#17171B]";
+const LABEL = "block text-[12px] font-medium text-[#6F7077]";
+
+type Draft = {
+  name: string;
+  translation: string;
+  ai_translation: string;
+  additional_service: string;
+  active: boolean;
+  isDefault: boolean;
+};
+
+function draftFromGroup(group: CpPricingGroup): Draft {
+  return {
+    name: group.name,
+    translation: String(group.discounts.translation),
+    ai_translation: String(group.discounts.ai_translation),
+    additional_service: String(group.discounts.additional_service),
+    active: group.active,
+    isDefault: group.is_default,
+  };
+}
+
+const EMPTY_DRAFT: Draft = {
+  name: "",
+  translation: "0",
+  ai_translation: "0",
+  additional_service: "0",
+  active: true,
+  isDefault: false,
+};
+
+function parseDraftDiscounts(draft: Draft): { ok: true; discounts: CpCategoryDiscounts } | { ok: false; error: string } {
+  const translation = parseDiscountInput(draft.translation);
+  const ai = parseDiscountInput(draft.ai_translation);
+  const extra = parseDiscountInput(draft.additional_service);
+  if (!translation.ok) return { ok: false, error: translation.error };
+  if (!ai.ok) return { ok: false, error: ai.error };
+  if (!extra.ok) return { ok: false, error: extra.error };
+  return {
+    ok: true,
+    discounts: {
+      translation: translation.value,
+      ai_translation: ai.value,
+      additional_service: extra.value,
+    },
+  };
+}
+
+function DiscountFields({
+  draft,
+  onChange,
+}: {
+  draft: Draft;
+  onChange: (next: Partial<Draft>) => void;
+}) {
+  const fields: Array<{ key: CpPriceCategory; draftKey: "translation" | "ai_translation" | "additional_service" }> = [
+    { key: "translation", draftKey: "translation" },
+    { key: "ai_translation", draftKey: "ai_translation" },
+    { key: "additional_service", draftKey: "additional_service" },
+  ];
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {fields.map(({ key, draftKey }) => (
+        <label key={key} className="block">
+          <span className={LABEL}>{CATEGORY_LABEL[key]}</span>
+          <div className="relative mt-1">
+            <input
+              value={String(draft[draftKey])}
+              inputMode="decimal"
+              onChange={(e) => onChange({ [draftKey]: e.target.value })}
+              className={`${FIELD} pr-7 text-right tabular-nums`}
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-[12px] text-[#6F7077]">
+              %
+            </span>
+          </div>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+export function PricingGroupsAdminClient({ initial }: { initial: CpPricingGroup[] }) {
+  const router = useRouter();
+  const [groups, setGroups] = useState(initial);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>(() =>
+    Object.fromEntries(initial.map((g) => [g.id, draftFromGroup(g)]))
+  );
+  const [createDraft, setCreateDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    setGroups(initial);
+    setDrafts(Object.fromEntries(initial.map((g) => [g.id, draftFromGroup(g)])));
+  }, [initial]);
+
+  function patchDraft(id: string, next: Partial<Draft>) {
+    setDrafts((prev) => {
+      const current = prev[id];
+      if (!current) return prev;
+      return { ...prev, [id]: { ...current, ...next } };
+    });
+    setMessage(null);
+  }
+
+  return (
+    <div className="space-y-6">
+      <p className="text-[13px] text-[#6F7077]">
+        Grupė užpildo nuolaidų procentus kuriant pasiūlymą. Kainynas lieka bendras visoms grupėms.
+      </p>
+
+      <div className="space-y-3">
+        {groups.map((group) => {
+          const draft = drafts[group.id] ?? draftFromGroup(group);
+          return (
+            <div key={group.id} className="rounded-[12px] border border-[#E8E8EB] p-4">
+              <div className="flex flex-wrap items-start gap-3">
+                <label className="min-w-[200px] flex-1">
+                  <span className={LABEL}>Pavadinimas</span>
+                  <input
+                    value={draft.name}
+                    onChange={(e) => patchDraft(group.id, { name: e.target.value })}
+                    className={`${FIELD} mt-1`}
+                  />
+                </label>
+                <label className="mt-6 inline-flex items-center gap-2 text-[13px] text-[#17171B]">
+                  <input
+                    type="checkbox"
+                    checked={draft.active}
+                    onChange={(e) => patchDraft(group.id, { active: e.target.checked })}
+                  />
+                  Aktyvi
+                </label>
+                <label className="mt-6 inline-flex items-center gap-2 text-[13px] text-[#17171B]">
+                  <input
+                    type="checkbox"
+                    checked={draft.isDefault}
+                    disabled={group.is_default}
+                    onChange={(e) => patchDraft(group.id, { isDefault: e.target.checked })}
+                  />
+                  Numatytoji
+                </label>
+              </div>
+              <div className="mt-3">
+                <DiscountFields draft={draft} onChange={(next) => patchDraft(group.id, next)} />
+              </div>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={pending || groups.length <= 1}
+                  className="h-9 rounded-[10px] px-3 text-sm text-[#6F7077] hover:text-red-700 disabled:opacity-50"
+                  onClick={() => {
+                    start(async () => {
+                      const res = await deletePricingGroupAction(group.id);
+                      if (!res.ok) {
+                        setMessage(res.error);
+                        return;
+                      }
+                      setMessage("Grupė ištrinta.");
+                      router.refresh();
+                    });
+                  }}
+                >
+                  Ištrinti
+                </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  className="h-9 rounded-[10px] bg-[#7C4A57] px-4 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
+                  onClick={() => {
+                    const parsed = parseDraftDiscounts(draft);
+                    if (!parsed.ok) {
+                      setMessage(parsed.error);
+                      return;
+                    }
+                    start(async () => {
+                      const res = await updatePricingGroupAction({
+                        id: group.id,
+                        name: draft.name,
+                        discounts: parsed.discounts,
+                        active: draft.active,
+                        isDefault: draft.isDefault,
+                      });
+                      if (!res.ok) {
+                        setMessage(res.error);
+                        return;
+                      }
+                      setMessage("Grupė išsaugota.");
+                      router.refresh();
+                    });
+                  }}
+                >
+                  {pending ? "Saugoma…" : "Išsaugoti"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="rounded-[12px] border border-dashed border-[#E8E8EB] p-4">
+        <h3 className="text-[14px] font-semibold text-[#17171B]">Nauja grupė</h3>
+        <label className="mt-3 block">
+          <span className={LABEL}>Pavadinimas</span>
+          <input
+            value={createDraft.name}
+            onChange={(e) => setCreateDraft((prev) => ({ ...prev, name: e.target.value }))}
+            className={`${FIELD} mt-1 max-w-md`}
+          />
+        </label>
+        <div className="mt-3">
+          <DiscountFields
+            draft={createDraft}
+            onChange={(next) => setCreateDraft((prev) => ({ ...prev, ...next }))}
+          />
+        </div>
+        <label className="mt-3 inline-flex items-center gap-2 text-[13px] text-[#17171B]">
+          <input
+            type="checkbox"
+            checked={createDraft.isDefault}
+            onChange={(e) => setCreateDraft((prev) => ({ ...prev, isDefault: e.target.checked }))}
+          />
+          Padaryti numatytąja
+        </label>
+        <div className="mt-4">
+          <button
+            type="button"
+            disabled={pending || !createDraft.name.trim()}
+            className="h-9 rounded-[10px] bg-[#7C4A57] px-4 text-sm font-medium text-white hover:bg-[#693948] disabled:opacity-50"
+            onClick={() => {
+              const parsed = parseDraftDiscounts(createDraft);
+              if (!parsed.ok) {
+                setMessage(parsed.error);
+                return;
+              }
+              start(async () => {
+                const res = await createPricingGroupAction({
+                  name: createDraft.name,
+                  discounts: parsed.discounts,
+                  isDefault: createDraft.isDefault,
+                });
+                if (!res.ok) {
+                  setMessage(res.error);
+                  return;
+                }
+                setCreateDraft(EMPTY_DRAFT);
+                setMessage("Grupė sukurta.");
+                router.refresh();
+              });
+            }}
+          >
+            Sukurti grupę
+          </button>
+        </div>
+      </div>
+
+      {message ? <p className="text-[13px] text-[#17171B]">{message}</p> : null}
+    </div>
+  );
+}

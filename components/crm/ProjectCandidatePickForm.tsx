@@ -165,11 +165,11 @@ export function ProjectCandidatePickForm(props: ProjectCandidatePickFormProps) {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="pick-prior-title" className="text-base font-semibold text-zinc-900">
-              Klientas jau buvo priskirtas kitame projekte
+              Su šia įmone jau dirbta kitame projekte
             </h3>
             <p className="mt-2 text-sm text-zinc-600">
-              Šis subjektas anksčiau buvo paimtas į darbą kitame projekte. Galite atšaukti arba vis tiek priskirti sau
-              šiame projekte.
+              Kitoje lentoje jau buvo skambutis, laiškas arba kitas Kanban veiksmas. Galite atšaukti arba vis tiek
+              priskirti sau šiame projekte.
             </p>
             <ClientProjectHistoryList history={priorHistory} />
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">

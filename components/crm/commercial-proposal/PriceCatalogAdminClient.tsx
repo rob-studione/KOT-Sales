@@ -91,7 +91,7 @@ export function PriceCatalogAdminClient({ initial }: { initial: CpPriceItem[] })
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1 border-b border-zinc-200 pb-px" role="tablist" aria-label="Kainų kategorijos">
+        <div className="flex flex-wrap gap-1 border-b border-[#E8E8EB] pb-px" role="tablist" aria-label="Kainų kategorijos">
           {CATEGORIES.map((cat) => {
             const active = tab === cat;
             return (
@@ -105,7 +105,7 @@ export function PriceCatalogAdminClient({ initial }: { initial: CpPriceItem[] })
                   "rounded-t-md px-3 py-2 text-sm",
                   active
                     ? "bg-white font-medium text-[#7C4A57] shadow-[inset_0_-2px_0_0_#7C4A57]"
-                    : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900",
+                    : "text-[#6F7077] hover:bg-[#F7F7F8] hover:text-[#17171B]",
                 ].join(" ")}
               >
                 {CATEGORY_LABEL[cat]} ({counts[cat]})
@@ -115,7 +115,7 @@ export function PriceCatalogAdminClient({ initial }: { initial: CpPriceItem[] })
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {dirtyItems.length ? (
-            <span className="text-sm text-zinc-600">Yra neišsaugotų pakeitimų</span>
+            <span className="text-sm text-[#6F7077]">Yra neišsaugotų pakeitimų</span>
           ) : null}
           <button
             type="button"
@@ -170,12 +170,12 @@ export function PriceCatalogAdminClient({ initial }: { initial: CpPriceItem[] })
           </button>
         </div>
       </div>
-      {message ? <p className="text-sm text-zinc-700">{message}</p> : null}
+      {message ? <p className="text-sm text-[#17171B]">{message}</p> : null}
 
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-[12px] border border-[#E8E8EB] bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
-            <thead className="bg-zinc-50 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
+            <thead className="bg-[#F7F7F8] text-left text-xs font-medium uppercase tracking-wide text-[#6F7077]">
               <tr>
                 <th className="px-3 py-2">Pavadinimas</th>
                 <th className="px-3 py-2">Bazinė kaina</th>
@@ -184,7 +184,7 @@ export function PriceCatalogAdminClient({ initial }: { initial: CpPriceItem[] })
                 <th className="px-3 py-2">Aktyvi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
+            <tbody className="divide-y divide-[#E8E8EB]">
               {visible.map((item) => {
                 const draft = drafts[item.id] ?? draftFromItem(item);
                 const dirty = draftsDiffer(draft, pristine[item.id]);
@@ -195,7 +195,7 @@ export function PriceCatalogAdminClient({ initial }: { initial: CpPriceItem[] })
                       <input
                         value={draft.label}
                         onChange={(e) => patch(item.id, { label: e.target.value })}
-                        className="h-8 w-full min-w-[180px] rounded-md border border-zinc-200 px-2 text-sm"
+                        className="h-8 w-full min-w-[180px] rounded-md border border-[#E8E8EB] px-2 text-sm text-[#17171B]"
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -203,14 +203,14 @@ export function PriceCatalogAdminClient({ initial }: { initial: CpPriceItem[] })
                         value={draft.price}
                         disabled={free}
                         onChange={(e) => patch(item.id, { price: e.target.value })}
-                        className="h-8 w-24 rounded-md border border-zinc-200 px-2 text-right text-sm tabular-nums disabled:bg-zinc-50 disabled:text-zinc-400"
+                        className="h-8 w-24 rounded-md border border-[#E8E8EB] px-2 text-right text-sm tabular-nums text-[#17171B] disabled:bg-[#F7F7F8] disabled:text-[#A1A1A6]"
                       />
                     </td>
                     <td className="px-3 py-2">
                       <select
                         value={draft.kind}
                         onChange={(e) => patch(item.id, { kind: e.target.value as PriceKind })}
-                        className="h-8 rounded-md border border-zinc-200 bg-white px-2 text-sm"
+                        className="h-8 rounded-md border border-[#E8E8EB] bg-white px-2 text-sm text-[#17171B]"
                       >
                         <option value="fixed">Fiksuota</option>
                         <option value="from">Nuo</option>
@@ -221,7 +221,7 @@ export function PriceCatalogAdminClient({ initial }: { initial: CpPriceItem[] })
                       <input
                         value={draft.unit}
                         onChange={(e) => patch(item.id, { unit: e.target.value })}
-                        className="h-8 w-20 rounded-md border border-zinc-200 px-2 text-sm"
+                        className="h-8 w-20 rounded-md border border-[#E8E8EB] px-2 text-sm text-[#17171B]"
                       />
                     </td>
                     <td className="px-3 py-2 text-center">
@@ -236,7 +236,7 @@ export function PriceCatalogAdminClient({ initial }: { initial: CpPriceItem[] })
               })}
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-zinc-500">
+                    <td colSpan={5} className="px-3 py-8 text-center text-[#6F7077]">
                     Šioje kategorijoje kainų nėra.
                   </td>
                 </tr>

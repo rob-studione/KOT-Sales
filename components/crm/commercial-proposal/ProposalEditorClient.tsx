@@ -16,6 +16,7 @@ import { ProposalServiceCard } from "@/components/crm/commercial-proposal/studio
 import { ServicePickerModal } from "@/components/crm/commercial-proposal/studio/ServicePickerModal";
 import { STUDIO_INNER_CLASS, STUDIO_ROOT_CLASS, STUDIO_WORKSPACE_CLASS } from "@/components/crm/commercial-proposal/studio/layoutClasses";
 import { CATEGORY_LABEL, STUDIO_CARD, formatDiscountPct, recipientInitials } from "@/components/crm/commercial-proposal/studio/shared";
+import { PricingGroupPicker } from "@/components/crm/commercial-proposal/PricingGroupPicker";
 import type { EditorTab } from "@/components/crm/commercial-proposal/studio/types";
 import {
   RecipientPickerDialog,
@@ -44,6 +45,7 @@ import {
 } from "@/lib/commercialProposal/discounts";
 import { applyGlobalDiscount } from "@/lib/commercialProposal/money";
 import { CP_CATEGORIES, type CommercialProposalLine, type CpPriceCategory } from "@/lib/commercialProposal/types";
+import type { CpPricingGroup } from "@/lib/crm/pricingGroups";
 
 function CategoryCheckbox({
   selected,
@@ -87,6 +89,8 @@ function DiscountEditor({
   discountInputs,
   applyAll,
   pending,
+  pricingGroups,
+  onApplyGroup,
   onApplyAllChange,
   onInputChange,
   onApplyAll,
@@ -97,6 +101,8 @@ function DiscountEditor({
   discountInputs: Record<CpPriceCategory, string>;
   applyAll: string;
   pending: boolean;
+  pricingGroups: CpPricingGroup[];
+  onApplyGroup: (group: CpPricingGroup) => void;
   onApplyAllChange: (v: string) => void;
   onInputChange: (category: CpPriceCategory, v: string) => void;
   onApplyAll: () => void;
@@ -143,6 +149,22 @@ function DiscountEditor({
           >
             <X className="h-4 w-4" />
           </button>
+        </div>
+
+        <div className="mt-4">
+          <PricingGroupPicker
+            groups={pricingGroups}
+            selectedId={
+              pricingGroups.find(
+                (g) =>
+                  g.discounts.translation === discounts.translation &&
+                  g.discounts.ai_translation === discounts.ai_translation &&
+                  g.discounts.additional_service === discounts.additional_service
+              )?.id ?? null
+            }
+            disabled={pending}
+            onSelect={onApplyGroup}
+          />
         </div>
 
         <div className="mt-4 flex flex-wrap items-end gap-2">
@@ -938,6 +960,15 @@ export function ProposalEditorClient({
           discountInputs={discountInputs}
           applyAll={applyAll}
           pending={pending}
+          pricingGroups={initial.pricingGroups ?? []}
+          onApplyGroup={(group) => {
+            applyDiscountsLocally(group.discounts);
+            start(async () => {
+              const res = await saveSettings(group.discounts);
+              if (!res.ok) reportSaveError(res.error);
+              else markSaved();
+            });
+          }}
           onApplyAllChange={setApplyAll}
           onInputChange={(category, v) => setDiscountInputs((prev) => ({ ...prev, [category]: v }))}
           onApplyAll={() => {

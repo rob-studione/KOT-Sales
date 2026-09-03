@@ -1,8 +1,9 @@
-import Link from "next/link";
-import { CrmTableContainer } from "@/components/crm/CrmTableContainer";
 import { ProposalCreateClient } from "@/components/crm/commercial-proposal/ProposalCreateClient";
-import { getProposalRecipientOptionAction } from "@/lib/crm/commercialProposalActions";
-import { CP_TOOL_PATH } from "@/lib/crm/commercialProposalPaths";
+import { ProposalToolNav } from "@/components/crm/commercial-proposal/ProposalToolNav";
+import { ProposalToolShell, PROPOSAL_TOOL_CARD } from "@/components/crm/commercial-proposal/ProposalToolShell";
+import { getProposalRecipientOptionAction, listPricingGroupsAction } from "@/lib/crm/commercialProposalActions";
+import { getCurrentCrmUser } from "@/lib/crm/currentUser";
+import { hasPermission } from "@/lib/crm/permissions/check";
 import { requireAnyPermission } from "@/lib/crm/requirePermission";
 import type { CpRecipientType } from "@/lib/commercialProposal/types";
 
@@ -21,21 +22,21 @@ export default async function NewCommercialProposalPage({
   const rawType = typeof sp.recipientType === "string" ? sp.recipientType : "";
   const recipientType: CpRecipientType | null = rawType === "lead" ? "lead" : rawType === "client" ? "client" : null;
   const recipientId = typeof sp.recipientId === "string" ? sp.recipientId.trim() : "";
-  const preset =
+  const [preset, groups, user] = await Promise.all([
     recipientType && recipientId
-      ? await getProposalRecipientOptionAction({ recipientType, recipientId })
-      : null;
+      ? getProposalRecipientOptionAction({ recipientType, recipientId })
+      : Promise.resolve(null),
+    listPricingGroupsAction(),
+    getCurrentCrmUser(),
+  ]);
+  const canAdmin = hasPermission(user, "settings.commercial_proposals");
 
   return (
-    <CrmTableContainer className="pb-10 pt-5">
-      <Link href={CP_TOOL_PATH} className="text-sm text-zinc-600 hover:underline">
-        ← Atgal į pasiūlymus
-      </Link>
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-900">Naujas pasiūlymas</h1>
-      <p className="mt-1 text-sm text-zinc-600">Pirmiausia pasirinkite gavėją — esamą klientą arba leadą.</p>
-      <div className="mt-6">
-        <ProposalCreateClient preset={preset} />
+    <ProposalToolShell title="Naujas pasiūlymas" nav={<ProposalToolNav active="list" canAdmin={canAdmin} />}>
+      <p className="mb-4 text-[13px] text-[#6F7077]">Pirmiausia pasirinkite gavėją — esamą klientą arba leadą.</p>
+      <div className={`${PROPOSAL_TOOL_CARD} p-5`}>
+        <ProposalCreateClient preset={preset} pricingGroups={groups} />
       </div>
-    </CrmTableContainer>
+    </ProposalToolShell>
   );
 }

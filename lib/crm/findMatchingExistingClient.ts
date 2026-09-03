@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isProjectWorkItemClosed, workItemActionTypeLabel } from "@/lib/crm/projectBoardConstants";
+import {
+  isKanbanWorkActionType,
+  isProjectWorkItemClosed,
+  workItemActionTypeLabel,
+} from "@/lib/crm/projectBoardConstants";
+import { manualLeadClientKey } from "@/lib/crm/manualLeadClientKey";
+import { procurementOrgClientKey } from "@/lib/crm/procurementContractClientKey";
 import { completionResultLabel, parseCompletionResult } from "@/lib/crm/projectCompletion";
 import { projectResultStatusLabel } from "@/lib/crm/projectSnapshot";
 import { SYNTHETIC_COMPANY_CODE_PREFIX } from "@/lib/crm/company-code";
@@ -146,13 +152,24 @@ function historyHref(opts: {
 async function loadProjectHistory(
   supabase: SupabaseClient,
   match: Omit<ExistingClientMatch, "project_history">,
-  opts?: { excludeProjectId?: string | null }
+  opts?: {
+    excludeProjectId?: string | null;
+    extraClientKeys?: string[];
+    requireKanbanWork?: boolean;
+  }
 ): Promise<ClientProjectHistoryEntry[]> {
   const keys = new Set<string>();
   if (match.client_key) keys.add(match.client_key);
-  if (match.company_code) keys.add(match.company_code);
+  if (match.company_code) {
+    keys.add(match.company_code);
+    const po = procurementOrgClientKey({ organizationCode: match.company_code });
+    if (po) keys.add(po);
+  }
   if (match.vat_code && !isSyntheticOrPersonVat(match.vat_code)) keys.add(match.vat_code);
   if (match.client_id) keys.add(match.client_id);
+  for (const k of opts?.extraClientKeys ?? []) {
+    if (k.trim()) keys.add(k.trim());
+  }
   const keyList = [...keys].filter(Boolean);
   if (keyList.length === 0) return [];
 
@@ -191,22 +208,26 @@ async function loadProjectHistory(
   const workIds = rows.map((r) => r.id);
 
   const lastByWork = new Map<string, { occurred_at: string; action_type: string; call_status: string | null }>();
+  const hasKanbanWork = new Set<string>();
   const { data: acts, error: actErr } = await supabase
     .from("project_work_item_activities")
     .select("work_item_id,occurred_at,action_type,call_status")
     .in("work_item_id", workIds)
     .order("occurred_at", { ascending: false })
-    .limit(80);
+    .limit(200);
 
   if (actErr) {
     console.error("[findMatchingExistingClient] activities", actErr);
   } else {
     for (const a of acts ?? []) {
       const wid = String((a as { work_item_id?: string }).work_item_id ?? "");
-      if (!wid || lastByWork.has(wid)) continue;
+      if (!wid) continue;
+      const actionType = String((a as { action_type?: string }).action_type ?? "");
+      if (isKanbanWorkActionType(actionType)) hasKanbanWork.add(wid);
+      if (lastByWork.has(wid)) continue;
       lastByWork.set(wid, {
         occurred_at: String((a as { occurred_at?: string }).occurred_at ?? ""),
-        action_type: String((a as { action_type?: string }).action_type ?? ""),
+        action_type: actionType,
         call_status:
           (a as { call_status?: string | null }).call_status != null
             ? String((a as { call_status?: string | null }).call_status)
@@ -219,6 +240,7 @@ async function loadProjectHistory(
   const out: ClientProjectHistoryEntry[] = [];
 
   for (const r of rows) {
+    if (opts?.requireKanbanWork && !hasKanbanWork.has(r.id)) continue;
     const projectId = String(r.project_id ?? "");
     if (!projectId || seenProjects.has(projectId)) continue;
     seenProjects.add(projectId);
@@ -273,16 +295,29 @@ export async function findClientWorkHistoryInOtherProjects(
     vatCode?: string | null;
     clientId?: string | null;
     companyName?: string | null;
+    requireKanbanWork?: boolean;
   }
 ): Promise<ClientProjectHistoryEntry[]> {
   const clientKey = String(opts.clientKey ?? "").trim();
-  if (!clientKey) return [];
+  const extraClientKeys: string[] = [];
+  const companyCode = opts.companyCode?.trim() || "";
+  if (companyCode) {
+    const { data: leads } = await supabase
+      .from("project_manual_leads")
+      .select("id")
+      .eq("company_code", companyCode)
+      .limit(40);
+    for (const row of leads ?? []) {
+      extraClientKeys.push(manualLeadClientKey(String((row as { id?: string }).id ?? "")));
+    }
+  }
+  if (!clientKey && extraClientKeys.length === 0 && !companyCode) return [];
   return loadProjectHistory(
     supabase,
     {
       client_key: clientKey,
       company_name: String(opts.companyName ?? "").trim() || "—",
-      company_code: opts.companyCode?.trim() || null,
+      company_code: companyCode || null,
       client_id: opts.clientId?.trim() || null,
       email: null,
       vat_code: opts.vatCode?.trim() || null,
@@ -290,7 +325,11 @@ export async function findClientWorkHistoryInOtherProjects(
       match_reason: "company_code",
       allow_force_create: false,
     },
-    { excludeProjectId: opts.excludeProjectId }
+    {
+      excludeProjectId: opts.excludeProjectId,
+      extraClientKeys,
+      requireKanbanWork: opts.requireKanbanWork,
+    }
   );
 }
 

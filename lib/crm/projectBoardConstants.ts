@@ -320,6 +320,12 @@ export function isCallKpiActionType(actionType: string): boolean {
   return actionType.trim().toLowerCase() === "call";
 }
 
+/** Tikras darbas ant Kanban — ne grynas paėmimas į lentą. */
+export function isKanbanWorkActionType(actionType: string): boolean {
+  const t = actionType.trim().toLowerCase();
+  return t === "call" || t === "email" || t === "commercial" || t === "status_change";
+}
+
 export function workItemActionTypeLabel(t: string): string {
   switch (t.trim().toLowerCase()) {
     case "call":

@@ -68,7 +68,7 @@ export function NewProposalButton() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="new-proposal-title"
-            className="w-full max-w-xl rounded-[16px] border border-[#E8E8EB] bg-white p-5 shadow-[0_8px_24px_rgba(0,0,0,0.08)]"
+            className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-[16px] border border-[#E8E8EB] bg-white p-5 shadow-[0_8px_24px_rgba(0,0,0,0.08)]"
           >
             <h2 id="new-proposal-title" className="text-[18px] font-semibold text-[#17171B]">
               Naujas pasiūlymas

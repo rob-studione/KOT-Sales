@@ -23,6 +23,7 @@ import {
   findManualLeadIdByCompanyCode,
   findManualLeadIdByCompanyCodeAnyProject,
 } from "@/lib/crm/manualLeadEnsure";
+import { mapPricingGroup, type CpPricingGroup } from "@/lib/crm/pricingGroups";
 import { mergeProposalRecipientSearchResults } from "@/lib/crm/proposalRecipientSearch";
 import { CP_TOOL_PATH, commercialProposalPath, commercialProposalPricesPath, commercialProposalTemplatePath } from "@/lib/crm/commercialProposalPaths";
 import { buildClientListSearchOrClause, sanitizeForPostgrestOrClause } from "@/lib/crm/postgrestSearch";
@@ -416,12 +417,14 @@ export async function createCommercialProposalAction(input: {
   recipientId: string;
   recipientName?: string;
   workItemId?: string;
+  categoryDiscounts?: Partial<CpCategoryDiscounts>;
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const actor = await getCurrentCrmUser();
   if (!canUseProposals(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const discounts = normalizeCategoryDiscounts(input.categoryDiscounts);
   const workItemId = String(input.workItemId ?? "").trim();
   if (workItemId) {
-    return createProposalFromWorkItem(actor.id, workItemId);
+    return createProposalFromWorkItem(actor.id, workItemId, discounts);
   }
   const recipientType = input.recipientType === "lead" ? "lead" : "client";
   const recipientId = String(input.recipientId ?? "").trim();
@@ -467,7 +470,7 @@ export async function createCommercialProposalAction(input: {
       recipient_email: recipient.email,
       recipient_phone: recipient.phone,
       sales_manager_id: actor.id,
-      global_discount_pct: 0,
+      global_discount_pct: uniformDiscountPct(discounts) ?? 0,
       created_by: actor.id,
     })
     .select("id")
@@ -475,14 +478,14 @@ export async function createCommercialProposalAction(input: {
   if (error || !inserted) return { ok: false, error: error?.message ?? "Nepavyko sukurti pasiūlymo." };
 
   try {
-    await upsertDiscounts(admin, inserted.id, ZERO_CATEGORY_DISCOUNTS);
+    await upsertDiscounts(admin, inserted.id, discounts);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Nepavyko įrašyti nuolaidų." };
   }
 
   const lines = catalog.map((item) => ({
     proposal_id: inserted.id,
-    ...catalogItemToLineFields(item, 0),
+    ...catalogItemToLineFields(item, categoryDiscount(discounts, item.category)),
   }));
   if (lines.length) {
     const { error: lErr } = await admin.from("commercial_proposal_lines").insert(lines);
@@ -495,7 +498,8 @@ export async function createCommercialProposalAction(input: {
 
 async function createProposalFromWorkItem(
   actorId: string,
-  workItemId: string
+  workItemId: string,
+  discounts: CpCategoryDiscounts = ZERO_CATEGORY_DISCOUNTS
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   if (!isValidUuid(workItemId)) return { ok: false, error: "Kortelė nerasta." };
   try {
@@ -517,7 +521,7 @@ async function createProposalFromWorkItem(
     const draft = await createDraftForWorkItem(admin, actorId, workItemId, recipient);
     await ensureDraftLines(admin, draft.id);
     try {
-      await upsertDiscounts(admin, draft.id, ZERO_CATEGORY_DISCOUNTS);
+      await applyCategoryDiscountsToDraft(admin, draft.id, actorId, discounts);
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Nepavyko įrašyti nuolaidų." };
     }
@@ -535,6 +539,7 @@ export type ProposalEditorPayload = {
   managers: Array<{ id: string; name: string; job_title: string }>;
   canChangeManager: boolean;
   canDelete: boolean;
+  pricingGroups: CpPricingGroup[];
 };
 
 export async function loadProposalEditorData(proposalId: string): Promise<ProposalEditorPayload> {
@@ -577,6 +582,7 @@ export async function loadProposalEditorData(proposalId: string): Promise<Propos
     managers,
     canChangeManager: true,
     canDelete: canDeleteProposal(actor, proposal.status),
+    pricingGroups: await loadPricingGroups(admin, true),
   };
 }
 
@@ -1677,6 +1683,143 @@ export async function updatePriceItemAction(input: {
   return { ok: true };
 }
 
+const PRICING_GROUP_SELECT =
+  "id,name,sort_order,active,is_default,translation_pct,ai_translation_pct,additional_service_pct";
+
+async function loadPricingGroups(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  activeOnly = false
+): Promise<CpPricingGroup[]> {
+  let q = admin.from("cp_pricing_groups").select(PRICING_GROUP_SELECT).order("sort_order").order("name");
+  if (activeOnly) q = q.eq("active", true);
+  const { data, error } = await q;
+  if (error) {
+    const msg = error.message ?? "";
+    if (/does not exist|schema cache|cp_pricing_groups/i.test(msg)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map((row) => mapPricingGroup(row as Record<string, unknown>));
+}
+
+export async function listPricingGroupsAction(): Promise<CpPricingGroup[]> {
+  const actor = await getCurrentCrmUser();
+  if (!canUseProposals(actor) || !actor) throw new Error("Not authorized");
+  return loadPricingGroups(createSupabaseAdminClient(), true);
+}
+
+export async function listPricingGroupsAdmin(): Promise<CpPricingGroup[]> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) throw new Error("Not authorized");
+  return loadPricingGroups(createSupabaseAdminClient(), false);
+}
+
+async function clearDefaultPricingGroup(admin: ReturnType<typeof createSupabaseAdminClient>) {
+  await admin.from("cp_pricing_groups").update({ is_default: false }).eq("is_default", true);
+}
+
+export async function createPricingGroupAction(input: {
+  name: string;
+  discounts: Partial<CpCategoryDiscounts>;
+  isDefault?: boolean;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  const name = String(input.name ?? "").trim();
+  if (!name) return { ok: false, error: "Įveskite grupės pavadinimą." };
+  const discounts = normalizeCategoryDiscounts(input.discounts);
+  try {
+    const admin = createSupabaseAdminClient();
+    const existing = await loadPricingGroups(admin, false);
+    const sortOrder = existing.reduce((max, g) => Math.max(max, g.sort_order), -1) + 1;
+    const makeDefault = Boolean(input.isDefault) || existing.length === 0;
+    if (makeDefault) await clearDefaultPricingGroup(admin);
+    const { data, error } = await admin
+      .from("cp_pricing_groups")
+      .insert({
+        name,
+        sort_order: sortOrder,
+        active: true,
+        is_default: makeDefault,
+        translation_pct: discounts.translation,
+        ai_translation_pct: discounts.ai_translation,
+        additional_service_pct: discounts.additional_service,
+      })
+      .select("id")
+      .single();
+    if (error || !data) return { ok: false, error: error?.message ?? "Nepavyko sukurti grupės." };
+    revalidateProposalTool();
+    return { ok: true, id: String(data.id) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko sukurti grupės." };
+  }
+}
+
+export async function updatePricingGroupAction(input: {
+  id: string;
+  name: string;
+  discounts: Partial<CpCategoryDiscounts>;
+  active: boolean;
+  isDefault: boolean;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  if (!isValidUuid(input.id)) return { ok: false, error: "Neteisinga grupė." };
+  const name = String(input.name ?? "").trim();
+  if (!name) return { ok: false, error: "Įveskite grupės pavadinimą." };
+  const discounts = normalizeCategoryDiscounts(input.discounts);
+  try {
+    const admin = createSupabaseAdminClient();
+    const groups = await loadPricingGroups(admin, false);
+    const current = groups.find((g) => g.id === input.id);
+    if (!current) return { ok: false, error: "Grupė nerasta." };
+    if (current.is_default && !input.isDefault) {
+      return { ok: false, error: "Turi likti viena numatytoji grupė. Pirmiausia pažymėkite kitą." };
+    }
+    if (input.isDefault) await clearDefaultPricingGroup(admin);
+    const { error } = await admin
+      .from("cp_pricing_groups")
+      .update({
+        name,
+        active: input.active,
+        is_default: input.isDefault,
+        translation_pct: discounts.translation,
+        ai_translation_pct: discounts.ai_translation,
+        additional_service_pct: discounts.additional_service,
+      })
+      .eq("id", input.id);
+    if (error) return { ok: false, error: error.message };
+    revalidateProposalTool();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko išsaugoti grupės." };
+  }
+}
+
+export async function deletePricingGroupAction(
+  id: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const actor = await getCurrentCrmUser();
+  if (!canAdminCatalog(actor) || !actor) return { ok: false, error: "Neturite teisių." };
+  if (!isValidUuid(id)) return { ok: false, error: "Neteisinga grupė." };
+  try {
+    const admin = createSupabaseAdminClient();
+    const groups = await loadPricingGroups(admin, false);
+    const target = groups.find((g) => g.id === id);
+    if (!target) return { ok: false, error: "Grupė nerasta." };
+    if (groups.length <= 1) return { ok: false, error: "Paskutinės grupės ištrinti negalima." };
+    const { error } = await admin.from("cp_pricing_groups").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    if (target.is_default) {
+      const next = groups.find((g) => g.id !== id);
+      if (next) await admin.from("cp_pricing_groups").update({ is_default: true }).eq("id", next.id);
+    }
+    revalidateProposalTool();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko ištrinti grupės." };
+  }
+}
+
 type ExpressWorkItemRow = {
   id: string;
   project_id: string;
@@ -1705,6 +1848,8 @@ export type ExpressProposalContext = {
   pendingLead: ExpressPendingLead | null;
   proposal: ExpressProposalSummary | null;
   recipientError: string | null;
+  pricingGroups: CpPricingGroup[];
+  catalog: CpPriceItem[];
 };
 
 type ResolvedExpressRecipients = {
@@ -2090,7 +2235,12 @@ export async function getExpressProposalContextAction(
     const admin = createSupabaseAdminClient();
     const item = await loadWorkItemForExpress(admin, id);
     if (!item) return { ok: false, error: "Kortelė nerasta." };
-    const resolved = await resolveRecipientsFromWorkItem(admin, item);
+    const [resolved, pricingGroups, catalog] = await Promise.all([
+      resolveRecipientsFromWorkItem(admin, item),
+      loadPricingGroups(admin, true),
+      loadCatalog(admin),
+    ]);
+    const extras = { pricingGroups, catalog };
     const recipientError =
       resolved.recipients.length || resolved.pendingLead ? null : resolved.error;
     const draft = await findDraftByWorkItem(admin, id);
@@ -2110,6 +2260,7 @@ export async function getExpressProposalContextAction(
           pendingLead: selected ? null : resolved.pendingLead,
           proposal: toExpressSummary(draft, discounts),
           recipientError,
+          ...extras,
         },
       };
     }
@@ -2133,6 +2284,7 @@ export async function getExpressProposalContextAction(
           pendingLead: selected ? null : resolved.pendingLead,
           proposal: toExpressSummary(latest, discounts),
           recipientError,
+          ...extras,
         },
       };
     }
@@ -2146,6 +2298,7 @@ export async function getExpressProposalContextAction(
         pendingLead: resolved.pendingLead,
         proposal: null,
         recipientError,
+        ...extras,
       },
     };
   } catch (e) {

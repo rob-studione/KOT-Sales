@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   generateCommercialProposalAction,
@@ -19,12 +19,10 @@ import {
 } from "@/lib/commercialProposal/discounts";
 import { CP_CATEGORIES, type CpPriceCategory } from "@/lib/commercialProposal/types";
 import { formatCategoryDiscountsLabel } from "@/lib/commercialProposal/uiLabels";
-import {
-  CATEGORY_LABEL,
-  recipientInitials,
-  statusChipClass,
-  statusLabel,
-} from "@/components/crm/commercial-proposal/studio/shared";
+import { CATEGORY_LABEL, recipientInitials, statusChipClass, statusLabel } from "@/components/crm/commercial-proposal/studio/shared";
+import { CategoryPricePreviewList } from "@/components/crm/commercial-proposal/CategoryPricePreviewList";
+import { PricingGroupPicker } from "@/components/crm/commercial-proposal/PricingGroupPicker";
+import { defaultPricingGroup, type CpPricingGroup } from "@/lib/crm/pricingGroups";
 import { getFocusable, lockStudioScroll } from "@/components/crm/commercial-proposal/studio/lockStudioScroll";
 import {
   commercialProposalPdfHref,
@@ -103,6 +101,53 @@ function discountsFromEnabled(
   }
   if (Object.keys(fieldErrors).length) return { ok: false, fieldErrors };
   return { ok: true, discounts: normalizeCategoryDiscounts(raw) };
+}
+
+function matchingGroupId(groups: CpPricingGroup[], discounts: CpCategoryDiscounts): string | null {
+  return (
+    groups.find(
+      (g) =>
+        g.discounts.translation === discounts.translation &&
+        g.discounts.ai_translation === discounts.ai_translation &&
+        g.discounts.additional_service === discounts.additional_service
+    )?.id ?? null
+  );
+}
+
+function formFromDiscounts(d: CpCategoryDiscounts): {
+  enabled: Record<CpPriceCategory, boolean>;
+  inputs: Record<CpPriceCategory, string>;
+} {
+  return {
+    enabled: {
+      translation: d.translation > 0,
+      ai_translation: d.ai_translation > 0,
+      additional_service: d.additional_service > 0,
+    },
+    inputs: {
+      translation: d.translation > 0 ? String(d.translation) : "",
+      ai_translation: d.ai_translation > 0 ? String(d.ai_translation) : "",
+      additional_service: d.additional_service > 0 ? String(d.additional_service) : "",
+    },
+  };
+}
+
+function liveDiscountsFromForm(
+  enabled: Record<CpPriceCategory, boolean>,
+  inputs: Record<CpPriceCategory, string>
+): CpCategoryDiscounts {
+  const parsed = discountsFromEnabled(enabled, inputs);
+  if (parsed.ok) return parsed.discounts;
+  const raw: Partial<CpCategoryDiscounts> = {};
+  for (const c of CP_CATEGORIES) {
+    if (!enabled[c]) {
+      raw[c] = 0;
+      continue;
+    }
+    const p = parseDiscountInput(inputs[c]);
+    raw[c] = p.ok ? p.value : 0;
+  }
+  return normalizeCategoryDiscounts(raw);
 }
 
 function contactLine(parts: Array<string | null | undefined>): string | null {
@@ -281,10 +326,12 @@ function SummaryRow({ label, children }: { label: string; children: ReactNode })
 function ResultBody({
   proposal,
   recipient,
+  catalog,
   emphasizeNumber,
 }: {
   proposal: ExpressProposalSummary;
   recipient: ProposalRecipientOption | null;
+  catalog: ExpressProposalContext["catalog"];
   emphasizeNumber?: boolean;
 }) {
   return (
@@ -303,7 +350,6 @@ function ResultBody({
             </span>
           ) : null}
         </SummaryRow>
-        <SummaryRow label="Paslaugos">Visos numatytos aktyvios paslaugos</SummaryRow>
         <SummaryRow label="Nuolaidos">{formatCategoryDiscountsLabel(proposal.discounts)}</SummaryRow>
         {!emphasizeNumber && proposal.proposalNumber ? (
           <SummaryRow label="Numeris">
@@ -318,6 +364,12 @@ function ResultBody({
           </span>
         </SummaryRow>
       </dl>
+      {catalog.length ? (
+        <div>
+          <h3 className="mb-1.5 text-[12px] font-medium uppercase tracking-wide text-[#6F7077]">Kainos</h3>
+          <CategoryPricePreviewList items={catalog} discounts={proposal.discounts} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -386,7 +438,9 @@ export function ExpressProposalModal({
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<CpPriceCategory, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [proposal, setProposal] = useState<ExpressProposalSummary | null>(null);
+  const [groupId, setGroupId] = useState<string | null>(null);
   const busy = pending || loading;
+  const liveDiscounts = useMemo(() => liveDiscountsFromForm(enabled, inputs), [enabled, inputs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -404,17 +458,18 @@ export function ExpressProposalModal({
         setRecipient(res.context.selectedRecipient);
         if (res.context.proposal) {
           setProposal(res.context.proposal);
-          const d = res.context.proposal.discounts;
-          setEnabled({
-            translation: d.translation > 0,
-            ai_translation: d.ai_translation > 0,
-            additional_service: d.additional_service > 0,
-          });
-          setInputs({
-            translation: d.translation > 0 ? String(d.translation) : "",
-            ai_translation: d.ai_translation > 0 ? String(d.ai_translation) : "",
-            additional_service: d.additional_service > 0 ? String(d.additional_service) : "",
-          });
+          const form = formFromDiscounts(res.context.proposal.discounts);
+          setEnabled(form.enabled);
+          setInputs(form.inputs);
+          setGroupId(matchingGroupId(res.context.pricingGroups, res.context.proposal.discounts));
+        } else {
+          const def = defaultPricingGroup(res.context.pricingGroups);
+          if (def) {
+            setGroupId(def.id);
+            const form = formFromDiscounts(def.discounts);
+            setEnabled(form.enabled);
+            setInputs(form.inputs);
+          }
         }
         if (res.context.mode === "generated" && res.context.proposal) setView("generated");
         else setView("form");
@@ -618,8 +673,25 @@ export function ExpressProposalModal({
                 </div>
               </section>
               <section>
-                <h3 className="text-[12px] font-medium uppercase tracking-wide text-[#6F7077]">Paslaugos</h3>
-                <p className="mt-1.5 text-[13px] text-[#17171B]">Visos numatytos aktyvios paslaugos</p>
+                <PricingGroupPicker
+                  groups={context?.pricingGroups ?? []}
+                  selectedId={groupId}
+                  disabled={busy}
+                  onSelect={(group) => {
+                    setGroupId(group.id);
+                    const form = formFromDiscounts(group.discounts);
+                    setEnabled(form.enabled);
+                    setInputs(form.inputs);
+                    setFieldErrors({});
+                  }}
+                />
+              </section>
+              <section>
+                <h3 className="text-[12px] font-medium uppercase tracking-wide text-[#6F7077]">Kainos</h3>
+                <p className="mt-1 text-[12px] text-[#6F7077]">Kategorijų mažiausia kaina pagal kainyną.</p>
+                <div className="mt-1.5">
+                  <CategoryPricePreviewList items={context?.catalog ?? []} discounts={liveDiscounts} />
+                </div>
               </section>
               <section>
                 <h3 className="text-[12px] font-medium uppercase tracking-wide text-[#6F7077]">Nuolaidos</h3>
@@ -682,6 +754,7 @@ export function ExpressProposalModal({
               <ResultBody
                 proposal={proposal}
                 recipient={recipient}
+                catalog={context?.catalog ?? []}
                 emphasizeNumber={view === "success" || view === "generated"}
               />
             </div>

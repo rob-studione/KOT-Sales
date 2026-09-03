@@ -1579,6 +1579,7 @@ export async function previewPickClientPriorHistoryAction(
           vatCode,
           clientId,
           companyName: companyName ?? (String(viewRow.company_name ?? "").trim() || null),
+          requireKanbanWork: true,
         });
         return { ok: true, history: hist };
       }
@@ -1594,6 +1595,7 @@ export async function previewPickClientPriorHistoryAction(
     vatCode,
     clientId,
     companyName,
+    requireKanbanWork: true,
   });
   return { ok: true, history };
 }

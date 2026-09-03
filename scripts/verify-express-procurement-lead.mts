@@ -16,6 +16,11 @@ import {
   mergeProposalRecipientSearchResults,
   type ProposalRecipientSearchRow,
 } from "@/lib/crm/proposalRecipientSearch";
+import { previewCatalogPrices } from "@/lib/commercialProposal/catalogPreview";
+import { applyGlobalDiscount } from "@/lib/commercialProposal/money";
+import type { CpPriceItem } from "@/lib/commercialProposal/types";
+import { isKanbanWorkActionType } from "@/lib/crm/projectBoardConstants";
+import { defaultPricingGroup, mapPricingGroup } from "@/lib/crm/pricingGroups";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -231,6 +236,67 @@ const mergedLeadWins = mergeProposalRecipientSearchResults({
   workItems: [courtWork],
 });
 assert(mergedLeadWins.length === 1 && mergedLeadWins[0]?.recipientId === "lead-x", "existing lead from any project hides Kanban duplicate");
+
+assert(isKanbanWorkActionType("call"), "call is Kanban work");
+assert(isKanbanWorkActionType("email"), "email is Kanban work");
+assert(isKanbanWorkActionType("commercial"), "commercial is Kanban work");
+assert(isKanbanWorkActionType("status_change"), "status_change is Kanban work");
+assert(!isKanbanWorkActionType("picked"), "picked is not Kanban work");
+assert(!isKanbanWorkActionType("note"), "note is not Kanban work");
+assert(!isKanbanWorkActionType("returned_to_candidates"), "return to candidates is not Kanban work");
+
+const sampleItem: CpPriceItem = {
+  id: "p1",
+  category: "translation",
+  sort_order: 0,
+  label: "Bendrinė",
+  base_price: 10.8,
+  currency: "EUR",
+  unit: "std. psl.",
+  is_from_price: true,
+  is_free: false,
+  active: true,
+};
+const preview = previewCatalogPrices(
+  [
+    sampleItem,
+    { ...sampleItem, id: "p2", base_price: 12, is_from_price: false },
+    { ...sampleItem, id: "p3", category: "ai_translation", base_price: 20, is_from_price: false },
+    { ...sampleItem, id: "p4", category: "additional_service", active: false, base_price: 5 },
+    { ...sampleItem, id: "p5", category: "additional_service", is_free: true, base_price: null },
+  ],
+  { translation: 3, ai_translation: 0, additional_service: 10 }
+);
+assert(preview[0]?.isFrom === true, "mixed from-price marks translation as nuo");
+assert(preview[0]?.minBase === 10.8, "translation uses lowest base");
+assert(preview[0]?.minAfter === applyGlobalDiscount(10.8, 3), "translation applies 3%");
+assert(preview[1]?.minAfter === 20, "AI with 0% stays at base");
+assert(preview[2]?.count === 0 && preview[2]?.minBase === null, "inactive and free additional services are skipped");
+
+const groups = [
+  mapPricingGroup({
+    id: "g1",
+    name: "Įstaigos",
+    sort_order: 1,
+    active: true,
+    is_default: false,
+    translation_pct: 3,
+    ai_translation_pct: 3,
+    additional_service_pct: 3,
+  }),
+  mapPricingGroup({
+    id: "g2",
+    name: "Privačios įmonės",
+    sort_order: 0,
+    active: true,
+    is_default: true,
+    translation_pct: 0,
+    ai_translation_pct: 0,
+    additional_service_pct: 0,
+  }),
+];
+assert(defaultPricingGroup(groups)?.id === "g2", "default group is preferred over first active");
+assert(groups[0]?.discounts.translation === 3, "mapPricingGroup reads category percents");
 
 if (failed) {
   console.error(`\n${failed} assertion(s) failed`);
