@@ -45,6 +45,13 @@ import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
 import { vilniusDateWhenEnteredUžbaigtaColumn, vilniusTodayDateString } from "@/lib/crm/projectWorkBoardDoneDate";
 import { KanbanMoveConfirmModal, type PendingKanbanMove } from "@/components/crm/KanbanMoveConfirmModal";
 import { WorkItemDetailSheet } from "@/components/crm/WorkItemDetailSheet";
+import { KanbanCardExpressMenu } from "@/components/crm/KanbanCardExpressMenu";
+import {
+  consumeKanbanExpressReturn,
+  ExpressProposalModal,
+} from "@/components/crm/commercial-proposal/ExpressProposalModal";
+import { listExpressProposalStatesAction } from "@/lib/crm/commercialProposalActions";
+import type { ExpressProposalState } from "@/lib/crm/expressProposal";
 
 function KanbanCopyFeedbackBadge({ show }: { show: boolean }) {
   if (!show) return null;
@@ -102,13 +109,17 @@ function KanbanCard({
   priority,
   columnKey,
   boardVariant,
+  expressState,
   onOpen,
+  onExpress,
 }: {
   item: ProjectWorkItemDto;
   priority: CallListPriority;
   columnKey: string;
   boardVariant: "default" | "procurement";
+  expressState: ExpressProposalState;
   onOpen: () => void;
+  onExpress: (trigger: HTMLButtonElement) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id });
 
@@ -147,7 +158,7 @@ function KanbanCard({
         isDragging ? "opacity-40 shadow-md" : "hover:shadow"
       } ${waitEmphasis ? "shadow" : ""}`}
     >
-      <div className="flex gap-1 p-1.5">
+      <div className="flex items-start gap-1 p-1.5">
         <button
           type="button"
           className="mt-0.5 cursor-grab touch-none rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 active:cursor-grabbing"
@@ -290,6 +301,7 @@ function KanbanCard({
             )}
           </div>
         </button>
+        <KanbanCardExpressMenu state={expressState} onAction={onExpress} />
       </div>
     </div>
   );
@@ -346,14 +358,36 @@ export function ProjectWorkBoard({
   const [boardError, setBoardError] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingKanbanMove | null>(null);
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  const [expressItemId, setExpressItemId] = useState<string | null>(null);
+  const [expressFromDrawer, setExpressFromDrawer] = useState(false);
+  const [expressTrigger, setExpressTrigger] = useState<HTMLButtonElement | null>(null);
+  const [expressStates, setExpressStates] = useState<Record<string, ExpressProposalState>>({});
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const saved = consumeKanbanExpressReturn(projectId);
+    if (saved && items.some((i) => i.id === saved.workItemId)) {
+      if (saved.reopenDrawer) setDetailItemId(saved.workItemId);
+      window.requestAnimationFrame(() => window.scrollTo(0, saved.scrollY));
+      return;
+    }
     const wi = new URLSearchParams(window.location.search).get("wi")?.trim() ?? "";
     if (!wi) return;
     if (items.some((i) => i.id === wi)) {
       setDetailItemId(wi);
     }
+  }, [items, projectId]);
+
+  useEffect(() => {
+    const ids = items.map((i) => i.id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    void listExpressProposalStatesAction(ids).then((next) => {
+      if (!cancelled) setExpressStates(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [items]);
 
   const boardItems = useMemo(() => items.filter((i) => isWorkItemOnKanbanBoard(i)), [items]);
@@ -488,8 +522,15 @@ export function ProjectWorkBoard({
                     columnKey={colKey}
                     boardVariant={boardVariant}
                     item={it}
+                    expressState={expressStates[it.id] ?? "none"}
                     priority={priorityFromSnapshotScore(it.snapshot_priority, prios)}
                     onOpen={() => setDetailItemId(it.id)}
+                    onExpress={(trigger) => {
+                      setDetailItemId(null);
+                      setExpressFromDrawer(false);
+                      setExpressTrigger(trigger);
+                      setExpressItemId(it.id);
+                    }}
                   />
                 ))}
               </KanbanColumn>
@@ -503,12 +544,36 @@ export function ProjectWorkBoard({
       </DndContext>
 
       {detailItem ? (
-        <WorkItemDetailSheet
-          key={`${detailItem.id}-${detailItem.call_status}`}
-          item={detailItem}
-          activities={activitiesByWorkItemId[detailItem.id] ?? []}
-          allWorkPriorities={items.map((i) => i.snapshot_priority)}
-          onClose={() => setDetailItemId(null)}
+        <div hidden={expressItemId != null}>
+          <WorkItemDetailSheet
+            key={`${detailItem.id}-${detailItem.call_status}`}
+            item={detailItem}
+            activities={activitiesByWorkItemId[detailItem.id] ?? []}
+            allWorkPriorities={items.map((i) => i.snapshot_priority)}
+            suppressEscape={expressItemId != null}
+            expressState={expressStates[detailItem.id] ?? "none"}
+            onExpressProposal={(trigger) => {
+              setExpressFromDrawer(true);
+              setExpressTrigger(trigger);
+              setExpressItemId(detailItem.id);
+            }}
+            onClose={() => setDetailItemId(null)}
+          />
+        </div>
+      ) : null}
+
+      {expressItemId ? (
+        <ExpressProposalModal
+          workItemId={expressItemId}
+          projectId={projectId}
+          returnToDrawer={expressFromDrawer}
+          onClose={() => {
+            setExpressItemId(null);
+            setExpressFromDrawer(false);
+            window.requestAnimationFrame(() => expressTrigger?.focus());
+            const ids = items.map((i) => i.id);
+            if (ids.length) void listExpressProposalStatesAction(ids).then(setExpressStates);
+          }}
         />
       ) : null}
 

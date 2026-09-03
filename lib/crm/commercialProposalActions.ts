@@ -2,10 +2,23 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createSupabaseSsrClient } from "@/lib/supabase/ssr";
 import { getCurrentCrmUser } from "@/lib/crm/currentUser";
+import { isValidUuid } from "@/lib/crm/crmUsers";
 import { hasPermission } from "@/lib/crm/permissions/check";
 import { displayClientName } from "@/lib/crm/format";
-import { manualLeadClientKey } from "@/lib/crm/manualLeadClientKey";
+import { manualLeadClientKey, parseManualLeadIdFromClientKey } from "@/lib/crm/manualLeadClientKey";
+import {
+  parseProcurementContractIdFromClientKey,
+} from "@/lib/crm/procurementContractClientKey";
+import type { ExpressProposalMode, ExpressProposalState } from "@/lib/crm/expressProposal";
+import {
+  classifyExpressProcurementRecipient,
+  normalizeExpressCompanyCode,
+  pendingLeadFromProcurement,
+  type ExpressPendingLead,
+} from "@/lib/crm/expressProcurementRecipient";
+import { ensureManualLeadByCompanyCode, findManualLeadIdByCompanyCode } from "@/lib/crm/manualLeadEnsure";
 import { CP_TOOL_PATH, commercialProposalPath, commercialProposalPricesPath, commercialProposalTemplatePath } from "@/lib/crm/commercialProposalPaths";
 import { buildClientListSearchOrClause, sanitizeForPostgrestOrClause } from "@/lib/crm/postgrestSearch";
 import {
@@ -35,8 +48,10 @@ import {
 import {
   CP_CATEGORIES,
   CP_DEFAULT_TEMPLATE_VERSION,
+  CP_EXPRESS_READONLY_STATUSES,
   CP_TEMPLATE_LT_COMMERCIAL_V1,
   CP_TEMPLATE_LT_COMMERCIAL_V2,
+  isExpressReadonlyStatus,
   type CpRecipientType,
 } from "@/lib/commercialProposal/types";
 import type {
@@ -143,6 +158,7 @@ function mapProposal(row: Record<string, unknown>): CommercialProposalRow {
     generated_at: row.generated_at == null ? null : String(row.generated_at),
     pdf_storage_path: row.pdf_storage_path == null ? null : String(row.pdf_storage_path),
     snapshot: (row.snapshot as CommercialProposalSnapshot | null) ?? null,
+    work_item_id: row.work_item_id == null ? null : String(row.work_item_id),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   };
@@ -341,6 +357,26 @@ async function upsertDiscounts(
     onConflict: "proposal_id,category",
   });
   if (error) throw new Error(error.message);
+}
+
+async function applyCategoryDiscountsToDraft(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  proposalId: string,
+  salesManagerId: string,
+  discounts: CpCategoryDiscounts
+): Promise<void> {
+  const normalized = normalizeCategoryDiscounts(discounts);
+  const { error } = await admin
+    .from("commercial_proposals")
+    .update({
+      sales_manager_id: salesManagerId,
+      global_discount_pct: uniformDiscountPct(normalized) ?? 0,
+    })
+    .eq("id", proposalId)
+    .eq("status", "draft");
+  if (error) throw new Error(error.message);
+  await upsertDiscounts(admin, proposalId, normalized);
+  await recalculateProposalLines(admin, proposalId, normalized);
 }
 
 async function recalculateProposalLines(
@@ -820,27 +856,32 @@ export async function updateProposalSettingsAction(input: {
   const discounts = input.categoryDiscounts
     ? normalizeCategoryDiscounts({ ...current, ...input.categoryDiscounts })
     : current;
-  const patch: Record<string, unknown> = {
-    sales_manager_id: input.salesManagerId,
-    global_discount_pct: uniformDiscountPct(discounts) ?? 0,
-  };
   if (typeof input.recipientName === "string") {
     const name = input.recipientName.trim();
     if (name) {
-      patch.recipient_name = name;
-      patch.client_name = name;
+      const { error: nErr } = await admin
+        .from("commercial_proposals")
+        .update({ recipient_name: name, client_name: name })
+        .eq("id", input.proposalId);
+      if (nErr) return { ok: false, error: nErr.message };
     }
   }
-  const { error: uErr } = await admin.from("commercial_proposals").update(patch).eq("id", input.proposalId);
-  if (uErr) return { ok: false, error: uErr.message };
 
   if (input.categoryDiscounts) {
     try {
-      await upsertDiscounts(admin, input.proposalId, discounts);
-      await recalculateProposalLines(admin, input.proposalId, discounts);
+      await applyCategoryDiscountsToDraft(admin, input.proposalId, input.salesManagerId, discounts);
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Nepavyko perskaičiuoti kainų." };
     }
+  } else {
+    const { error: uErr } = await admin
+      .from("commercial_proposals")
+      .update({
+        sales_manager_id: input.salesManagerId,
+        global_discount_pct: uniformDiscountPct(discounts) ?? 0,
+      })
+      .eq("id", input.proposalId);
+    if (uErr) return { ok: false, error: uErr.message };
   }
 
   revalidateProposalTool(input.proposalId);
@@ -1511,4 +1552,563 @@ export async function updatePriceItemAction(input: {
   if (error) return { ok: false, error: error.message };
   revalidateProposalTool();
   return { ok: true };
+}
+
+type ExpressWorkItemRow = {
+  id: string;
+  project_id: string;
+  source_type: string | null;
+  source_id: string | null;
+  client_key: string;
+  client_name_snapshot: string | null;
+};
+
+export type ExpressProposalSummary = {
+  id: string;
+  status: CommercialProposalStatus;
+  proposalNumber: string | null;
+  discounts: CpCategoryDiscounts;
+  recipientName: string;
+  contactName: string | null;
+  recipientType: CpRecipientType;
+  recipientId: string | null;
+};
+
+export type ExpressProposalContext = {
+  workItemId: string;
+  mode: ExpressProposalMode;
+  recipients: ProposalRecipientOption[];
+  selectedRecipient: ProposalRecipientOption | null;
+  pendingLead: ExpressPendingLead | null;
+  proposal: ExpressProposalSummary | null;
+  recipientError: string | null;
+};
+
+type ResolvedExpressRecipients = {
+  recipients: ProposalRecipientOption[];
+  pendingLead: ExpressPendingLead | null;
+  error: string | null;
+};
+
+function isUniqueViolation(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  if (error.code === "23505") return true;
+  return /duplicate key|unique constraint/i.test(error.message ?? "");
+}
+
+function toExpressSummary(
+  proposal: CommercialProposalRow,
+  discounts: CpCategoryDiscounts
+): ExpressProposalSummary {
+  return {
+    id: proposal.id,
+    status: proposal.status,
+    proposalNumber: proposal.proposal_number,
+    discounts,
+    recipientName: proposal.recipient_name || proposal.client_name,
+    contactName: proposal.contact_name,
+    recipientType: proposal.recipient_type,
+    recipientId: proposal.recipient_id,
+  };
+}
+
+/**
+ * Project RLS is org-wide (`authenticated using (true)`), not per-card membership.
+ * Express still must not load a UUID through the admin client unless the actor's
+ * session can SELECT that work item the same way Kanban pages do.
+ */
+async function visibleWorkItemIdsForActor(workItemIds: string[]): Promise<Set<string>> {
+  const unique = [...new Set(workItemIds.filter((id) => isValidUuid(id)))];
+  if (unique.length === 0) return new Set();
+  const supabase = await createSupabaseSsrClient();
+  const { data, error } = await supabase.from("project_work_items").select("id").in("id", unique);
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((row) => String(row.id)));
+}
+
+async function loadWorkItemForExpress(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  workItemId: string
+): Promise<ExpressWorkItemRow | null> {
+  if (!isValidUuid(workItemId)) return null;
+  const visible = await visibleWorkItemIdsForActor([workItemId]);
+  if (!visible.has(workItemId)) return null;
+  const { data, error } = await admin
+    .from("project_work_items")
+    .select("id,project_id,source_type,source_id,client_key,client_name_snapshot")
+    .eq("id", workItemId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return {
+    id: String(data.id),
+    project_id: String(data.project_id ?? ""),
+    source_type: data.source_type == null ? null : String(data.source_type),
+    source_id: data.source_id == null ? null : String(data.source_id),
+    client_key: String(data.client_key ?? ""),
+    client_name_snapshot: data.client_name_snapshot == null ? null : String(data.client_name_snapshot),
+  };
+}
+
+async function loadClientsByKey(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  clientKey: string
+): Promise<ProposalRecipientOption[]> {
+  const key = clientKey.trim();
+  if (!key) return [];
+  const { data, error } = await admin
+    .from("v_client_list_from_invoices")
+    .select("client_key,company_code,client_id,company_name,email,phone")
+    .eq("client_key", key)
+    .limit(8);
+  if (error) throw new Error(error.message);
+  return mapClientRowsToRecipients(data ?? []);
+}
+
+function mapClientRowsToRecipients(
+  data: Array<Record<string, unknown>>
+): ProposalRecipientOption[] {
+  return data.map((row) => {
+    const name = displayClientName(
+      String(row.company_name ?? ""),
+      row.company_code == null ? null : String(row.company_code)
+    );
+    return {
+      recipientType: "client" as const,
+      recipientId: String(row.client_id ?? row.client_key ?? ""),
+      recipientName: name,
+      contactName: null,
+      email: row.email == null ? null : String(row.email),
+      phone: row.phone == null ? null : String(row.phone),
+      companyCode: row.company_code == null ? null : String(row.company_code),
+      clientKey: String(row.client_key ?? ""),
+      clientId: row.client_id == null ? null : String(row.client_id),
+    };
+  });
+}
+
+function usableCompanyCode(value: string | null | undefined): string | null {
+  const code = normalizeExpressCompanyCode(value);
+  if (!code || code.toUpperCase().startsWith("PERSON_")) return null;
+  return code;
+}
+
+async function loadClientsByCompanyCode(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  companyCode: string
+): Promise<ProposalRecipientOption[]> {
+  const code = usableCompanyCode(companyCode);
+  if (!code) return [];
+  const { data, error } = await admin
+    .from("v_client_list_from_invoices")
+    .select("client_key,company_code,client_id,company_name,email,phone")
+    .eq("company_code", code)
+    .limit(8);
+  if (error) throw new Error(error.message);
+  const byCode = mapClientRowsToRecipients((data ?? []) as Array<Record<string, unknown>>);
+  if (byCode.length) return byCode;
+  return loadClientsByKey(admin, code);
+}
+
+async function loadProcurementContractOrg(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  contractId: string
+): Promise<{ organizationCode: string | null; organizationName: string | null }> {
+  const { data, error } = await admin
+    .from("project_procurement_contracts")
+    .select("organization_code,organization_name")
+    .eq("id", contractId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return {
+    organizationCode: usableCompanyCode(data?.organization_code == null ? null : String(data.organization_code)),
+    organizationName: String(data?.organization_name ?? "").trim() || null,
+  };
+}
+
+async function loadProcurementOrgFromWorkItem(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  item: ExpressWorkItemRow
+): Promise<{ organizationCode: string | null; organizationName: string | null }> {
+  let organizationCode: string | null = null;
+  let organizationName: string | null = null;
+  const contractId = item.source_id || parseProcurementContractIdFromClientKey(item.client_key);
+  if (contractId) {
+    const org = await loadProcurementContractOrg(admin, contractId);
+    organizationCode = org.organizationCode;
+    organizationName = org.organizationName;
+  }
+  if (!organizationCode) {
+    const ck = item.client_key.trim();
+    if (ck.startsWith("po:") && !ck.startsWith("po:name:")) {
+      organizationCode = usableCompanyCode(ck.slice(3));
+    }
+  }
+  if (!organizationName) {
+    organizationName = String(item.client_name_snapshot ?? "").trim() || null;
+  }
+  return { organizationCode, organizationName };
+}
+
+async function resolveProcurementRecipients(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  item: ExpressWorkItemRow,
+  options?: { createMissingLead?: boolean }
+): Promise<ResolvedExpressRecipients> {
+  const { organizationCode, organizationName } = await loadProcurementOrgFromWorkItem(admin, item);
+  const clients = organizationCode ? await loadClientsByCompanyCode(admin, organizationCode) : [];
+  const existingLeadId = organizationCode
+    ? await findManualLeadIdByCompanyCode(admin, { projectId: item.project_id, companyCode: organizationCode })
+    : null;
+  const existingLead = existingLeadId ? await loadLeadSummary(admin, existingLeadId) : null;
+
+  const classified = classifyExpressProcurementRecipient({
+    hasCrmClient: clients.length > 0,
+    hasExistingLead: Boolean(existingLead),
+    organizationName,
+    organizationCode,
+  });
+
+  if (classified.kind === "client") {
+    return { recipients: clients, pendingLead: null, error: null };
+  }
+  if (classified.kind === "existing_lead" && existingLead) {
+    return { recipients: [existingLead], pendingLead: null, error: null };
+  }
+  if (classified.kind === "blocked") {
+    return { recipients: [], pendingLead: null, error: classified.error };
+  }
+
+  const pending = pendingLeadFromProcurement({
+    organizationName: organizationName!,
+    organizationCode: organizationCode!,
+  });
+  if (!options?.createMissingLead) {
+    return { recipients: [], pendingLead: pending, error: null };
+  }
+  if (!item.project_id) {
+    return { recipients: [], pendingLead: null, error: "Kortelėje nėra projekto." };
+  }
+
+  const ensured = await ensureManualLeadByCompanyCode(admin, {
+    projectId: item.project_id,
+    companyName: pending.companyName,
+    companyCode: pending.companyCode,
+    email: pending.email,
+    phone: pending.phone,
+    contactName: pending.contactName,
+  });
+  const created = await loadLeadSummary(admin, ensured.id);
+  if (!created) {
+    return { recipients: [], pendingLead: null, error: "Nepavyko paruošti lead gavėjo." };
+  }
+  return { recipients: [created], pendingLead: null, error: null };
+}
+
+async function resolveRecipientsFromWorkItem(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  item: ExpressWorkItemRow,
+  options?: { createMissingLead?: boolean }
+): Promise<ResolvedExpressRecipients> {
+  if (item.source_type === "procurement_contract") {
+    return resolveProcurementRecipients(admin, item, options);
+  }
+
+  if (item.source_type === "manual_lead") {
+    const leadId = item.source_id || parseManualLeadIdFromClientKey(item.client_key);
+    if (!leadId) return { recipients: [], pendingLead: null, error: "Šiai kortelei nerastas lead gavėjas." };
+    const lead = await loadLeadSummary(admin, leadId);
+    if (!lead) return { recipients: [], pendingLead: null, error: "Šiai kortelei nerastas lead gavėjas." };
+    return { recipients: [lead], pendingLead: null, error: null };
+  }
+
+  const leadFromKey = parseManualLeadIdFromClientKey(item.client_key);
+  if (leadFromKey) {
+    const lead = await loadLeadSummary(admin, leadFromKey);
+    if (!lead) return { recipients: [], pendingLead: null, error: "Šiai kortelei nerastas lead gavėjas." };
+    return { recipients: [lead], pendingLead: null, error: null };
+  }
+
+  const clients = await loadClientsByKey(admin, item.client_key);
+  if (clients.length === 0) {
+    return { recipients: [], pendingLead: null, error: "Šiai kortelei nerastas susietas CRM klientas." };
+  }
+  return { recipients: clients, pendingLead: null, error: null };
+}
+
+function pickRecipient(
+  recipients: ProposalRecipientOption[],
+  recipientType?: CpRecipientType,
+  recipientId?: string
+): ProposalRecipientOption | null {
+  if (recipients.length === 0) return null;
+  const type = recipientType === "lead" || recipientType === "client" ? recipientType : null;
+  const id = String(recipientId ?? "").trim();
+  if (type && id) {
+    return (
+      recipients.find((r) => r.recipientType === type && r.recipientId === id) ??
+      recipients.find((r) => r.recipientType === type && (r.clientId === id || r.clientKey === id)) ??
+      null
+    );
+  }
+  return recipients.length === 1 ? recipients[0]! : null;
+}
+
+async function findDraftByWorkItem(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  workItemId: string
+): Promise<CommercialProposalRow | null> {
+  const { data, error } = await admin
+    .from("commercial_proposals")
+    .select("*")
+    .eq("work_item_id", workItemId)
+    .eq("status", "draft")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? mapProposal(data as Record<string, unknown>) : null;
+}
+
+async function findLatestReadonlyProposal(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  workItemId: string
+): Promise<CommercialProposalRow | null> {
+  const { data, error } = await admin
+    .from("commercial_proposals")
+    .select("*")
+    .eq("work_item_id", workItemId)
+    .in("status", [...CP_EXPRESS_READONLY_STATUSES])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? mapProposal(data as Record<string, unknown>) : null;
+}
+
+async function ensureDraftLines(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  proposalId: string
+): Promise<void> {
+  const existing = await loadLines(admin, proposalId);
+  if (existing.length > 0) return;
+  const catalog = await loadCatalog(admin);
+  const lines = catalog.map((item) => ({
+    proposal_id: proposalId,
+    ...catalogItemToLineFields(item, 0),
+  }));
+  if (lines.length) {
+    const { error } = await admin.from("commercial_proposal_lines").insert(lines);
+    if (error) throw new Error(error.message);
+  }
+}
+
+async function createDraftForWorkItem(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  actorId: string,
+  workItemId: string,
+  recipient: ProposalRecipientOption
+): Promise<CommercialProposalRow> {
+  const recipientName = recipient.recipientName.trim() || "Gavėjas";
+  const { data: inserted, error } = await admin
+    .from("commercial_proposals")
+    .insert({
+      status: "draft",
+      template_version: CP_DEFAULT_TEMPLATE_VERSION,
+      client_key: recipient.clientKey,
+      client_id: recipient.clientId,
+      company_code: recipient.companyCode,
+      client_name: recipientName,
+      recipient_type: recipient.recipientType,
+      recipient_id: recipient.recipientId,
+      recipient_name: recipientName,
+      contact_name: recipient.contactName,
+      recipient_email: recipient.email,
+      recipient_phone: recipient.phone,
+      sales_manager_id: actorId,
+      global_discount_pct: 0,
+      created_by: actorId,
+      work_item_id: workItemId,
+    })
+    .select("*")
+    .single();
+
+  if (error && isUniqueViolation(error)) {
+    const existing = await findDraftByWorkItem(admin, workItemId);
+    if (existing) return existing;
+    throw new Error(error.message);
+  }
+  if (error || !inserted) throw new Error(error?.message ?? "Nepavyko sukurti pasiūlymo.");
+  return mapProposal(inserted as Record<string, unknown>);
+}
+
+async function assertExpressActor() {
+  const actor = await getCurrentCrmUser();
+  if (!canUseProposals(actor) || !actor) return { ok: false as const, error: "Neturite teisių.", actor: null };
+  return { ok: true as const, actor };
+}
+
+export async function getExpressProposalContextAction(
+  workItemId: string
+): Promise<{ ok: true; context: ExpressProposalContext } | { ok: false; error: string }> {
+  const auth = await assertExpressActor();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const id = String(workItemId ?? "").trim();
+  if (!id) return { ok: false, error: "Kortelė nerasta." };
+  try {
+    const admin = createSupabaseAdminClient();
+    const item = await loadWorkItemForExpress(admin, id);
+    if (!item) return { ok: false, error: "Kortelė nerasta." };
+    const resolved = await resolveRecipientsFromWorkItem(admin, item);
+    const recipientError =
+      resolved.recipients.length || resolved.pendingLead ? null : resolved.error;
+    const draft = await findDraftByWorkItem(admin, id);
+    if (draft) {
+      const discounts = await loadDiscounts(admin, draft.id, draft.global_discount_pct);
+      const selected =
+        pickRecipient(resolved.recipients, draft.recipient_type, draft.recipient_id ?? undefined) ??
+        resolved.recipients[0] ??
+        null;
+      return {
+        ok: true,
+        context: {
+          workItemId: id,
+          mode: "draft",
+          recipients: resolved.recipients,
+          selectedRecipient: selected,
+          pendingLead: selected ? null : resolved.pendingLead,
+          proposal: toExpressSummary(draft, discounts),
+          recipientError,
+        },
+      };
+    }
+    const latest = await findLatestReadonlyProposal(admin, id);
+    if (latest && isExpressReadonlyStatus(latest.status)) {
+      const discounts =
+        latest.snapshot != null
+          ? discountsFromSnapshot(latest.snapshot)
+          : await loadDiscounts(admin, latest.id, latest.global_discount_pct);
+      const selected =
+        pickRecipient(resolved.recipients, latest.recipient_type, latest.recipient_id ?? undefined) ??
+        resolved.recipients[0] ??
+        null;
+      return {
+        ok: true,
+        context: {
+          workItemId: id,
+          mode: "generated",
+          recipients: resolved.recipients,
+          selectedRecipient: selected,
+          pendingLead: selected ? null : resolved.pendingLead,
+          proposal: toExpressSummary(latest, discounts),
+          recipientError,
+        },
+      };
+    }
+    return {
+      ok: true,
+      context: {
+        workItemId: id,
+        mode: "create",
+        recipients: resolved.recipients,
+        selectedRecipient: resolved.recipients.length === 1 ? resolved.recipients[0]! : null,
+        pendingLead: resolved.pendingLead,
+        proposal: null,
+        recipientError,
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko įkelti pasiūlymo." };
+  }
+}
+
+export async function listExpressProposalStatesAction(
+  workItemIds: string[]
+): Promise<Record<string, ExpressProposalState>> {
+  const auth = await assertExpressActor();
+  const out: Record<string, ExpressProposalState> = {};
+  const ids = [...new Set(workItemIds.map((id) => String(id ?? "").trim()).filter(Boolean))];
+  for (const id of ids) out[id] = "none";
+  if (!auth.ok || ids.length === 0) return out;
+  let allowed: string[] = [];
+  try {
+    const visible = await visibleWorkItemIdsForActor(ids);
+    allowed = ids.filter((id) => visible.has(id));
+  } catch {
+    return out;
+  }
+  if (allowed.length === 0) return out;
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("commercial_proposals")
+    .select("work_item_id,status,created_at")
+    .in("work_item_id", allowed)
+    .order("created_at", { ascending: false });
+  if (error || !data) return out;
+  for (const row of data) {
+    const wid = row.work_item_id == null ? "" : String(row.work_item_id);
+    if (!wid || out[wid] === "draft") continue;
+    if (String(row.status) === "draft") out[wid] = "draft";
+    else if (out[wid] === "none" && isExpressReadonlyStatus(String(row.status))) out[wid] = "generated";
+  }
+  return out;
+}
+
+export async function prepareExpressProposalAction(input: {
+  workItemId: string;
+  recipientType?: CpRecipientType;
+  recipientId?: string;
+  categoryDiscounts?: Partial<CpCategoryDiscounts>;
+}): Promise<{ ok: true; proposal: ExpressProposalSummary } | { ok: false; error: string }> {
+  const auth = await assertExpressActor();
+  if (!auth.ok || !auth.actor) return { ok: false, error: auth.error };
+  const workItemId = String(input.workItemId ?? "").trim();
+  if (!workItemId) return { ok: false, error: "Kortelė nerasta." };
+
+  try {
+    const admin = createSupabaseAdminClient();
+    const item = await loadWorkItemForExpress(admin, workItemId);
+    if (!item) return { ok: false, error: "Kortelė nerasta." };
+
+    const resolved = await resolveRecipientsFromWorkItem(admin, item, { createMissingLead: true });
+    if (resolved.error && resolved.recipients.length === 0) return { ok: false, error: resolved.error };
+
+    const recipient = pickRecipient(resolved.recipients, input.recipientType, input.recipientId);
+    if (!recipient) {
+      return {
+        ok: false,
+        error:
+          resolved.recipients.length > 1
+            ? "Pasirinkite gavėją."
+            : resolved.error ?? "Gavėjas nerastas.",
+      };
+    }
+
+    const frozen = await findLatestReadonlyProposal(admin, workItemId);
+    if (frozen) {
+      return { ok: false, error: "Pasiūlymas jau sugeneruotas." };
+    }
+
+    let draft = await findDraftByWorkItem(admin, workItemId);
+    if (!draft) {
+      draft = await createDraftForWorkItem(admin, auth.actor.id, workItemId, recipient);
+    }
+
+    const discounts = normalizeCategoryDiscounts({
+      ...ZERO_CATEGORY_DISCOUNTS,
+      ...input.categoryDiscounts,
+    });
+    try {
+      await ensureDraftLines(admin, draft.id);
+      await applyCategoryDiscountsToDraft(admin, draft.id, auth.actor.id, discounts);
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : "Nepavyko išsaugoti nuolaidų.",
+      };
+    }
+    revalidateProposalTool(draft.id);
+    const updated = (await findDraftByWorkItem(admin, workItemId)) ?? draft;
+    return { ok: true, proposal: toExpressSummary(updated, discounts) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nepavyko paruošti pasiūlymo." };
+  }
 }

@@ -37,6 +37,7 @@ import {
 } from "@/lib/crm/findMatchingExistingClient";
 import { isManualProjectType, isProcurementProjectType, projectTypeFromDbRow } from "@/lib/crm/projectType";
 import { companyCodeHasInvoices } from "@/lib/crm/manualColdLeads";
+import { manualLeadInsertPayload } from "@/lib/crm/manualLeadEnsure";
 import {
   mapProcurementCsvRows,
   parseProcurementImportCsv,
@@ -622,17 +623,17 @@ export async function createManualProjectLeadAction(formData: FormData): Promise
 
   const { data: inserted, error } = await supabase
     .from("project_manual_leads")
-    .insert({
-      project_id: projectId,
-      company_name: companyName,
-      company_code: companyCode,
-      email,
-      phone,
-      contact_name: contactName,
-      notes,
-      crm_status: "new_lead",
-      last_order_at: null,
-    })
+    .insert(
+      manualLeadInsertPayload({
+        projectId,
+        companyName,
+        companyCode,
+        email,
+        phone,
+        contactName,
+        notes,
+      })
+    )
     .select("id")
     .single();
 

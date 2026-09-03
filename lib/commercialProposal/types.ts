@@ -11,6 +11,14 @@ export type CpRecipientType = (typeof CP_RECIPIENT_TYPES)[number];
 export const CP_STATUSES = ["draft", "generated", "sent", "accepted", "rejected", "expired"] as const;
 export type CommercialProposalStatus = (typeof CP_STATUSES)[number];
 
+/** Express read-only: PDF already exists or the proposal is frozen. Not draft. */
+export const CP_EXPRESS_READONLY_STATUSES = ["generated", "sent", "accepted", "rejected", "expired"] as const;
+export type CpExpressReadonlyStatus = (typeof CP_EXPRESS_READONLY_STATUSES)[number];
+
+export function isExpressReadonlyStatus(status: string): status is CpExpressReadonlyStatus {
+  return (CP_EXPRESS_READONLY_STATUSES as readonly string[]).includes(status);
+}
+
 export const CP_V1_STATUSES = ["draft", "generated", "sent"] as const;
 export type CommercialProposalV1Status = (typeof CP_V1_STATUSES)[number];
 
@@ -130,6 +138,7 @@ export type CommercialProposalRow = {
   generated_at: string | null;
   pdf_storage_path: string | null;
   snapshot: CommercialProposalSnapshot | null;
+  work_item_id: string | null;
   created_at: string;
   updated_at: string;
 };

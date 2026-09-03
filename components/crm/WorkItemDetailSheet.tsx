@@ -30,6 +30,7 @@ import { notifyCrmObligationsRefresh } from "@/lib/crm/crmObligationsRefresh";
 import { saveWorkItemTouchpoint } from "@/lib/crm/projectActions";
 import type { ProjectWorkItemActivityDto } from "@/lib/crm/projectWorkItemActivityDto";
 import type { ProjectWorkItemDto } from "@/lib/crm/projectWorkItemDto";
+import type { ExpressProposalState } from "@/lib/crm/expressProposal";
 import { ReturnToCandidatesFlow } from "@/components/crm/ReturnToCandidatesFlow";
 import { WorkItemActivityTimeline } from "@/components/crm/WorkItemActivityTimeline";
 import { WorkItemCompletionSelect } from "@/components/crm/WorkItemCompletionSelect";
@@ -57,11 +58,17 @@ export function WorkItemDetailSheet({
   activities,
   allWorkPriorities,
   onClose,
+  suppressEscape = false,
+  expressState = "none",
+  onExpressProposal,
 }: {
   item: ProjectWorkItemDto;
   activities: ProjectWorkItemActivityDto[];
   allWorkPriorities: number[];
   onClose: () => void;
+  suppressEscape?: boolean;
+  expressState?: ExpressProposalState;
+  onExpressProposal?: (trigger: HTMLButtonElement) => void;
 }) {
   const router = useRouter();
   const isProcurementItem = item.source_type === "procurement_contract";
@@ -88,12 +95,13 @@ export function WorkItemDetailSheet({
   const [state, dispatch] = useActionState(formAction, { error: null });
 
   useEffect(() => {
+    if (suppressEscape) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, suppressEscape]);
 
   const detailHref = workItemClientDetailHref(item.client_key);
   const level: CallListPriority = priorityFromSnapshotScore(item.snapshot_priority, allWorkPriorities);
@@ -154,6 +162,19 @@ export function WorkItemDetailSheet({
                 </>
               )}
             </p>
+            {onExpressProposal ? (
+              <button
+                type="button"
+                className="mt-2 text-left text-[13px] font-medium text-[#7C4A57] hover:underline"
+                onClick={(e) => onExpressProposal(e.currentTarget)}
+              >
+                {expressState === "draft"
+                  ? "Tęsti pasiūlymą"
+                  : expressState === "generated"
+                    ? "Atidaryti pasiūlymą"
+                    : "Kurti komercinį pasiūlymą"}
+              </button>
+            ) : null}
           </div>
           <button
             type="button"

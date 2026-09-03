@@ -14,6 +14,14 @@ export function clampDiscountPct(value: unknown): number {
   return Math.min(100, Math.max(0, n));
 }
 
+export function parseDiscountInput(raw: string): { ok: true; value: number } | { ok: false; error: string } {
+  const t = raw.trim().replace(",", ".");
+  if (t === "" || t === "—") return { ok: true, value: 0 };
+  const n = Number(t);
+  if (!Number.isFinite(n)) return { ok: false, error: "Neteisingas procentas." };
+  return { ok: true, value: clampDiscountPct(n) };
+}
+
 export function normalizeCategoryDiscounts(
   input?: Partial<Record<string, unknown>> | null,
   fallback = 0
