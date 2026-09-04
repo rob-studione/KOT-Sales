@@ -29,12 +29,16 @@ type Draft = {
   isDefault: boolean;
 };
 
+function pctField(value: number): string {
+  return value > 0 ? String(value) : "";
+}
+
 function draftFromGroup(group: CpPricingGroup): Draft {
   return {
     name: group.name,
-    translation: String(group.discounts.translation),
-    ai_translation: String(group.discounts.ai_translation),
-    additional_service: String(group.discounts.additional_service),
+    translation: pctField(group.discounts.translation),
+    ai_translation: pctField(group.discounts.ai_translation),
+    additional_service: pctField(group.discounts.additional_service),
     active: group.active,
     isDefault: group.is_default,
   };
@@ -42,9 +46,9 @@ function draftFromGroup(group: CpPricingGroup): Draft {
 
 const EMPTY_DRAFT: Draft = {
   name: "",
-  translation: "0",
-  ai_translation: "0",
-  additional_service: "0",
+  translation: "",
+  ai_translation: "",
+  additional_service: "",
   active: true,
   isDefault: false,
 };
@@ -86,9 +90,10 @@ function DiscountFields({
           <div className="relative mt-1">
             <input
               value={String(draft[draftKey])}
+              placeholder="0"
               inputMode="decimal"
               onChange={(e) => onChange({ [draftKey]: e.target.value })}
-              className={`${FIELD} pr-7 text-right tabular-nums ${FOCUS_RING}`}
+              className={`${FIELD} pr-7 text-right tabular-nums placeholder:text-[#C5C6CB] ${FOCUS_RING}`}
             />
             <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-[12px] text-[#6F7077]">
               %
