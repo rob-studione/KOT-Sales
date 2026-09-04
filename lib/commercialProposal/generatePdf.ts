@@ -5,13 +5,6 @@ import {
   type PDFFont,
   type PDFPage,
   type RGB,
-  pushGraphicsState,
-  popGraphicsState,
-  moveTo,
-  appendBezierCurve,
-  closePath,
-  clip,
-  endPath,
 } from "pdf-lib";
 import { defaultTemplateContent } from "@/lib/commercialProposal/content";
 import { embedProposalFonts, type CpFonts } from "@/lib/commercialProposal/fonts";
@@ -67,21 +60,6 @@ function drawTextTop(
     font: opts.font,
     color: opts.color,
   });
-}
-
-function clipCircle(page: PDFPage, cx: number, cy: number, r: number) {
-  const k = 0.552284749831;
-  page.pushOperators(
-    pushGraphicsState(),
-    moveTo(cx, cy + r),
-    appendBezierCurve(cx + k * r, cy + r, cx + r, cy + k * r, cx + r, cy),
-    appendBezierCurve(cx + r, cy - k * r, cx + k * r, cy - r, cx, cy - r),
-    appendBezierCurve(cx - k * r, cy - r, cx - r, cy - k * r, cx - r, cy),
-    appendBezierCurve(cx - r, cy + k * r, cx - k * r, cy + r, cx, cy + r),
-    closePath(),
-    clip(),
-    endPath()
-  );
 }
 
 async function copyTemplatePage(out: PDFDocument, src: PDFDocument, index: number): Promise<PDFPage> {
@@ -413,42 +391,35 @@ async function paintIntroOverlay(
   const photo = INTRO.photo;
   const cx = photo.x + photo.w / 2;
   const cy = yBottom(photo.yTop + photo.h / 2);
-  const r = photo.overlayRadius;
 
-  page.drawCircle({
-    x: cx,
-    y: cy,
-    size: r,
-    color: c(COLOR.teal),
-  });
-
-  const painted = await tryPaintManagerAvatar(page, cx, cy, r, avatarBytes);
+  const painted = await tryPaintManagerAvatar(page, avatarBytes);
   if (!painted) {
+    page.drawCircle({
+      x: cx,
+      y: cy,
+      size: photo.overlayRadius,
+      color: c(COLOR.teal),
+    });
     paintManagerPhotoPlaceholder(page, fonts, snapshot.sales_manager.display_name, cx, cy);
   }
 }
 
-async function tryPaintManagerAvatar(
-  page: PDFPage,
-  cx: number,
-  cy: number,
-  r: number,
-  avatarBytes?: Uint8Array | null
-): Promise<boolean> {
+async function tryPaintManagerAvatar(page: PDFPage, avatarBytes?: Uint8Array | null): Promise<boolean> {
   if (!avatarBytes || avatarBytes.byteLength <= 0) return false;
   try {
     const head = avatarBytes.slice(0, 4);
     const isPng = head[0] === 0x89 && head[1] === 0x50;
     const img = isPng ? await page.doc.embedPng(avatarBytes) : await page.doc.embedJpg(avatarBytes);
-    clipCircle(page, cx, cy, r);
-    const size = r * 2;
+    const { x, yTop, w, h } = INTRO.photo;
+    const scale = Math.min(w / Math.max(img.width, 1), h / Math.max(img.height, 1));
+    const dw = img.width * scale;
+    const dh = img.height * scale;
     page.drawImage(img, {
-      x: cx - r,
-      y: cy - r,
-      width: size,
-      height: size,
+      x: x + (w - dw) / 2,
+      y: yBottom(yTop + h) + (h - dh) / 2,
+      width: dw,
+      height: dh,
     });
-    page.pushOperators(popGraphicsState());
     return true;
   } catch {
     return false;

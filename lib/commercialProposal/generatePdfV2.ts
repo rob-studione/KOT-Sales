@@ -6,13 +6,6 @@ import {
   type PDFImage,
   type PDFPage,
   type RGB,
-  pushGraphicsState,
-  popGraphicsState,
-  moveTo,
-  appendBezierCurve,
-  closePath,
-  clip,
-  endPath,
 } from "pdf-lib";
 import { embedProposalFonts, type CpFonts } from "@/lib/commercialProposal/fonts";
 import {
@@ -169,21 +162,6 @@ function drawTechTitle(
       color: c(COLOR.black),
     });
   }
-}
-
-function clipCircle(page: PDFPage, cx: number, cy: number, r: number) {
-  const k = 0.552284749831;
-  page.pushOperators(
-    pushGraphicsState(),
-    moveTo(cx, cy + r),
-    appendBezierCurve(cx + k * r, cy + r, cx + r, cy + k * r, cx + r, cy),
-    appendBezierCurve(cx + r, cy - k * r, cx + k * r, cy - r, cx, cy - r),
-    appendBezierCurve(cx - k * r, cy - r, cx - r, cy - k * r, cx - r, cy),
-    appendBezierCurve(cx - r, cy + k * r, cx - k * r, cy + r, cx, cy + r),
-    closePath(),
-    clip(),
-    endPath()
-  );
 }
 
 async function copyTemplatePage(out: PDFDocument, src: PDFDocument, index: number): Promise<PDFPage> {
@@ -504,29 +482,26 @@ async function embedAvatar(url: string | null | undefined): Promise<Uint8Array |
   }
 }
 
-function drawCoverImage(page: PDFPage, img: PDFImage, cx: number, cy: number, r: number) {
-  const side = r * 2;
-  const scale = Math.max(side / Math.max(img.width, 1), side / Math.max(img.height, 1));
+function drawAvatarImage(page: PDFPage, img: PDFImage) {
+  const { x, yTop, w, h } = INTRO.photo;
+  const scale = Math.min(w / Math.max(img.width, 1), h / Math.max(img.height, 1));
   const dw = img.width * scale;
   const dh = img.height * scale;
-  clipCircle(page, cx, cy, r);
-  page.drawImage(img, { x: cx - dw / 2, y: cy - dh / 2, width: dw, height: dh });
-  page.pushOperators(popGraphicsState());
+  page.drawImage(img, {
+    x: x + (w - dw) / 2,
+    y: yBottom(yTop + h) + (h - dh) / 2,
+    width: dw,
+    height: dh,
+  });
 }
 
-async function tryPaintManagerAvatar(
-  page: PDFPage,
-  cx: number,
-  cy: number,
-  r: number,
-  avatarBytes?: Uint8Array | null
-): Promise<boolean> {
+async function tryPaintManagerAvatar(page: PDFPage, avatarBytes?: Uint8Array | null): Promise<boolean> {
   if (!avatarBytes || avatarBytes.byteLength <= 0) return false;
   try {
     const head = avatarBytes.slice(0, 4);
     const isPng = head[0] === 0x89 && head[1] === 0x50;
     const img = isPng ? await page.doc.embedPng(avatarBytes) : await page.doc.embedJpg(avatarBytes);
-    drawCoverImage(page, img, cx, cy, r);
+    drawAvatarImage(page, img);
     return true;
   } catch {
     return false;
@@ -690,15 +665,13 @@ export async function generateCommercialProposalPdfV2(input: {
     font: fonts.regular,
     color: c(COLOR.jobGray),
   });
-  // Only the CRM account avatar (circular). No design arc / KOT badge.
+  // CRM avatars already include the circular frame — paint the full file, do not clip.
   coverDesignPortraitArtwork(intro);
-  const slot = INTRO.photoSlot;
-  const cx = slot.cx;
-  const cy = yBottom(slot.yTop);
-  const r = slot.r;
-  pageTealCover(intro, cx, cy, r);
-  const painted = await tryPaintManagerAvatar(intro, cx, cy, r, avatarBytes);
-  if (!painted) paintPlaceholder(intro, fonts, snapshot.sales_manager.display_name, cx, cy, r);
+  const painted = await tryPaintManagerAvatar(intro, avatarBytes);
+  if (!painted) {
+    const slot = INTRO.photoSlot;
+    paintPlaceholder(intro, fonts, snapshot.sales_manager.display_name, slot.cx, yBottom(slot.yTop), slot.r);
+  }
 
   const historyPages = paginateHistory(fonts, content.history.year_suffix, snapshot.company_history);
   for (let i = 0; i < historyPages.length; i++) {
@@ -861,8 +834,4 @@ export async function generateCommercialProposalPdfV2(input: {
   });
 
   return { bytes: await out.save(), warnings };
-}
-
-function pageTealCover(page: PDFPage, cx: number, cy: number, r: number) {
-  page.drawCircle({ x: cx, y: cy, size: r, color: c(COLOR.teal) });
 }

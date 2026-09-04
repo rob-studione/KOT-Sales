@@ -36,12 +36,13 @@ export const INTRO = {
   titleBaselineTop: 289.74,
   nameSize: 11.25,
   titleSize: 10.5,
-  photo: { x: 37.5, yTop: 261.31, w: 95.25, h: 92.87, overlayRadius: 40 },
   /**
-   * Circular CRM avatar slot on the intro page.
-   * Runtime covers any leftover design portrait artwork, then paints only the
-   * account avatar (teal fill / initials fallback if missing).
+   * Box that matches the design-PDF portrait artwork.
+   * Runtime covers that artwork, then paints the CRM avatar unclipped
+   * (avatars already include the circular frame).
    */
+  photo: { x: 37.5, yTop: 261.31, w: 95.25, h: 92.87, overlayRadius: 40 },
+  /** Fallback circle when the account has no avatar. */
   photoSlot: { cx: 91.0, yTop: 301.0, r: 37.0 },
 };
 
